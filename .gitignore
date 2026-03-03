@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# uv
+uv.lock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+mcp_debug.log
+
+# Config with secrets
+config/config.yaml
+
+# State files
+.ziniao/
+
+# Test artifacts
+test_*.py
+debug_*.py
+test_*.png
+
+# Windows system caches
+%SystemDrive%/

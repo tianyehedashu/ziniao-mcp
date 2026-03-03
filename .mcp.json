@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "ziniao": {
+      "command": "uv",
+      "args": ["run", "--directory", "${pluginDir}", "ziniao-mcp"],
+      "env": {
+        "ZINIAO_COMPANY": "${ZINIAO_COMPANY}",
+        "ZINIAO_USERNAME": "${ZINIAO_USERNAME}",
+        "ZINIAO_PASSWORD": "${ZINIAO_PASSWORD}",
+        "ZINIAO_CLIENT_PATH": "${ZINIAO_CLIENT_PATH}"
+      }
+    }
+  }
+}

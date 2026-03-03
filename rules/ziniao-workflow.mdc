@@ -1,0 +1,37 @@
+---
+description: 紫鸟浏览器操作的标准工作流规范，确保 AI Agent 按正确顺序调用工具
+alwaysApply: true
+---
+
+## 操作顺序
+
+操作紫鸟店铺浏览器必须遵循以下顺序：
+
+1. **建立连接**：先通过 `connect_store` 或 `open_store` 连接店铺，再执行任何页面操作
+2. **了解页面**：操作前先用 `take_snapshot` 获取页面结构，根据返回的 HTML 确定选择器
+3. **执行操作**：使用 `click`、`fill`、`type_text` 等工具与页面交互
+4. **验证结果**：操作后用 `take_snapshot` 或 `take_screenshot` 确认操作是否生效
+
+## 连接策略
+
+- 不确定店铺是否已打开时，优先使用 `connect_store`（不会重启已运行的店铺）
+- 仅在需要强制重启店铺时使用 `open_store`
+- 操作前可用 `list_open_stores` 查看当前已打开的店铺
+
+## 页面理解
+
+- 优先使用 `take_snapshot` 获取 HTML 结构（文本化、速度快、适合分析页面元素）
+- 仅在需要视觉确认时使用 `take_screenshot`（图片体积大、消耗 token）
+- 使用 `evaluate_script` 提取 snapshot 无法获取的动态数据
+
+## 多标签页
+
+- 操作前用 `list_pages` 确认当前活动标签页
+- 需要切换标签页时使用 `select_page`
+- 避免打开过多标签页，及时用 `close_page` 关闭不需要的页面
+
+## 等待策略
+
+- 导航后使用 `wait_for` 等待页面加载完成
+- 点击触发页面跳转后，等待目标元素出现再继续操作
+- 默认超时 30 秒，对于加载较慢的页面可适当增加 timeout

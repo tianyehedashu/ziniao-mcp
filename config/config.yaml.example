@@ -1,0 +1,18 @@
+ziniao:
+  # 浏览器配置
+  browser:
+    # 浏览器版本 v5 或 v6
+    version: v6
+    # 浏览器客户端路径
+    # Windows V5: starter.exe, V6: ziniao.exe
+    # macOS: ziniao
+    # Linux: /opt/ziniao/ziniaobrowser
+    client_path: D:\ziniao\ziniao.exe
+    # 与客户端通信的 HTTP 端口，需未被占用
+    socket_port: 16851
+
+  # 企业登录的用户信息
+  user_info:
+    company: 您登录紫鸟浏览器时输入的企业公司名
+    username: 您登录紫鸟浏览器时输入的企业用户名
+    password: 您登录紫鸟浏览器时输入的密码
