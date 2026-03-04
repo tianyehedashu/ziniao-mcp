@@ -2,6 +2,19 @@
 
 本文件记录 ziniao-browser 的版本变更，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 格式。
 
+## [0.1.12] - 2026-03-04
+
+### 修复
+
+- **端口配置不匹配**：`.mcp.json` 增加 `ZINIAO_SOCKET_PORT` 环境变量透传，Plugin 模式下可正确使用自定义端口（默认 16851，可与客户端实际监听端口一致）
+- **heartbeat 超时**：心跳请求超时从 120s 改为 10s，端口不通时快速失败；连接失败时日志提示检查 `ZINIAO_SOCKET_PORT`
+- **start_client**：返回信息包含当前端口；启动后仍无法连接时明确提示检查端口配置
+
+### 文档
+
+- **README / installation.md**：MCP 配置示例增加 `ZINIAO_SOCKET_PORT`，环境变量表与故障排查补充端口说明
+- **installation.md**：新增「工具调用超时 / Aborted」排查项（端口不匹配、如何确认实际端口）
+
 ## [0.1.11] - 2026-03-04
 
 ### 文档

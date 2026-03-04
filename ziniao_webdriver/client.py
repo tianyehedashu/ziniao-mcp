@@ -69,16 +69,25 @@ class ZiniaoClient:
     # HTTP 通信 & 响应解析
     # ------------------------------------------------------------------
 
-    def _send_http(self, data: dict) -> Optional[dict]:
+    def _send_http(self, data: dict, timeout: int = 120) -> Optional[dict]:
         """向紫鸟客户端发送 HTTP 请求。"""
         try:
             url = f"http://127.0.0.1:{self.socket_port}"
             response = requests.post(
-                url, json.dumps(data).encode("utf-8"), timeout=120
+                url, json.dumps(data).encode("utf-8"), timeout=timeout
             )
             return json.loads(response.text)
+        except requests.exceptions.ConnectionError:
+            _logger.warning(
+                "无法连接紫鸟客户端 (127.0.0.1:%s)。"
+                "请确认：1) 客户端已启动；"
+                "2) ZINIAO_SOCKET_PORT (%s) 与客户端实际监听端口一致。"
+                "可在客户端设置或任务管理器中确认实际端口。",
+                self.socket_port, self.socket_port,
+            )
+            return None
         except Exception as err:
-            _logger.warning("HTTP 请求失败: %s", err)
+            _logger.warning("HTTP 请求失败 (port=%s): %s", self.socket_port, err)
             return None
 
     @staticmethod
@@ -122,10 +131,10 @@ class ZiniaoClient:
     # ------------------------------------------------------------------
 
     def heartbeat(self) -> bool:
-        """检查客户端是否在运行（通过心跳请求）。"""
+        """检查客户端是否在运行（通过心跳请求）。使用较短超时避免端口不通时长时间阻塞。"""
         data = {"action": "heartbeat", "requestId": str(uuid.uuid4())}
         data.update(self.user_info)
-        return self._send_http(data) is not None
+        return self._send_http(data, timeout=10) is not None
 
     def start_browser(self) -> None:
         """以 WebDriver 模式启动紫鸟客户端。"""

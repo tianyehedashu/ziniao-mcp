@@ -12,6 +12,7 @@ from ziniao_mcp.session import SessionManager
 def mock_client():
     c = MagicMock(spec=ZiniaoClient)
     c.user_info = {"company": "c", "username": "u", "password": "p"}
+    c.socket_port = 16851
     c.heartbeat = MagicMock(return_value=True)
     c.kill_process = MagicMock(return_value=True)
     c.start_browser = MagicMock()
@@ -94,13 +95,20 @@ class TestStartClient:
 
     @pytest.mark.asyncio
     async def test_starts_when_not_running(self, session, mock_client):
-        mock_client.heartbeat.return_value = False
+        mock_client.heartbeat.side_effect = [False, True]
         result = await session.start_client()
         assert "已启动" in result
         mock_client.kill_process.assert_not_called()  # 未运行时不再 taskkill
         mock_client.start_browser.assert_called_once()
         mock_client.update_core.assert_called_once()
         assert session._client_started is True
+
+    @pytest.mark.asyncio
+    async def test_warns_when_still_unreachable_after_start(self, session, mock_client):
+        mock_client.heartbeat.return_value = False
+        result = await session.start_client()
+        assert "无法连接" in result
+        assert "16851" in result
 
 
 # ------------------------------------------------------------------ #

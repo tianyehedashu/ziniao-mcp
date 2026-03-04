@@ -47,12 +47,15 @@ uvx playwright install chromium
         "ZINIAO_COMPANY": "我的公司",
         "ZINIAO_USERNAME": "admin",
         "ZINIAO_PASSWORD": "xxx",
-        "ZINIAO_CLIENT_PATH": "D:\\ziniao\\ziniao.exe"
+        "ZINIAO_CLIENT_PATH": "D:\\ziniao\\ziniao.exe",
+        "ZINIAO_SOCKET_PORT": "16851"
       }
     }
   }
 }
 ```
+
+> **端口说明**：`ZINIAO_SOCKET_PORT` 需与紫鸟客户端实际监听的 HTTP 端口一致。不同客户端版本或用户配置可能导致端口不同（如 `9480`、`16851` 等）。若工具调用一直超时，请先确认客户端实际端口。
 
 各客户端的配置方式：
 
@@ -106,7 +109,8 @@ uv run playwright install chromium  # 可选，同方式一说明
           "ZINIAO_COMPANY": "我的公司",
           "ZINIAO_USERNAME": "admin",
           "ZINIAO_PASSWORD": "xxx",
-          "ZINIAO_CLIENT_PATH": "D:\\ziniao\\ziniao.exe"
+          "ZINIAO_CLIENT_PATH": "D:\\ziniao\\ziniao.exe",
+          "ZINIAO_SOCKET_PORT": "16851"
         }
       }
     }
@@ -219,6 +223,16 @@ Cursor Settings 中 ziniao 服务器显示为离线。
 2. 手动运行测试：`uvx ziniao-mcp --help`（方式一）或 `uv run ziniao-mcp --help`（方式二）
 3. 检查环境变量是否正确配置
 4. 方式一用户若怀疑是旧版本缓存导致：执行 `uvx --refresh ziniao-mcp` 拉取最新版后再试
+
+### 工具调用超时 / Aborted
+
+heartbeat 或工具调用一直卡住最终超时。
+
+1. **最常见原因：端口不匹配**。`ZINIAO_SOCKET_PORT` 默认为 `16851`，但紫鸟客户端实际可能监听在其他端口（如 `9480`）
+2. 确认客户端实际端口：
+   - Windows：在 PowerShell 中运行 `netstat -ano | findstr ziniao` 或在任务管理器中查看
+   - macOS/Linux：`lsof -i -P | grep ziniao`
+3. 在 MCP 配置的 `env` 中设置正确的端口：`"ZINIAO_SOCKET_PORT": "实际端口号"`
 
 ### 店铺连接失败
 

@@ -33,6 +33,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
         "ZINIAO_USERNAME": "你的用户名",
         "ZINIAO_PASSWORD": "你的密码",
         "ZINIAO_CLIENT_PATH": "D:\\soft\\ziniao-v6\\ziniao.exe",
+        "ZINIAO_SOCKET_PORT": "16851",
         "ZINIAO_VERSION": "v6"
       }
     }
@@ -46,6 +47,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 | `ZINIAO_USERNAME` | 登录用户名 |
 | `ZINIAO_PASSWORD` | 登录密码 |
 | `ZINIAO_CLIENT_PATH` | 紫鸟客户端可执行文件路径 |
+| `ZINIAO_SOCKET_PORT` | 与客户端通信的 HTTP 端口，默认 `16851`。**若连接超时请检查此端口是否与客户端实际监听端口一致** |
 | `ZINIAO_VERSION` | 客户端版本，默认 `v6` |
 
 配置完成后，在 Cursor 对话框中试试：

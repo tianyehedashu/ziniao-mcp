@@ -240,13 +240,19 @@ class SessionManager:
 
     async def start_client(self) -> str:
         """启动紫鸟客户端，若已在运行则直接返回。"""
+        port = self.client.socket_port
         if await self._is_client_running():
-            return "紫鸟客户端已在运行"
+            return f"紫鸟客户端已在运行 (端口 {port})"
         # 客户端未运行时无需 taskkill，否则会报「未找到进程 ziniao.exe」
         await asyncio.to_thread(self.client.start_browser)
         await asyncio.to_thread(self.client.update_core)
         self._client_started = True
-        return "紫鸟客户端已启动"
+        if not await self._is_client_running():
+            return (
+                f"紫鸟客户端启动后仍无法连接 (端口 {port})。"
+                f"请检查 ZINIAO_SOCKET_PORT 是否与客户端实际监听端口一致。"
+            )
+        return f"紫鸟客户端已启动 (端口 {port})"
 
     async def stop_client(self) -> None:
         """关闭所有店铺会话并退出紫鸟客户端。"""
