@@ -9,6 +9,13 @@ from ..session import SessionManager
 
 def register_tools(mcp: FastMCP, session: SessionManager) -> None:
 
+    def _behavior_cfg():
+        """从 session 的 stealth_config 中获取 BehaviorConfig（若启用）。"""
+        sc = session.stealth_config
+        if sc.enabled and sc.human_behavior:
+            return sc.to_behavior_config()
+        return None
+
     @mcp.tool()
     async def click(selector: str) -> str:
         """点击页面元素。
@@ -17,7 +24,13 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
             selector: CSS 选择器、XPath 或 Playwright 选择器（如 "text=登录"、"#submit-btn"）
         """
         page = session.get_active_page()
-        await page.locator(selector).click()
+        cfg = _behavior_cfg()
+        if cfg:
+            from ..stealth import human_click, random_delay  # pylint: disable=import-outside-toplevel
+            await random_delay(cfg=cfg)
+            await human_click(page, selector, cfg=cfg)
+        else:
+            await page.locator(selector).click()
         return f"已点击: {selector}"
 
     @mcp.tool()
@@ -29,7 +42,13 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
             value: 要填入的值
         """
         page = session.get_active_page()
-        await page.locator(selector).fill(value)
+        cfg = _behavior_cfg()
+        if cfg:
+            from ..stealth import human_fill, random_delay  # pylint: disable=import-outside-toplevel
+            await random_delay(cfg=cfg)
+            await human_fill(page, selector, value, cfg=cfg)
+        else:
+            await page.locator(selector).fill(value)
         return f"已填写 {selector}"
 
     @mcp.tool()
@@ -41,8 +60,15 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
         """
         page = session.get_active_page()
         fields = json.loads(fields_json)
-        for f in fields:
-            await page.locator(f["selector"]).fill(f["value"])
+        cfg = _behavior_cfg()
+        if cfg:
+            from ..stealth import human_fill, random_delay  # pylint: disable=import-outside-toplevel
+            for f in fields:
+                await random_delay(cfg=cfg)
+                await human_fill(page, f["selector"], f["value"], cfg=cfg)
+        else:
+            for f in fields:
+                await page.locator(f["selector"]).fill(f["value"])
         return f"已填写 {len(fields)} 个字段"
 
     @mcp.tool()
@@ -54,9 +80,15 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
             selector: 可选，目标元素选择器。为空则在当前焦点元素输入
         """
         page = session.get_active_page()
-        if selector:
-            await page.locator(selector).click()
-        await page.keyboard.type(text)
+        cfg = _behavior_cfg()
+        if cfg:
+            from ..stealth import human_type, random_delay  # pylint: disable=import-outside-toplevel
+            await random_delay(cfg=cfg)
+            await human_type(page, text, selector, cfg=cfg)
+        else:
+            if selector:
+                await page.locator(selector).click()
+            await page.keyboard.type(text)
         return f"已输入: {text}"
 
     @mcp.tool()
@@ -67,6 +99,10 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
             key: 按键名称，如 "Enter"、"Tab"、"Escape"、"ArrowDown"、"Control+a"
         """
         page = session.get_active_page()
+        cfg = _behavior_cfg()
+        if cfg:
+            from ..stealth import random_delay  # pylint: disable=import-outside-toplevel
+            await random_delay(50, 200, cfg=cfg)
         await page.keyboard.press(key)
         return f"已按下: {key}"
 
@@ -78,7 +114,13 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
             selector: 目标元素的选择器
         """
         page = session.get_active_page()
-        await page.locator(selector).hover()
+        cfg = _behavior_cfg()
+        if cfg:
+            from ..stealth import human_hover, random_delay  # pylint: disable=import-outside-toplevel
+            await random_delay(cfg=cfg)
+            await human_hover(page, selector, cfg=cfg)
+        else:
+            await page.locator(selector).hover()
         return f"已悬停: {selector}"
 
     @mcp.tool()
@@ -90,6 +132,10 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
             target_selector: 目标元素选择器
         """
         page = session.get_active_page()
+        cfg = _behavior_cfg()
+        if cfg:
+            from ..stealth import random_delay  # pylint: disable=import-outside-toplevel
+            await random_delay(cfg=cfg)
         await page.drag_and_drop(source_selector, target_selector)
         return f"已拖拽 {source_selector} → {target_selector}"
 

@@ -2,6 +2,20 @@
 
 本文件记录 ziniao-browser 的版本变更，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 格式。
 
+## [0.1.15] - 2026-03-04
+
+### 新增
+
+- **CDP 反检测**：新增 `ziniao_mcp/stealth` 模块，在打开/连接店铺时自动注入 JS 环境伪装与人类行为模拟，降低被识别为自动化程序的概率
+  - JS 环境：覆写 `navigator.webdriver`、补全 `navigator.plugins`/`window.chrome`、清理 Playwright 全局变量、iframe 内 webdriver 修补、权限查询与自动化相关属性
+  - 人类行为：随机延迟、贝塞尔曲线鼠标轨迹、逐字输入节奏，可通过 `config.yaml` 的 `ziniao.stealth` 配置开关与参数
+  - 紫鸟 `injectJsInfo`：open_store 时向紫鸟客户端传入精简反检测脚本，在 Playwright 连接前即生效
+  - 新标签页：`context.on("page")` 确保后续新开页面自动注册监听并继承 init_script
+
+### 变更
+
+- **config.yaml**：新增 `ziniao.stealth` 配置段（enabled、js_patches、human_behavior、delay_range、typing_speed、mouse_movement），示例见 `config/config.yaml.example`
+
 ## [0.1.14] - 2026-03-04
 
 ### 新增

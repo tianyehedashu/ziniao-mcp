@@ -16,3 +16,12 @@ ziniao:
     company: 您登录紫鸟浏览器时输入的企业公司名
     username: 您登录紫鸟浏览器时输入的企业用户名
     password: 您登录紫鸟浏览器时输入的密码
+
+  # CDP 反检测配置（可选）
+  stealth:
+    enabled: true
+    js_patches: true
+    human_behavior: true
+    delay_range: [200, 800]
+    typing_speed: [50, 150]
+    mouse_movement: true

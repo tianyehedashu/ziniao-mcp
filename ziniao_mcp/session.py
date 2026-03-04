@@ -28,6 +28,8 @@ if TYPE_CHECKING:
         Playwright,
     )
 
+    from .stealth import StealthConfig
+
 
 @dataclass
 class ConsoleMessage:
@@ -175,8 +177,15 @@ async def _is_cdp_alive(port: int, timeout: float = 2.0) -> bool:
 class SessionManager:
     """管理紫鸟客户端生命周期、CDP 连接和页面状态。"""
 
-    def __init__(self, client: ZiniaoClient):
+    def __init__(
+        self,
+        client: ZiniaoClient,
+        stealth_config: Optional["StealthConfig"] = None,
+    ):
+        from .stealth import StealthConfig  # pylint: disable=import-outside-toplevel
+
         self.client = client
+        self.stealth_config = stealth_config or StealthConfig()
         self._playwright: Optional[Playwright] = None
         self._stores: dict[str, StoreSession] = {}
         self._active_store_id: Optional[str] = None
@@ -187,6 +196,13 @@ class SessionManager:
             from playwright.async_api import async_playwright  # pylint: disable=import-outside-toplevel  # type: ignore[reportMissingImports]
             self._playwright = await async_playwright().start()
         return self._playwright
+
+    async def _apply_stealth_to_context(self, context: "BrowserContext") -> None:
+        """向 BrowserContext 注入反检测脚本（若启用）。"""
+        if not self.stealth_config.enabled:
+            return
+        from .stealth import apply_stealth  # pylint: disable=import-outside-toplevel
+        await apply_stealth(context, config=self.stealth_config)
 
     def _save_store_state(self, store_id: str, store_name: str,
                           cdp_port: int, browser_oauth: str) -> None:
@@ -300,7 +316,15 @@ class SessionManager:
             return self._stores[store_id]
 
         await self._ensure_client_running()
-        result = await asyncio.to_thread(self.client.open_store, store_id)
+
+        inject_js = ""
+        if self.stealth_config.enabled and self.stealth_config.js_patches:
+            from .stealth.js_patches import STEALTH_JS_MINIMAL  # pylint: disable=import-outside-toplevel
+            inject_js = STEALTH_JS_MINIMAL
+
+        result = await asyncio.to_thread(
+            self.client.open_store, store_id, js_info=inject_js,
+        )
         if not result:
             raise RuntimeError(f"打开店铺失败: {store_id}")
 
@@ -328,6 +352,7 @@ class SessionManager:
 
         contexts = browser.contexts
         context = contexts[0] if contexts else await browser.new_context()
+        await self._apply_stealth_to_context(context)
         pages = context.pages or [await context.new_page()]
 
         store_name = result.get("browserName", store_id)
@@ -344,6 +369,8 @@ class SessionManager:
 
         for page in session.pages:
             self._setup_page_listeners(session, page)
+
+        context.on("page", lambda page: self._setup_page_listeners(session, page))
 
         self._stores[store_id] = session
         self._active_store_id = store_id
@@ -371,6 +398,7 @@ class SessionManager:
                     )
                     contexts = browser.contexts
                     context = contexts[0] if contexts else await browser.new_context()
+                    await self._apply_stealth_to_context(context)
                     pages = context.pages or [await context.new_page()]
 
                     session = StoreSession(
@@ -385,6 +413,8 @@ class SessionManager:
                     )
                     for page in session.pages:
                         self._setup_page_listeners(session, page)
+
+                    context.on("page", lambda page: self._setup_page_listeners(session, page))
 
                     self._stores[store_id] = session
                     self._active_store_id = store_id

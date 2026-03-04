@@ -78,6 +78,7 @@ def _resolve_config() -> dict[str, Any]:
                 "client_path": browser_cfg.get("client_path"),
                 "socket_port": browser_cfg.get("socket_port"),
                 "version": browser_cfg.get("version"),
+                "stealth": raw["ziniao"].get("stealth", {}),
             }
 
     cli_config = {
@@ -112,6 +113,8 @@ def _resolve_config() -> dict[str, Any]:
             or yaml_config.get(key)
         )
 
+    config["stealth"] = yaml_config.get("stealth", {})
+
     return config
 
 
@@ -138,7 +141,13 @@ def create_server() -> tuple[FastMCP, SessionManager]:
         version=config.get("version") or "v6",
     )
 
-    session = SessionManager(client)
+    from .stealth import StealthConfig  # pylint: disable=import-outside-toplevel
+
+    stealth_cfg = StealthConfig.from_dict(config.get("stealth") or {})
+    _logger.info("Stealth 配置: enabled=%s, js_patches=%s, human_behavior=%s",
+                 stealth_cfg.enabled, stealth_cfg.js_patches, stealth_cfg.human_behavior)
+
+    session = SessionManager(client, stealth_config=stealth_cfg)
     mcp = FastMCP("ziniao-mcp")
 
     from .tools.debug import register_tools as register_debug
