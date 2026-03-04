@@ -36,7 +36,9 @@ config/config.yaml
 # State files
 .ziniao/
 
+# Development scripts (contain local paths or env-specific config)
+scripts/debug_mcp.py
+scripts/test_spawn.py
+
 # Test artifacts
-test_*.py
-debug_*.py
 test_*.png
