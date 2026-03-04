@@ -154,8 +154,29 @@ def create_server() -> tuple[FastMCP, SessionManager]:
     register_emulation(mcp, session)
     register_network(mcp, session)
     register_debug(mcp, session)
+    _register_prompts(mcp)
 
     return mcp, session
+
+
+def _register_prompts(mcp: FastMCP) -> None:
+    """注册 MCP prompts，供客户端发现并调用。"""
+
+    @mcp.prompt(
+        name="ziniao_mcp",
+        title="ziniao MCP 使用指引",
+        description="获取ziniao MCP 使用说明与常见任务示例，便于 AI 按步骤操控紫鸟店铺。",
+    )
+    def ziniao_browser_guide() -> list[dict[str, Any]]:
+        return [
+            {
+                "role": "user",
+                "content": """使用紫鸟 MCP 操控紫鸟浏览器时：
+- 获取店铺列表：list_stores 查店铺，open_store(store_id) 或 connect_store(store_id) 打开/连接店铺，之后才能做页面操作。
+- 页面操作：导航用 goto/reload/go_back，点击输入用 click/fill/select_option，弹窗用 set_dialog_handler，等待与截图用 wait/screenshot。
+根据用户目标调用对应工具即可。""",
+            },
+        ]
 
 
 def main() -> None:

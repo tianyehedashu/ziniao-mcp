@@ -2,6 +2,12 @@
 
 本文件记录 ziniao-browser 的版本变更，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 格式。
 
+## [0.1.14] - 2026-03-04
+
+### 新增
+
+- **MCP Prompts**：服务器注册 prompt「紫鸟浏览器自动化指引」（ziniao_mcp），客户端可通过 prompts/list 发现并调用，内容简述 list_stores → open_store/connect_store 与常见页面操作
+
 ## [0.1.13] - 2026-03-04
 
 ### 新增
