@@ -4,7 +4,7 @@ ziniao-browser 提供 MCP 工具（31 个）和 Cursor Plugin 两种使用形态
 
 ## 前提条件
 
-- [紫鸟浏览器客户端](https://www.ziniao.com/)，账号需已开通 WebDriver 权限（[如何开通](https://open.ziniao.com/docSupport?docId=99)）
+- [紫鸟浏览器客户端](https://www.ziniao.com/)，并**开启 WebDriver 权限**（[开通说明](https://open.ziniao.com/docSupport?docId=99)）
 - [Cursor IDE](https://cursor.com/) 或支持 MCP 的其他客户端
 
 ## 安装方式
@@ -64,15 +64,10 @@ uvx playwright install chromium
 
 配置完成后在 Cursor 中运行 `列出我所有的紫鸟店铺` 验证是否正常。
 
-**4. 更新到最新版本**
+**4. 版本与更新**
 
-uvx 会缓存已安装的包，新版本发布后不会自动更新。需要用到最新版时，执行：
-
-```bash
-uvx --refresh ziniao-mcp --help
-```
-
-该命令会刷新缓存并立即退出。之后 Cursor 通过 MCP 启动的 ziniao 会使用新版本（若 Cursor 已打开，可重启 MCP 或重载窗口生效）。
+- 查看版本：`uvx ziniao-mcp -V`
+- 刷新到最新版：`uvx --refresh ziniao-mcp --help`，然后重启 Cursor MCP
 
 
 

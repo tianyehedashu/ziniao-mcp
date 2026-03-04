@@ -2,6 +2,12 @@
 
 本文件记录 ziniao-browser 的版本变更，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 格式。
 
+## [0.1.10] - 2026-03-04
+
+### 文档
+
+- **README / 安装文档**：补充「查看版本」`uvx ziniao-mcp -V`、刷新与重启说明；前提条件统一为「开启 WebDriver 权限」并保留开通链接
+
 ## [0.1.9] - 2026-03-04
 
 ### 修复

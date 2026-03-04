@@ -60,11 +60,11 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 连接我之前打开的店铺，导航到亚马逊卖家后台
 ```
 
-> **更新版本**：`uvx --refresh ziniao-mcp --help`，然后重启 Cursor MCP 即可。
+> **版本**：查看 `uvx ziniao-mcp -V`；刷新 `uvx --refresh ziniao-mcp --help`，再重启 Cursor MCP。
 >
-> **前提条件**：需已安装 [紫鸟浏览器客户端](https://www.ziniao.com/) 并开通 WebDriver 权限（[如何开通](https://open.ziniao.com/docSupport?docId=99)）。
+> **前提**：安装 [紫鸟客户端](https://www.ziniao.com/)，并**开启 WebDriver 权限**（[开通说明](https://open.ziniao.com/docSupport?docId=99)）。
 >
-> **完整安装说明**（Plugin 模式 / Claude Desktop / 故障排查等）请参见 [安装与使用文档](docs/installation.md)。
+> 更多安装方式与故障排查见 [安装与使用](docs/installation.md)。
 
 ## 特性
 
