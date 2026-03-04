@@ -40,6 +40,3 @@ config/config.yaml
 test_*.py
 debug_*.py
 test_*.png
-
-# Windows system caches
-%SystemDrive%/

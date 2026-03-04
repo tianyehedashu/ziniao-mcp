@@ -202,7 +202,6 @@ python -c "import json; json.load(open('.cursor-plugin/plugin.json'))"
 # 4. 确认所有 Plugin 组件存在
 #    - .cursor-plugin/plugin.json  (manifest)
 #    - .mcp.json                   (MCP 配置)
-#    - rules/*.mdc                 (规则文件)
 #    - skills/*/SKILL.md           (技能文件)
 #    - agents/*.md                 (Agent 文件)
 #    - commands/*.md               (命令文件)
@@ -219,7 +218,6 @@ ziniao-mcp/
 ├── .cursor-plugin/
 │   └── plugin.json          # 必需：插件清单
 ├── .mcp.json                # MCP 服务器配置
-├── rules/                   # .mdc 规则文件
 ├── skills/                  # SKILL.md 技能文件
 ├── agents/                  # Agent 配置
 ├── commands/                # 命令文件

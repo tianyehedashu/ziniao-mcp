@@ -128,15 +128,6 @@ uv run playwright install chromium  # 可选，同方式一说明
 | 网络 | 2 | 请求列表、请求详情 |
 | 调试 | 5 | JS 执行、截图、HTML 快照、控制台消息 |
 
-### Rules（操作规则）
-
-以 `alwaysApply: true` 模式自动生效：
-
-| 规则 | 作用 |
-|------|------|
-| `ziniao-workflow` | 标准操作流程：连接 → 快照 → 操作 → 验证 |
-| `store-safety` | 安全约束：操作确认、批量限制、敏感操作授权 |
-
 ### Skills（AI 技能）
 
 | 技能 | 触发场景 | 手动触发 |

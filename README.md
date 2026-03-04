@@ -8,7 +8,6 @@
 
 - **31 个 MCP 工具**：覆盖店铺管理、页面导航、输入自动化、网络监控、调试截图等场景
 - **3 个 AI 技能（Skills）**：浏览器自动化、店铺管理、亚马逊运营的领域知识指南
-- **2 条操作规则（Rules）**：标准工作流规范和安全约束，确保 AI 按正确方式操作
 - **1 个专用 Agent**：紫鸟运营专家角色，具备跨境电商领域知识
 - **2 个快捷命令（Commands）**：一键检查店铺状态、批量截图
 - **跨会话状态持久化**：MCP 进程重启后可自动恢复已打开店铺的 CDP 连接
@@ -150,9 +149,6 @@ ziniao-mcp/
 ├── .cursor-plugin/
 │   └── plugin.json          # Cursor Plugin manifest
 ├── .mcp.json                # MCP Server 配置（Plugin 自动发现）
-├── rules/                   # AI 操作规则
-│   ├── ziniao-workflow.mdc  # 标准工作流规范
-│   └── store-safety.mdc    # 店铺操作安全约束
 ├── skills/                  # AI 技能指南
 │   ├── ziniao-browser/      # 核心浏览器自动化技能
 │   │   └── SKILL.md
@@ -192,13 +188,6 @@ ziniao-mcp/
 ```
 
 ## Plugin 组件
-
-### Rules（操作规则）
-
-| 规则 | 说明 |
-|------|------|
-| `ziniao-workflow` | 标准操作流程：连接店铺 → 快照分析 → 交互操作 → 验证结果 |
-| `store-safety` | 安全约束：操作确认、批量限制、敏感操作授权 |
 
 ### Skills（AI 技能）
 

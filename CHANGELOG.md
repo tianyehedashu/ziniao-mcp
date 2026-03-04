@@ -12,6 +12,7 @@
 ### 变更
 
 - **README.md**：精简快速开始部分，指向详细安装文档；新增文档索引表
+- **移除常驻 Rules**：删除 `ziniao-workflow.mdc`、`store-safety.mdc`，避免无关对话占用上下文；README、installation、development、CHANGELOG 已同步更新
 
 ## [0.2.0] - 2026-03-03
 
@@ -20,9 +21,6 @@
 - **Cursor Plugin 封装**：项目升级为 Cursor Plugin，提供 MCP 工具之外的 AI 增强能力
   - `.cursor-plugin/plugin.json`：Plugin manifest
   - `.mcp.json`：标准化 MCP Server 配置，Plugin 安装后自动注册
-- **Rules（操作规则）**
-  - `ziniao-workflow.mdc`：标准工作流规范（连接 → 快照 → 操作 → 验证）
-  - `store-safety.mdc`：店铺操作安全约束（确认机制、批量限制、敏感操作授权）
 - **Skills（AI 技能指南）**
   - `ziniao-browser`：核心浏览器自动化技能（生命周期、选择器、故障排查）
   - `store-management`：多店铺管理技能（connect vs open、会话恢复、批量操作）
