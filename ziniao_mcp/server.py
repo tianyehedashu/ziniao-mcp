@@ -7,6 +7,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
+try:
+    from importlib.metadata import PackageNotFoundError, version
+    _PACKAGE_VERSION = version("ziniao-mcp")
+except (ImportError, PackageNotFoundError):
+    _PACKAGE_VERSION = "0.0.0.dev"
+
 from mcp.server.fastmcp import FastMCP
 
 from ziniao_webdriver import ZiniaoClient
@@ -23,9 +29,18 @@ logging.basicConfig(
 _logger = logging.getLogger("ziniao-mcp-debug")
 
 
+def _print_package_version_and_exit() -> None:
+    """若传入 -V/--package-version 则打印包版本并退出。"""
+    if "-V" in sys.argv or "--package-version" in sys.argv:
+        print(f"ziniao-mcp {_PACKAGE_VERSION}")
+        sys.exit(0)
+
+
 def _resolve_config() -> dict[str, Any]:
     """解析配置，优先级: 环境变量 > 命令行参数 > config.yaml"""
+    _print_package_version_and_exit()
     parser = argparse.ArgumentParser(description="紫鸟 MCP 服务器")
+    parser.add_argument("-V", "--package-version", action="store_true", help="显示包版本并退出")
     parser.add_argument("--config", default=None, help="配置文件路径")
     parser.add_argument("--company", default=None, help="企业名")
     parser.add_argument("--username", default=None, help="用户名")
