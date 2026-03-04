@@ -1,0 +1,31 @@
+# 推送版本标签（如 v0.1.1）时自动构建并发布到 PyPI
+# 使用前在仓库 Settings → Secrets and variables → Actions 中添加 PYPI_API_TOKEN
+name: Publish to PyPI
+
+on:
+  push:
+    tags:
+      - 'v*'   # 例如 v0.1.0, v0.1.1
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Build package
+        run: uv build
+
+      - name: Publish to PyPI
+        env:
+          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+        run: uv publish
+        # 若未配置 PYPI_API_TOKEN，此步会失败并提示配置

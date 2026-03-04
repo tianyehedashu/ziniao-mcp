@@ -215,7 +215,7 @@ Cursor 插件以 Git 仓库形式分发，经 Cursor 团队审核后上架。
 **步骤 1：确保仓库结构合规**
 
 ```
-ziniao-browser/
+ziniao-mcp/
 ├── .cursor-plugin/
 │   └── plugin.json          # 必需：插件清单
 ├── .mcp.json                # MCP 服务器配置
@@ -265,6 +265,30 @@ git push origin main
 
 PyPI 发布让用户可以通过 `uvx ziniao-mcp` 或 `pip install ziniao-mcp` 直接使用 MCP Server（不含 Plugin 组件）。
 
+#### 前提：注册 PyPI 账号并配置 API Token
+
+1. 在 [pypi.org/account/register](https://pypi.org/account/register/) 注册账号
+2. 登录后进入 [pypi.org/manage/account/#api-tokens](https://pypi.org/manage/account/#api-tokens)，创建 API Token（Scope 选 "Entire account" 或指定项目）
+3. 配置 token 供 `uv publish` 使用（任选一种）：
+
+```bash
+# 方式 A：环境变量（推荐用于 CI）
+$env:UV_PUBLISH_TOKEN = "pypi-xxxxxxxx"
+
+# 方式 B：写入 ~/.pypirc（本地开发推荐）
+# 创建或编辑 ~/.pypirc 文件：
+```
+
+```ini
+[pypi]
+username = __token__
+password = pypi-xxxxxxxx
+```
+
+> 如需先在 TestPyPI 验证，同样在 [test.pypi.org](https://test.pypi.org/account/register/) 注册并获取 token。
+
+#### 发布步骤
+
 **步骤 1：更新版本号**
 
 同步更新以下位置的版本号：
@@ -292,11 +316,11 @@ dist/
 **步骤 3：发布**
 
 ```bash
-# 发布到 PyPI（需要配置 PyPI token）
+# 发布到 PyPI
 uv publish
 
-# 或发布到 TestPyPI 先验证
-uv publish --index-url https://test.pypi.org/simple/
+# 或先发布到 TestPyPI 验证
+uv publish --publish-url https://test.pypi.org/legacy/
 ```
 
 **步骤 4：验证**
@@ -309,6 +333,35 @@ uvx ziniao-mcp --help
 pip install ziniao-mcp
 ziniao-mcp --help
 ```
+
+#### 通过 GitHub Actions 自动发布
+
+仓库已配置 `.github/workflows/publish-pypi.yml`：**推送版本标签时自动构建并发布到 PyPI**。
+
+**一次性配置**（仅需一次）：
+
+1. 打开 GitHub 仓库 → **Settings** → **Secrets and variables** → **Actions**
+2. 点击 **New repository secret**
+3. Name 填 `PYPI_API_TOKEN`，Value 填 PyPI 的 API Token（`pypi-` 开头）
+4. 保存
+
+**发布新版本流程**：
+
+1. 在本地更新版本号：修改 `pyproject.toml` 的 `version`（及可选 `.cursor-plugin/plugin.json`、`CHANGELOG.md`）
+2. 提交并推送到 `main`：
+   ```bash
+   git add pyproject.toml
+   git commit -m "chore: bump version to 0.1.1"
+   git push origin main
+   ```
+3. 创建并推送**与版本号一致**的标签（标签必须为 `v` + 版本号，如 `v0.1.1`）：
+   ```bash
+   git tag v0.1.1
+   git push origin v0.1.1
+   ```
+4. 打开仓库 **Actions** 页，查看 “Publish to PyPI” 工作流是否运行成功；成功后即可在 PyPI 看到新版本。
+
+> 标签格式必须为 `v*`（如 `v0.1.0`、`v0.1.1`），且 `pyproject.toml` 中的 `version` 需与标签一致（去掉前缀 `v`）。
 
 发布后，用户的 MCP 配置可简化为：
 

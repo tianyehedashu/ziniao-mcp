@@ -24,8 +24,8 @@
 ## 快速开始
 
 ```bash
-git clone https://github.com/ziniao/ziniao-browser.git
-cd ziniao-browser
+git clone https://github.com/tianyehedashu/ziniao-mcp.git
+cd ziniao-mcp
 uv sync
 uv run playwright install chromium
 ```
@@ -146,7 +146,7 @@ Agent 调用：
 ## 项目结构
 
 ```
-ziniao/
+ziniao-mcp/
 ├── .cursor-plugin/
 │   └── plugin.json          # Cursor Plugin manifest
 ├── .mcp.json                # MCP Server 配置（Plugin 自动发现）
@@ -244,9 +244,10 @@ ziniao/
 | 文档 | 说明 |
 |------|------|
 | [安装与使用](docs/installation.md) | Plugin / MCP / PyPI 多种安装方式、配置、故障排查 |
+| [Windows 下安装 uv](docs/install-uv-windows.md) | 在 Windows 上安装 uv（PowerShell / WinGet / Scoop） |
 | [架构设计](docs/architecture.md) | 三层架构、模块职责、数据流 |
 | [API 参考](docs/api-reference.md) | 31 个 MCP 工具的详细参数和返回值 |
-| [开发指南](docs/development.md) | 添加新工具、调试、构建发布 |
+| [开发指南](docs/development.md) | 添加新工具、调试、构建发布、GitHub 自动发布 PyPI |
 
 ## 许可证
 
