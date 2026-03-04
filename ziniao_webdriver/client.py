@@ -6,6 +6,7 @@ CDP 调试端口由 startBrowser 成功后自动开启，在返回的 debuggingP
 """
 
 import json
+import logging
 import os
 import platform
 import subprocess
@@ -14,6 +15,8 @@ import uuid
 from typing import Literal, Optional
 
 import requests
+
+_logger = logging.getLogger("ziniao-webdriver")
 
 
 class ZiniaoClient:
@@ -50,7 +53,7 @@ class ZiniaoClient:
             )
             return json.loads(response.text)
         except Exception as err:
-            print(err)
+            _logger.warning("HTTP 请求失败: %s", err)
             return None
 
     def start_browser(self) -> None:
@@ -86,7 +89,7 @@ class ZiniaoClient:
             subprocess.Popen(cmd)
             time.sleep(5)
         except Exception as e:
-            print(f"启动客户端失败: {e}")
+            _logger.error("启动客户端失败: %s", e)
             raise
 
     def kill_process(self, skip_confirm: bool = False) -> bool:
@@ -129,16 +132,16 @@ class ZiniaoClient:
         while True:
             result = self._send_http(data)
             if result is None:
-                print("等待客户端启动...")
+                _logger.info("等待客户端启动...")
                 time.sleep(2)
                 continue
             if result.get("statusCode") is None or result.get("statusCode") == -10003:
-                print("当前版本不支持此接口，请升级客户端")
+                _logger.warning("当前版本不支持此接口，请升级客户端")
                 return False
             if result.get("statusCode") == 0:
-                print("更新内核完成")
+                _logger.info("更新内核完成")
                 return True
-            print(f"等待更新内核: {json.dumps(result)}")
+            _logger.info("等待更新内核: %s", json.dumps(result))
             time.sleep(2)
 
     def get_browser_list(self) -> list[dict]:
@@ -155,9 +158,9 @@ class ZiniaoClient:
         if str(r.get("statusCode")) == "0":
             return r.get("browserList") or []
         if str(r.get("statusCode")) == "-10003":
-            print(f"登录错误: {json.dumps(r, ensure_ascii=False)}")
+            _logger.warning("登录错误: %s", json.dumps(r, ensure_ascii=False))
             return []
-        print(f"获取店铺列表失败: {json.dumps(r, ensure_ascii=False)}")
+        _logger.warning("获取店铺列表失败: %s", json.dumps(r, ensure_ascii=False))
         return []
 
     def open_store(
@@ -205,9 +208,9 @@ class ZiniaoClient:
         if str(r.get("statusCode")) == "0":
             return r
         if str(r.get("statusCode")) == "-10003":
-            print(f"登录错误: {json.dumps(r, ensure_ascii=False)}")
+            _logger.warning("登录错误: %s", json.dumps(r, ensure_ascii=False))
             return None
-        print(f"打开店铺失败: {json.dumps(r, ensure_ascii=False)}")
+        _logger.warning("打开店铺失败: %s", json.dumps(r, ensure_ascii=False))
         return None
 
     def close_store(self, browser_oauth: str) -> bool:
@@ -226,9 +229,9 @@ class ZiniaoClient:
         if str(r.get("statusCode")) == "0":
             return True
         if str(r.get("statusCode")) == "-10003":
-            print(f"登录错误: {json.dumps(r, ensure_ascii=False)}")
+            _logger.warning("登录错误: %s", json.dumps(r, ensure_ascii=False))
         else:
-            print(f"关闭店铺失败: {json.dumps(r, ensure_ascii=False)}")
+            _logger.warning("关闭店铺失败: %s", json.dumps(r, ensure_ascii=False))
         return False
 
     def get_exit(self) -> None:
