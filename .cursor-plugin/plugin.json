@@ -6,6 +6,7 @@
     "name": "ziniao"
   },
   "homepage": "https://open.ziniao.com",
+  "repository": "https://github.com/tianyehedashu/ziniao-mcp",
   "license": "MIT",
   "keywords": ["ziniao", "browser", "e-commerce", "automation", "cdp", "cross-border"]
 }
