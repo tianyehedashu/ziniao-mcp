@@ -18,6 +18,7 @@ logging.basicConfig(
     filename=str(_debug_log),
     level=logging.DEBUG,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    encoding="utf-8",
 )
 _logger = logging.getLogger("ziniao-mcp-debug")
 
