@@ -2,7 +2,7 @@
   "mcpServers": {
     "ziniao": {
       "command": "uv",
-      "args": ["run", "--directory", "${pluginDir}", "ziniao-mcp"],
+      "args": ["run", "--directory", "${pluginDir}", "python", "-m", "ziniao_mcp"],
       "env": {
         "ZINIAO_COMPANY": "${ZINIAO_COMPANY}",
         "ZINIAO_USERNAME": "${ZINIAO_USERNAME}",

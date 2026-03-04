@@ -32,6 +32,7 @@ mcp_debug.log
 
 # Config with secrets
 config/config.yaml
+.env
 
 # State files
 .ziniao/

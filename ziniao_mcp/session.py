@@ -7,7 +7,6 @@ import json
 import logging
 import os
 import time
-import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
@@ -226,13 +225,7 @@ class SessionManager:
 
     async def _is_client_running(self) -> bool:
         """通过心跳请求判断紫鸟客户端是否在运行。"""
-        data = {
-            "action": "heartbeat",
-            "requestId": str(uuid.uuid4()),
-        }
-        data.update(self.client.user_info)
-        result = await asyncio.to_thread(self.client._send_http, data)  # pylint: disable=protected-access
-        return result is not None
+        return await asyncio.to_thread(self.client.heartbeat)
 
     async def _ensure_client_running(self) -> None:
         if self._client_started and await self._is_client_running():

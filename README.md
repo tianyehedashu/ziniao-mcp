@@ -40,6 +40,17 @@ uv run playwright install chromium
 
 > 完整安装说明（Plugin / MCP / PyPI / Claude Desktop 等多种方式）请参见 [安装与使用文档](docs/installation.md)。
 
+### 开发任务脚本
+
+项目根目录提供统一入口，方便执行常用命令：
+
+| 方式 | 用法示例 |
+|------|----------|
+| **Makefile**（需安装 make） | `make install` / `make run` / `make test` / `make upgrade` |
+| **PowerShell**（Windows） | `.\task.ps1 install` / `.\task.ps1 run` / `.\task.ps1 test` / `.\task.ps1 upgrade` |
+
+`make help` 或 `.\task.ps1 help` 可查看全部任务；集成测试需先配置 `.env`，对应任务为 `make test-integration` / `.\task.ps1 test-integration`。
+
 ## 工具列表
 
 ### 店铺管理（7 个）

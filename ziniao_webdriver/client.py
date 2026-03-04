@@ -18,9 +18,17 @@ import requests
 
 _logger = logging.getLogger("ziniao-webdriver")
 
+_STATUS_OK = "0"
+_STATUS_AUTH_ERROR = "-10003"
+
 
 class ZiniaoClient:
     """紫鸟 WebDriver 客户端，封装与紫鸟客户端的 HTTP 通信及浏览器操作。"""
+
+    _PROCESS_NAMES: dict[str, dict[str, str]] = {
+        "v5": {"windows": "SuperBrowser.exe", "mac": "SuperBrowser", "linux": "SuperBrowser"},
+        "v6": {"windows": "ziniao.exe", "mac": "ziniao", "linux": "ziniaobrowser"},
+    }
 
     def __init__(
         self,
@@ -44,6 +52,23 @@ class ZiniaoClient:
         self._is_mac = platform.system() == "Darwin"
         self._is_linux = platform.system() == "Linux"
 
+        _logger.info("ZiniaoClient init: version=%s, port=%s, path=%s",
+                      version, socket_port, client_path)
+
+    @property
+    def _process_name(self) -> str:
+        """当前版本 + 平台对应的进程名。"""
+        names = self._PROCESS_NAMES.get(self.version, self._PROCESS_NAMES["v6"])
+        if self._is_windows:
+            return names["windows"]
+        if self._is_mac:
+            return names["mac"]
+        return names["linux"]
+
+    # ------------------------------------------------------------------
+    # HTTP 通信 & 响应解析
+    # ------------------------------------------------------------------
+
     def _send_http(self, data: dict) -> Optional[dict]:
         """向紫鸟客户端发送 HTTP 请求。"""
         try:
@@ -56,34 +81,66 @@ class ZiniaoClient:
             _logger.warning("HTTP 请求失败: %s", err)
             return None
 
+    @staticmethod
+    def _get_status(response: Optional[dict]) -> Optional[str]:
+        """从 API 响应中提取并归一化 statusCode（统一转 str，兼容 v5 int / v6 str）。"""
+        if response is None:
+            return None
+        code = response.get("statusCode")
+        return str(code) if code is not None else None
+
+    def _request(self, data: dict, action: str) -> tuple[str, Optional[dict]]:
+        """发送请求并解析响应。
+
+        :return: (status, response)
+            status — "ok" | "none" | "auth_error" | "unsupported" | "error"
+        """
+        data.setdefault("requestId", str(uuid.uuid4()))
+        data.update(self.user_info)
+
+        r = self._send_http(data)
+        status = self._get_status(r)
+
+        if r is None:
+            return ("none", None)
+        if status is None:
+            _logger.warning("响应无 statusCode [%s]: %s", action,
+                            json.dumps(r, ensure_ascii=False))
+            return ("unsupported", r)
+        if status == _STATUS_OK:
+            return ("ok", r)
+        if status == _STATUS_AUTH_ERROR:
+            _logger.warning("登录错误 [%s]: %s", action,
+                            json.dumps(r, ensure_ascii=False))
+            return ("auth_error", r)
+        _logger.warning("%s失败 (statusCode=%s): %s", action, status,
+                        json.dumps(r, ensure_ascii=False))
+        return ("error", r)
+
+    # ------------------------------------------------------------------
+    # 客户端生命周期
+    # ------------------------------------------------------------------
+
+    def heartbeat(self) -> bool:
+        """检查客户端是否在运行（通过心跳请求）。"""
+        data = {"action": "heartbeat", "requestId": str(uuid.uuid4())}
+        data.update(self.user_info)
+        return self._send_http(data) is not None
+
     def start_browser(self) -> None:
         """以 WebDriver 模式启动紫鸟客户端。"""
         try:
+            args = [
+                "--run_type=web_driver",
+                "--ipc_type=http",
+                f"--port={self.socket_port}",
+            ]
             if self._is_windows:
-                cmd = [
-                    self.client_path,
-                    "--run_type=web_driver",
-                    "--ipc_type=http",
-                    f"--port={self.socket_port}",
-                ]
+                cmd = [self.client_path, *args]
             elif self._is_mac:
-                cmd = [
-                    "open",
-                    "-a",
-                    self.client_path,
-                    "--args",
-                    "--run_type=web_driver",
-                    "--ipc_type=http",
-                    f"--port={self.socket_port}",
-                ]
+                cmd = ["open", "-a", self.client_path, "--args", *args]
             elif self._is_linux:
-                cmd = [
-                    self.client_path,
-                    "--no-sandbox",
-                    "--run_type=web_driver",
-                    "--ipc_type=http",
-                    f"--port={self.socket_port}",
-                ]
+                cmd = [self.client_path, "--no-sandbox", *args]
             else:
                 return
             subprocess.Popen(cmd)
@@ -105,62 +162,56 @@ class ZiniaoClient:
             if confirmation.lower() != "y":
                 return False
 
+        name = self._process_name
         if self._is_windows:
-            process_name = "SuperBrowser.exe" if self.version == "v5" else "ziniao.exe"
-            os.system(f"taskkill /f /t /im {process_name}")
-        elif self._is_mac:
-            os.system("killall ziniao")
-        elif self._is_linux:
-            os.system("killall ziniaobrowser")
+            os.system(f"taskkill /f /t /im {name}")
+        elif self._is_mac or self._is_linux:
+            os.system(f"killall {name}")
         else:
             return False
 
         time.sleep(3)
         return True
 
-    def update_core(self) -> bool:
+    def update_core(self, max_retries: int = 90) -> bool:
         """
         下载所有内核，打开店铺前调用（客户端 5.285.7 以上）。
+        :param max_retries: 最大重试次数，默认 90 次（约 3 分钟）
         :return: 是否更新成功
         """
-        data = {
-            "action": "updateCore",
-            "requestId": str(uuid.uuid4()),
-        }
+        data: dict = {"action": "updateCore"}
         data.update(self.user_info)
 
-        while True:
+        for attempt in range(max_retries):
+            data["requestId"] = str(uuid.uuid4())
             result = self._send_http(data)
             if result is None:
-                _logger.info("等待客户端启动...")
+                _logger.info("等待客户端启动... (%d/%d)", attempt + 1, max_retries)
                 time.sleep(2)
                 continue
-            if result.get("statusCode") is None or result.get("statusCode") == -10003:
+            status = self._get_status(result)
+            if status is None or status == _STATUS_AUTH_ERROR:
                 _logger.warning("当前版本不支持此接口，请升级客户端")
                 return False
-            if result.get("statusCode") == 0:
+            if status == _STATUS_OK:
                 _logger.info("更新内核完成")
                 return True
-            _logger.info("等待更新内核: %s", json.dumps(result))
+            _logger.info("等待更新内核 (%d/%d): %s", attempt + 1, max_retries,
+                         json.dumps(result))
             time.sleep(2)
+
+        _logger.warning("更新内核超时，已重试 %d 次", max_retries)
+        return False
+
+    # ------------------------------------------------------------------
+    # 店铺操作
+    # ------------------------------------------------------------------
 
     def get_browser_list(self) -> list[dict]:
         """获取店铺列表。"""
-        data = {
-            "action": "getBrowserList",
-            "requestId": str(uuid.uuid4()),
-        }
-        data.update(self.user_info)
-
-        r = self._send_http(data)
-        if r is None:
-            return []
-        if str(r.get("statusCode")) == "0":
+        status, r = self._request({"action": "getBrowserList"}, "获取店铺列表")
+        if status == "ok" and r is not None:
             return r.get("browserList") or []
-        if str(r.get("statusCode")) == "-10003":
-            _logger.warning("登录错误: %s", json.dumps(r, ensure_ascii=False))
-            return []
-        _logger.warning("获取店铺列表失败: %s", json.dumps(r, ensure_ascii=False))
         return []
 
     def open_store(
@@ -178,11 +229,10 @@ class ZiniaoClient:
         :param store_info: 店铺 ID（browserId 或 browserOauth）
         :return: 成功时返回包含 debuggingPort、browserPath、downloadPath 等的 dict；失败返回 None
         """
-        data = {
+        data: dict = {
             "action": "startBrowser",
             "isWaitPluginUpdate": 0,
             "isHeadless": is_headless,
-            "requestId": str(uuid.uuid4()),
             "isWebDriverReadOnlyMode": is_web_driver_read_only_mode,
             "cookieTypeLoad": 0,
             "cookieTypeSave": cookie_type_save,
@@ -192,7 +242,6 @@ class ZiniaoClient:
             "privacyMode": is_privacy,
             "notPromptForDownload": 1,
         }
-        data.update(self.user_info)
 
         if store_info.isdigit():
             data["browserId"] = store_info
@@ -202,44 +251,18 @@ class ZiniaoClient:
         if len(str(js_info)) > 2:
             data["injectJsInfo"] = json.dumps(js_info)
 
-        r = self._send_http(data)
-        if r is None:
-            return None
-        if str(r.get("statusCode")) == "0":
-            return r
-        if str(r.get("statusCode")) == "-10003":
-            _logger.warning("登录错误: %s", json.dumps(r, ensure_ascii=False))
-            return None
-        _logger.warning("打开店铺失败: %s", json.dumps(r, ensure_ascii=False))
-        return None
+        status, r = self._request(data, "打开店铺")
+        return r if status == "ok" else None
 
     def close_store(self, browser_oauth: str) -> bool:
         """关闭店铺。"""
-        data = {
-            "action": "stopBrowser",
-            "requestId": str(uuid.uuid4()),
-            "duplicate": 0,
-            "browserOauth": browser_oauth,
-        }
-        data.update(self.user_info)
-
-        r = self._send_http(data)
-        if r is None:
-            return False
-        if str(r.get("statusCode")) == "0":
-            return True
-        if str(r.get("statusCode")) == "-10003":
-            _logger.warning("登录错误: %s", json.dumps(r, ensure_ascii=False))
-        else:
-            _logger.warning("关闭店铺失败: %s", json.dumps(r, ensure_ascii=False))
-        return False
+        status, _ = self._request(
+            {"action": "stopBrowser", "duplicate": 0, "browserOauth": browser_oauth},
+            "关闭店铺",
+        )
+        return status == "ok"
 
     def get_exit(self) -> None:
         """关闭紫鸟客户端。"""
-        data = {
-            "action": "exit",
-            "requestId": str(uuid.uuid4()),
-        }
-        data.update(self.user_info)
-        self._send_http(data)
+        self._request({"action": "exit"}, "退出客户端")
 
