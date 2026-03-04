@@ -2,6 +2,8 @@
 
 紫鸟浏览器 AI 自动化工具集 — 让 AI Agent（Cursor、Claude 等）直接操控紫鸟店铺。
 
+**GitHub**：[https://github.com/tianyehedashu/ziniao-mcp](https://github.com/tianyehedashu/ziniao-mcp)
+
 ## 快速使用
 
 只需两步即可在 Cursor 中使用全部 31 个 MCP 工具。

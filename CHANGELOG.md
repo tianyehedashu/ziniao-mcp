@@ -2,6 +2,12 @@
 
 本文件记录 ziniao-browser 的版本变更，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 格式。
 
+## [0.1.11] - 2026-03-04
+
+### 文档
+
+- **README**：补充项目 GitHub 地址
+
 ## [0.1.10] - 2026-03-04
 
 ### 文档
