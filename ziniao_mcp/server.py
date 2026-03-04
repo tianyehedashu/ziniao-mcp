@@ -168,7 +168,8 @@ def main() -> None:
         """Background thread to log raw stdin activity."""
         try:
             _logger.info("[stdin-monitor] Starting raw read on stdin.buffer")
-            data = sys.stdin.buffer.peek(1)
+            peek_fn = getattr(sys.stdin.buffer, "peek", None)
+            data = peek_fn(1) if callable(peek_fn) else b""
             _logger.info("[stdin-monitor] peek returned: %s", repr(data[:100] if data else data))
         except Exception as e:
             _logger.info("[stdin-monitor] peek error: %s", e)
