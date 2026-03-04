@@ -77,7 +77,7 @@ PATCH_NAVIGATOR_PLUGINS = """
         const fakePlugins = makePluginArray(pluginData);
         Object.defineProperty(navigator, 'plugins', {
             get: () => fakePlugins,
-            configurable: false,
+            configurable: true,
         });
     }
 })();
@@ -149,14 +149,18 @@ PATCH_WINDOW_CHROME = """
 
 PATCH_PLAYWRIGHT_GLOBALS = """
 (() => {
-    const propsToDelete = [];
     for (const key of Object.getOwnPropertyNames(window)) {
         if (key.startsWith('__playwright') || key.startsWith('__pw_')) {
-            propsToDelete.push(key);
+            try {
+                const val = window[key];
+                Object.defineProperty(window, key, {
+                    value: val,
+                    enumerable: false,
+                    configurable: true,
+                    writable: true,
+                });
+            } catch(e) {}
         }
-    }
-    for (const key of propsToDelete) {
-        try { delete window[key]; } catch(e) {}
     }
 })();
 """

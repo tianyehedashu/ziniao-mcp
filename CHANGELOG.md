@@ -2,6 +2,12 @@
 
 本文件记录 ziniao-browser 的版本变更，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 格式。
 
+## [0.1.16] - 2026-03-04
+
+### 修复
+
+- **反检测与紫鸟/Playwright 兼容**：Playwright 全局变量（`__playwright*`、`__pw_*`）改为仅设为 non-enumerable 隐藏，不再 delete，避免破坏 `page.locator()` 等内部绑定；`navigator.plugins` 覆写改为 `configurable: true`，允许紫鸟配置文件后续注入插件指纹
+
 ## [0.1.15] - 2026-03-04
 
 ### 新增
