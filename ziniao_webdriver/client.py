@@ -129,6 +129,15 @@ class ZiniaoClient:
 
     def start_browser(self) -> None:
         """以 WebDriver 模式启动紫鸟客户端。"""
+        if not (self.client_path and self.client_path.strip()):
+            raise FileNotFoundError(
+                "未配置紫鸟客户端路径。请设置 ZINIAO_CLIENT_PATH 或 config.yaml 中的 client_path，"
+                "或使用 --client-path 指定可执行文件路径（如 D:\\ziniao\\ziniao.exe）。"
+            )
+        if self._is_windows and not os.path.isfile(self.client_path):
+            raise FileNotFoundError(
+                f"紫鸟客户端不存在: {self.client_path}。请检查 ZINIAO_CLIENT_PATH 或 --client-path。"
+            )
         try:
             args = [
                 "--run_type=web_driver",
@@ -163,13 +172,27 @@ class ZiniaoClient:
                 return False
 
         name = self._process_name
-        if self._is_windows:
-            os.system(f"taskkill /f /t /im {name}")
-        elif self._is_mac or self._is_linux:
-            os.system(f"killall {name}")
-        else:
-            return False
-
+        try:
+            if self._is_windows:
+                # 使用 subprocess 并吞掉 stderr，避免 taskkill 的 GBK 输出混入 MCP UTF-8 导致乱码
+                ret = subprocess.run(
+                    ["taskkill", "/f", "/t", "/im", name],
+                    capture_output=True,
+                    timeout=10,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                )
+            elif self._is_mac or self._is_linux:
+                ret = subprocess.run(
+                    ["killall", name],
+                    capture_output=True,
+                    timeout=10,
+                )
+            else:
+                return False
+            if ret.returncode != 0:
+                _logger.debug("终止进程 %s: 未在运行或已退出 (returncode=%s)", name, ret.returncode)
+        except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+            _logger.debug("kill_process: %s", e)
         time.sleep(3)
         return True
 

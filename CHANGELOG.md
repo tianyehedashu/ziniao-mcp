@@ -2,6 +2,14 @@
 
 本文件记录 ziniao-browser 的版本变更，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 格式。
 
+## [0.1.9] - 2026-03-04
+
+### 修复
+
+- **list_stores「未找到程序 ziniao.exe」**：客户端未运行时不再调用 `kill_process`，避免无意义的 taskkill 报错
+- **乱码**：`kill_process` 改为 `subprocess.run(..., capture_output=True)`，吞掉 taskkill/killall 的 GBK 输出，避免混入 MCP UTF-8 流
+- **未配置客户端路径**：`start_browser` 在路径为空或文件不存在时抛出明确的 `FileNotFoundError`，提示配置 `ZINIAO_CLIENT_PATH` 或 `--client-path`
+
 ## [0.1.3] - 2026-03-04
 
 ### 修复

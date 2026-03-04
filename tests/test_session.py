@@ -73,7 +73,7 @@ class TestEnsureClientRunning:
     async def test_full_startup_when_not_running(self, session, mock_client):
         mock_client.heartbeat.return_value = False
         await session._ensure_client_running()
-        mock_client.kill_process.assert_called_once_with(True)
+        mock_client.kill_process.assert_not_called()  # 未运行时不再 taskkill，避免「未找到进程」报错
         mock_client.start_browser.assert_called_once()
         mock_client.update_core.assert_called_once()
         assert session._client_started is True
@@ -97,7 +97,7 @@ class TestStartClient:
         mock_client.heartbeat.return_value = False
         result = await session.start_client()
         assert "已启动" in result
-        mock_client.kill_process.assert_called_once()
+        mock_client.kill_process.assert_not_called()  # 未运行时不再 taskkill
         mock_client.start_browser.assert_called_once()
         mock_client.update_core.assert_called_once()
         assert session._client_started is True

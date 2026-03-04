@@ -233,7 +233,7 @@ class SessionManager:
         if await self._is_client_running():
             self._client_started = True
             return
-        await asyncio.to_thread(self.client.kill_process, True)
+        # 客户端未运行时无需 taskkill，否则会报「未找到进程 ziniao.exe」
         await asyncio.to_thread(self.client.start_browser)
         await asyncio.to_thread(self.client.update_core)
         self._client_started = True
@@ -242,7 +242,7 @@ class SessionManager:
         """启动紫鸟客户端，若已在运行则直接返回。"""
         if await self._is_client_running():
             return "紫鸟客户端已在运行"
-        await asyncio.to_thread(self.client.kill_process, True)
+        # 客户端未运行时无需 taskkill，否则会报「未找到进程 ziniao.exe」
         await asyncio.to_thread(self.client.start_browser)
         await asyncio.to_thread(self.client.update_core)
         self._client_started = True

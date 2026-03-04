@@ -305,42 +305,49 @@ class TestCloseStore:
 
 
 # ------------------------------------------------------------------ #
-#  kill_process: 版本感知的进程名
+#  kill_process: 版本感知的进程名，使用 subprocess.run 避免 taskkill 的 GBK 输出导致乱码
 # ------------------------------------------------------------------ #
 
 class TestKillProcess:
 
     @patch("ziniao_webdriver.client.time.sleep")
-    @patch("ziniao_webdriver.client.os.system")
-    def test_v5_windows(self, mock_system, mock_sleep, client_v5):
+    @patch("ziniao_webdriver.client.subprocess.run")
+    def test_v5_windows(self, mock_run, mock_sleep, client_v5):
+        mock_run.return_value = MagicMock(returncode=0)
         client_v5._is_windows, client_v5._is_mac, client_v5._is_linux = True, False, False
         assert client_v5.kill_process(skip_confirm=True) is True
-        mock_system.assert_called_once_with("taskkill /f /t /im SuperBrowser.exe")
+        mock_run.assert_called_once()
+        assert mock_run.call_args[0][0] == ["taskkill", "/f", "/t", "/im", "SuperBrowser.exe"]
 
     @patch("ziniao_webdriver.client.time.sleep")
-    @patch("ziniao_webdriver.client.os.system")
-    def test_v6_windows(self, mock_system, mock_sleep, client_v6):
+    @patch("ziniao_webdriver.client.subprocess.run")
+    def test_v6_windows(self, mock_run, mock_sleep, client_v6):
+        mock_run.return_value = MagicMock(returncode=0)
         client_v6._is_windows, client_v6._is_mac, client_v6._is_linux = True, False, False
         assert client_v6.kill_process(skip_confirm=True) is True
-        mock_system.assert_called_once_with("taskkill /f /t /im ziniao.exe")
+        mock_run.assert_called_once()
+        assert mock_run.call_args[0][0] == ["taskkill", "/f", "/t", "/im", "ziniao.exe"]
 
     @patch("ziniao_webdriver.client.time.sleep")
-    @patch("ziniao_webdriver.client.os.system")
-    def test_v5_mac(self, mock_system, mock_sleep, client_v5):
+    @patch("ziniao_webdriver.client.subprocess.run")
+    def test_v5_mac(self, mock_run, mock_sleep, client_v5):
+        mock_run.return_value = MagicMock(returncode=0)
         client_v5._is_windows, client_v5._is_mac, client_v5._is_linux = False, True, False
         client_v5.kill_process(skip_confirm=True)
-        mock_system.assert_called_once_with("killall SuperBrowser")
+        mock_run.assert_called_once_with(["killall", "SuperBrowser"], capture_output=True, timeout=10)
 
     @patch("ziniao_webdriver.client.time.sleep")
-    @patch("ziniao_webdriver.client.os.system")
-    def test_v6_mac(self, mock_system, mock_sleep, client_v6):
+    @patch("ziniao_webdriver.client.subprocess.run")
+    def test_v6_mac(self, mock_run, mock_sleep, client_v6):
+        mock_run.return_value = MagicMock(returncode=0)
         client_v6._is_windows, client_v6._is_mac, client_v6._is_linux = False, True, False
         client_v6.kill_process(skip_confirm=True)
-        mock_system.assert_called_once_with("killall ziniao")
+        mock_run.assert_called_once_with(["killall", "ziniao"], capture_output=True, timeout=10)
 
     @patch("ziniao_webdriver.client.time.sleep")
-    @patch("ziniao_webdriver.client.os.system")
-    def test_v6_linux(self, mock_system, mock_sleep, client_v6):
+    @patch("ziniao_webdriver.client.subprocess.run")
+    def test_v6_linux(self, mock_run, mock_sleep, client_v6):
+        mock_run.return_value = MagicMock(returncode=0)
         client_v6._is_windows, client_v6._is_mac, client_v6._is_linux = False, False, True
         client_v6.kill_process(skip_confirm=True)
-        mock_system.assert_called_once_with("killall ziniaobrowser")
+        mock_run.assert_called_once_with(["killall", "ziniaobrowser"], capture_output=True, timeout=10)
