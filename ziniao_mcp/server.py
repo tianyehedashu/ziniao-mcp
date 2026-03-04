@@ -134,6 +134,9 @@ def create_server() -> tuple[FastMCP, SessionManager]:
 
 
 def main() -> None:
+    # 先解析参数，使 --help 在启动任何线程前退出，避免解释器关闭时与 daemon 线程争用 stdin
+    _resolve_config()
+
     _logger.info("=== ziniao-mcp starting ===")
     _logger.info("Python: %s", sys.version)
     _logger.info("Platform: %s", sys.platform)

@@ -2,6 +2,16 @@
 
 本文件记录 ziniao-browser 的版本变更，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 格式。
 
+## [0.1.3] - 2026-03-04
+
+### 修复
+
+- **`--help` 退出报错**：`main()` 启动前先调用 `_resolve_config()` 解析参数，使 `uvx ziniao-mcp --help` 在启动任何 daemon 线程前退出，避免解释器关闭时与 stdin 争用导致 Fatal Python error
+
+### 文档
+
+- **安装文档**：补充 uvx 更新命令（`uvx --refresh ziniao-mcp --help`）、说明勿在终端裸跑 MCP 做测试、故障排查中增加“旧版本缓存”提示
+
 ## [0.1.2] - 2026-03-04
 
 ### 修复

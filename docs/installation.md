@@ -64,6 +64,18 @@ uvx playwright install chromium
 
 配置完成后在 Cursor 中运行 `列出我所有的紫鸟店铺` 验证是否正常。
 
+**4. 更新到最新版本**
+
+uvx 会缓存已安装的包，新版本发布后不会自动更新。需要用到最新版时，执行：
+
+```bash
+uvx --refresh ziniao-mcp --help
+```
+
+该命令会刷新缓存并立即退出。之后 Cursor 通过 MCP 启动的 ziniao 会使用新版本（若 Cursor 已打开，可重启 MCP 或重载窗口生效）。
+
+
+
 ### 方式二：作为 Cursor Plugin 安装（完整 AI 增强）
 
 Plugin 模式会同时加载 MCP 工具 + Rules + Skills + Agents + Commands，提供完整 AI 增强体验。需要 git 和 [uv](https://docs.astral.sh/uv/)。
@@ -94,7 +106,7 @@ uv run playwright install chromium  # 可选，同方式一说明
     "mcpServers": {
       "ziniao": {
         "command": "uv",
-        "args": ["run", "--directory", "C:\\Users\\你的用户名\\.cursor\\plugins\\ziniao-mcp", "ziniao-mcp"],
+        "args": ["run", "--directory", "C:\\Users\\你的用户名\\.cursor\\plugins\\ziniao-mcp", "python", "-m", "ziniao_mcp"],
         "env": {
           "ZINIAO_COMPANY": "我的公司",
           "ZINIAO_USERNAME": "admin",
@@ -211,6 +223,7 @@ Cursor Settings 中 ziniao 服务器显示为离线。
 1. 确认 uv 已安装：`uv --version`
 2. 手动运行测试：`uvx ziniao-mcp --help`（方式一）或 `uv run ziniao-mcp --help`（方式二）
 3. 检查环境变量是否正确配置
+4. 方式一用户若怀疑是旧版本缓存导致：执行 `uvx --refresh ziniao-mcp` 拉取最新版后再试
 
 ### 店铺连接失败
 
