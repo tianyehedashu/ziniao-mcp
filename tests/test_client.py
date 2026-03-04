@@ -1,10 +1,10 @@
-"""ZiniaoClient unit tests — 覆盖 v5/v6 兼容性、响应解析、各 API 方法。"""
+"""ZiniaoClient unit tests — 覆盖 v5/v6 兼容性、响应解析、各 API 方法、端口自动检测。"""
 
 from unittest.mock import patch, MagicMock
 
 import pytest
 
-from ziniao_webdriver.client import ZiniaoClient, _STATUS_OK, _STATUS_AUTH_ERROR
+from ziniao_webdriver.client import ZiniaoClient, _STATUS_OK, _STATUS_AUTH_ERROR, detect_ziniao_port
 
 
 # ------------------------------------------------------------------ #
@@ -351,3 +351,59 @@ class TestKillProcess:
         client_v6._is_windows, client_v6._is_mac, client_v6._is_linux = False, False, True
         client_v6.kill_process(skip_confirm=True)
         mock_run.assert_called_once_with(["killall", "ziniaobrowser"], capture_output=True, timeout=10)
+
+
+# ------------------------------------------------------------------ #
+#  detect_ziniao_port: 自动检测紫鸟客户端端口
+# ------------------------------------------------------------------ #
+
+class TestDetectZiniaoPort:
+
+    @patch("ziniao_webdriver.client.subprocess.check_output")
+    @patch("ziniao_webdriver.client.platform.system", return_value="Windows")
+    def test_single_port_windows(self, _mock_sys, mock_output):
+        mock_output.return_value = (
+            'CommandLine\n'
+            '"D:\\ziniao\\ziniao.exe" --run_type=web_driver --ipc_type=http --port=16851\n'
+            '"D:\\ziniao\\ziniao.exe" --type=renderer\n'
+        )
+        assert detect_ziniao_port() == 16851
+
+    @patch("ziniao_webdriver.client.subprocess.check_output")
+    @patch("ziniao_webdriver.client.platform.system", return_value="Linux")
+    def test_single_port_linux(self, _mock_sys, mock_output):
+        mock_output.return_value = (
+            'user  1234  0.0  ziniao --run_type=web_driver --port=9480\n'
+            'user  1235  0.0  ziniao --type=renderer\n'
+        )
+        assert detect_ziniao_port() == 9480
+
+    @patch("ziniao_webdriver.client.subprocess.check_output")
+    @patch("ziniao_webdriver.client.platform.system", return_value="Windows")
+    def test_no_port_flag_returns_none(self, _mock_sys, mock_output):
+        mock_output.return_value = (
+            'CommandLine\n'
+            '"D:\\ziniao\\ziniao.exe" --type=renderer\n'
+        )
+        assert detect_ziniao_port() is None
+
+    @patch("ziniao_webdriver.client.subprocess.check_output")
+    @patch("ziniao_webdriver.client.platform.system", return_value="Windows")
+    def test_multiple_ports_returns_none(self, _mock_sys, mock_output):
+        mock_output.return_value = (
+            'CommandLine\n'
+            '"D:\\ziniao\\ziniao.exe" --port=16851\n'
+            '"D:\\ziniao\\ziniao.exe" --port=16852\n'
+        )
+        assert detect_ziniao_port() is None
+
+    @patch("ziniao_webdriver.client.subprocess.check_output", side_effect=FileNotFoundError)
+    @patch("ziniao_webdriver.client.platform.system", return_value="Windows")
+    def test_process_error_returns_none(self, _mock_sys, _mock_output):
+        assert detect_ziniao_port() is None
+
+    @patch("ziniao_webdriver.client.subprocess.check_output")
+    @patch("ziniao_webdriver.client.platform.system", return_value="Windows")
+    def test_empty_output_returns_none(self, _mock_sys, mock_output):
+        mock_output.return_value = ""
+        assert detect_ziniao_port() is None

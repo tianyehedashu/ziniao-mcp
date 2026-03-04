@@ -49,3 +49,22 @@ python scripts/test_spawn.py
 
 - 需已安装 `uv`，或设置 `UV_PATH`。
 - 项目根目录自动推导；环境变量 `ZINIAO_*` 未设置时会使用脚本内默认测试值（仅用于连通性测试）。
+
+---
+
+### test_minimal_env.py
+
+在「最小环境」下测试 MCP 服务启动（模拟 Cursor 仅传入 mcp.json 中配置的环境变量）：仅设置 `ZINIAO_*` 与 `SYSTEMROOT`，用管道启动 `ziniao-mcp`，发送 `initialize` 请求并打印响应，用于验证在类 Cursor 环境下是否能正常跑通。
+
+**使用方式**
+
+在项目根目录执行：
+
+```bash
+uv run python scripts/test_minimal_env.py
+```
+
+**依赖**
+
+- 需已安装 `uv`，或设置环境变量 `UV_PATH` 指向 uv 可执行文件。
+- 项目根目录由脚本根据自身路径自动推导。

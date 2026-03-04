@@ -47,15 +47,14 @@ uvx playwright install chromium
         "ZINIAO_COMPANY": "我的公司",
         "ZINIAO_USERNAME": "admin",
         "ZINIAO_PASSWORD": "xxx",
-        "ZINIAO_CLIENT_PATH": "D:\\ziniao\\ziniao.exe",
-        "ZINIAO_SOCKET_PORT": "16851"
+        "ZINIAO_CLIENT_PATH": "D:\\ziniao\\ziniao.exe"
       }
     }
   }
 }
 ```
 
-> **端口说明**：`ZINIAO_SOCKET_PORT` 需与紫鸟客户端实际监听的 HTTP 端口一致。不同客户端版本或用户配置可能导致端口不同（如 `9480`、`16851` 等）。若工具调用一直超时，请先确认客户端实际端口。
+> **端口说明**：`ZINIAO_SOCKET_PORT` 通常**无需配置**。MCP 启动时会自动检测运行中的紫鸟客户端端口（通过扫描进程命令行参数 `--port=XXXXX`）。如果客户端未运行且未配置端口，默认使用 `16851`。仅在自动检测不准确时才需要手动指定。
 
 各客户端的配置方式：
 
@@ -109,8 +108,7 @@ uv run playwright install chromium  # 可选，同方式一说明
           "ZINIAO_COMPANY": "我的公司",
           "ZINIAO_USERNAME": "admin",
           "ZINIAO_PASSWORD": "xxx",
-          "ZINIAO_CLIENT_PATH": "D:\\ziniao\\ziniao.exe",
-          "ZINIAO_SOCKET_PORT": "16851"
+          "ZINIAO_CLIENT_PATH": "D:\\ziniao\\ziniao.exe"
         }
       }
     }
@@ -176,7 +174,7 @@ config.yaml             ← 适合本地开发
 | 用户名 | `ZINIAO_USERNAME` | `--username` | `ziniao.user_info.username` | — |
 | 密码 | `ZINIAO_PASSWORD` | `--password` | `ziniao.user_info.password` | — |
 | 客户端路径 | `ZINIAO_CLIENT_PATH` | `--client-path` | `ziniao.browser.client_path` | — |
-| HTTP 端口 | `ZINIAO_SOCKET_PORT` | `--socket-port` | `ziniao.browser.socket_port` | `16851` |
+| HTTP 端口 | `ZINIAO_SOCKET_PORT` | `--socket-port` | `ziniao.browser.socket_port` | 自动检测，检测不到则 `16851` |
 | 版本 | `ZINIAO_VERSION` | `--version` | `ziniao.browser.version` | `v6` |
 
 ### config.yaml 示例
@@ -186,7 +184,7 @@ ziniao:
   browser:
     version: v6
     client_path: D:\ziniao\ziniao.exe
-    socket_port: 16851
+    # socket_port: 16851  # 可选，不配置时自动检测
   user_info:
     company: 您的企业名
     username: 您的用户名
@@ -228,11 +226,12 @@ Cursor Settings 中 ziniao 服务器显示为离线。
 
 heartbeat 或工具调用一直卡住最终超时。
 
-1. **最常见原因：端口不匹配**。`ZINIAO_SOCKET_PORT` 默认为 `16851`，但紫鸟客户端实际可能监听在其他端口（如 `9480`）
-2. 确认客户端实际端口：
-   - Windows：在 PowerShell 中运行 `netstat -ano | findstr ziniao` 或在任务管理器中查看
-   - macOS/Linux：`lsof -i -P | grep ziniao`
+1. **v0.1.13+ 已支持自动检测端口**：通常无需手动配置 `ZINIAO_SOCKET_PORT`。MCP 会扫描运行中的紫鸟进程命令行自动发现端口
+2. 如果自动检测失败，手动确认客户端实际端口：
+   - Windows：在 PowerShell 中运行 `Get-Process -Name "ziniao" | ForEach-Object { (Get-CimInstance Win32_Process -Filter "ProcessId=$($_.Id)").CommandLine }` 查找 `--port=XXXXX`
+   - macOS/Linux：`ps aux | grep ziniao | grep -- --port`
 3. 在 MCP 配置的 `env` 中设置正确的端口：`"ZINIAO_SOCKET_PORT": "实际端口号"`
+4. **紫鸟是单实例应用**：如果客户端已在端口 A 运行，配置端口 B 会导致连接失败且无法启动新实例。v0.1.13+ 已自动处理此场景
 
 ### 店铺连接失败
 

@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import platform
+import re
 import subprocess
 import time
 import uuid
@@ -20,6 +21,48 @@ _logger = logging.getLogger("ziniao-webdriver")
 
 _STATUS_OK = "0"
 _STATUS_AUTH_ERROR = "-10003"
+_DEFAULT_PORT = 16851
+
+
+def detect_ziniao_port() -> Optional[int]:
+    """从运行中的紫鸟进程命令行参数中检测 HTTP 通信端口。
+
+    扫描所有 ziniao / SuperBrowser 进程，提取 ``--port=XXXXX`` 参数。
+    找不到时返回 None。
+    """
+    system = platform.system()
+    try:
+        if system == "Windows":
+            output = subprocess.check_output(
+                ["wmic", "process", "where",
+                 "name like '%ziniao%' or name like '%SuperBrowser%'",
+                 "get", "CommandLine"],
+                text=True, timeout=10,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        else:
+            output = subprocess.check_output(
+                ["ps", "aux"], text=True, timeout=10,
+            )
+    except (subprocess.SubprocessError, FileNotFoundError):
+        _logger.debug("detect_ziniao_port: 无法获取进程列表")
+        return None
+
+    ports: set[int] = set()
+    for line in output.splitlines():
+        if system != "Windows" and "ziniao" not in line.lower() and "superbrowser" not in line.lower():
+            continue
+        m = re.search(r"--port=(\d+)", line)
+        if m:
+            ports.add(int(m.group(1)))
+
+    if len(ports) == 1:
+        port = ports.pop()
+        _logger.info("自动检测到紫鸟端口: %s", port)
+        return port
+    if len(ports) > 1:
+        _logger.warning("检测到多个紫鸟端口: %s，无法自动选择", ports)
+    return None
 
 
 class ZiniaoClient:

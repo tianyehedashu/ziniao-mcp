@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any, Optional
 
 import httpx
 
-from ziniao_webdriver import ZiniaoClient
+from ziniao_webdriver import ZiniaoClient, detect_ziniao_port
 
 _logger = logging.getLogger("ziniao-mcp-debug")
 
@@ -227,13 +227,32 @@ class SessionManager:
         """通过心跳请求判断紫鸟客户端是否在运行。"""
         return await asyncio.to_thread(self.client.heartbeat)
 
+    def _try_switch_to_detected_port(self) -> Optional[int]:
+        """检测紫鸟客户端实际运行端口，若与配置不同则自动切换。
+
+        返回检测到的端口（已切换），或 None（未检测到）。
+        """
+        detected = detect_ziniao_port()
+        if detected and detected != self.client.socket_port:
+            _logger.warning(
+                "配置端口 %s 无响应，检测到紫鸟客户端运行在端口 %s，自动切换",
+                self.client.socket_port, detected,
+            )
+            self.client.socket_port = detected
+            return detected
+        return detected
+
     async def _ensure_client_running(self) -> None:
         if self._client_started and await self._is_client_running():
             return
         if await self._is_client_running():
             self._client_started = True
             return
-        # 客户端未运行时无需 taskkill，否则会报「未找到进程 ziniao.exe」
+        # 配置端口无响应，尝试检测实际端口（紫鸟是单实例应用，可能在其他端口运行）
+        detected = await asyncio.to_thread(self._try_switch_to_detected_port)
+        if detected and await self._is_client_running():
+            self._client_started = True
+            return
         await asyncio.to_thread(self.client.start_browser)
         await asyncio.to_thread(self.client.update_core)
         self._client_started = True
@@ -243,16 +262,23 @@ class SessionManager:
         port = self.client.socket_port
         if await self._is_client_running():
             return f"紫鸟客户端已在运行 (端口 {port})"
-        # 客户端未运行时无需 taskkill，否则会报「未找到进程 ziniao.exe」
+        # 检测是否在其他端口运行
+        detected = await asyncio.to_thread(self._try_switch_to_detected_port)
+        if detected and await self._is_client_running():
+            self._client_started = True
+            return (
+                f"紫鸟客户端已在运行 (端口 {detected})。"
+                f"注意：配置端口为 {port}，已自动切换到实际端口。"
+            )
         await asyncio.to_thread(self.client.start_browser)
         await asyncio.to_thread(self.client.update_core)
         self._client_started = True
         if not await self._is_client_running():
             return (
-                f"紫鸟客户端启动后仍无法连接 (端口 {port})。"
+                f"紫鸟客户端启动后仍无法连接 (端口 {self.client.socket_port})。"
                 f"请检查 ZINIAO_SOCKET_PORT 是否与客户端实际监听端口一致。"
             )
-        return f"紫鸟客户端已启动 (端口 {port})"
+        return f"紫鸟客户端已启动 (端口 {self.client.socket_port})"
 
     async def stop_client(self) -> None:
         """关闭所有店铺会话并退出紫鸟客户端。"""

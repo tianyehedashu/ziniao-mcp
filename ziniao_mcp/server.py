@@ -15,7 +15,8 @@ except (ImportError, PackageNotFoundError):
 
 from mcp.server.fastmcp import FastMCP
 
-from ziniao_webdriver import ZiniaoClient
+from ziniao_webdriver import ZiniaoClient, detect_ziniao_port
+from ziniao_webdriver.client import _DEFAULT_PORT
 
 from .session import SessionManager
 
@@ -117,9 +118,18 @@ def _resolve_config() -> dict[str, Any]:
 def create_server() -> tuple[FastMCP, SessionManager]:
     config = _resolve_config()
 
+    configured_port = config.get("socket_port")
+    if configured_port:
+        port = int(configured_port)
+    else:
+        detected = detect_ziniao_port()
+        port = detected if detected else _DEFAULT_PORT
+        _logger.info("未配置 ZINIAO_SOCKET_PORT，%s端口: %s",
+                      "自动检测到" if detected else "使用默认", port)
+
     client = ZiniaoClient(
         client_path=config.get("client_path") or "",
-        socket_port=int(config.get("socket_port") or 16851),
+        socket_port=port,
         user_info={
             "company": config.get("company") or "",
             "username": config.get("username") or "",

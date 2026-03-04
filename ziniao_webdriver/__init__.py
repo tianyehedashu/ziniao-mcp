@@ -5,6 +5,6 @@
 参考: https://open.ziniao.com/docSupport?docId=98
 """
 
-from .client import ZiniaoClient
+from .client import ZiniaoClient, detect_ziniao_port
 
-__all__ = ["ZiniaoClient"]
+__all__ = ["ZiniaoClient", "detect_ziniao_port"]

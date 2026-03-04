@@ -2,6 +2,18 @@
 
 本文件记录 ziniao-browser 的版本变更，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 格式。
 
+## [0.1.13] - 2026-03-04
+
+### 新增
+
+- **端口自动检测**：新增 `detect_ziniao_port()` 函数，通过扫描运行中的紫鸟/SuperBrowser 进程命令行参数自动发现 HTTP 通信端口，用户无需手动配置 `ZINIAO_SOCKET_PORT`
+- **端口冲突自动处理**：`_ensure_client_running()` / `start_client()` 在配置端口无响应时自动检测实际端口并切换，解决紫鸟单实例应用下端口不匹配导致的 3 分钟卡死问题
+
+### 变更
+
+- **端口优先级调整**：显式配置 > 自动检测 > 默认值 16851。`ZINIAO_SOCKET_PORT` 从必填改为可选
+- **README / installation.md**：MCP 配置示例去掉 `ZINIAO_SOCKET_PORT`（默认自动检测），环境变量表和故障排查同步更新
+
 ## [0.1.12] - 2026-03-04
 
 ### 修复
