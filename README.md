@@ -2,7 +2,69 @@
 
 紫鸟浏览器 AI 自动化工具集 — 让 AI Agent（Cursor、Claude 等）直接操控紫鸟店铺。
 
-参考 [chrome-devtools-mcp](https://github.com/ChromeDevTools/chrome-devtools-mcp) 设计，基于 [紫鸟 WebDriver API](https://open.ziniao.com/docSupport?docId=98) 和 Playwright CDP 实现。以 Cursor Plugin 形式提供 MCP 工具、AI 技能指南、操作规范和快捷命令。
+## 快速使用
+
+只需两步即可在 Cursor 中使用全部 31 个 MCP 工具。
+
+**1. 安装 [uv](https://docs.astral.sh/uv/)**
+
+```bash
+# Windows (PowerShell)
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+**2. 配置 MCP**
+
+打开 `Cursor Settings → MCP → New MCP Server`，粘贴以下配置（将环境变量替换为你的账号信息）：
+
+```json
+{
+  "mcpServers": {
+    "ziniao": {
+      "command": "uvx",
+      "args": ["ziniao-mcp"],
+      "env": {
+        "ZINIAO_COMPANY": "你的企业名",
+        "ZINIAO_USERNAME": "你的用户名",
+        "ZINIAO_PASSWORD": "你的密码",
+        "ZINIAO_CLIENT_PATH": "D:\\soft\\ziniao-v6\\ziniao.exe",
+        "ZINIAO_VERSION": "v6"
+      }
+    }
+  }
+}
+```
+
+| 环境变量 | 说明 |
+|----------|------|
+| `ZINIAO_COMPANY` | 紫鸟企业名 |
+| `ZINIAO_USERNAME` | 登录用户名 |
+| `ZINIAO_PASSWORD` | 登录密码 |
+| `ZINIAO_CLIENT_PATH` | 紫鸟客户端可执行文件路径 |
+| `ZINIAO_VERSION` | 客户端版本，默认 `v6` |
+
+配置完成后，在 Cursor 对话框中试试：
+
+```
+列出我所有的紫鸟店铺
+```
+
+```
+打开第一个亚马逊店铺，截图看看当前页面
+```
+
+```
+连接我之前打开的店铺，导航到亚马逊卖家后台
+```
+
+> **更新版本**：`uvx --refresh ziniao-mcp --help`，然后重启 Cursor MCP 即可。
+>
+> **前提条件**：需已安装 [紫鸟浏览器客户端](https://www.ziniao.com/) 并开通 WebDriver 权限（[如何开通](https://open.ziniao.com/docSupport?docId=99)）。
+>
+> **完整安装说明**（Plugin 模式 / Claude Desktop / 故障排查等）请参见 [安装与使用文档](docs/installation.md)。
 
 ## 特性
 
@@ -13,43 +75,6 @@
 - **跨会话状态持久化**：MCP 进程重启后可自动恢复已打开店铺的 CDP 连接
 - **多店铺并行**：同时打开多个店铺，按需切换活动会话
 - **跨平台**：支持 Windows / macOS / Linux
-
-## 前提
-
-- 开通紫鸟账号 WebDriver 权限：[如何开通](https://open.ziniao.com/docSupport?docId=99)
-- Python 3.10+
-- [uv](https://docs.astral.sh/uv/) 包管理器
-
-## 快速开始
-
-```bash
-git clone https://github.com/tianyehedashu/ziniao-mcp.git
-cd ziniao-mcp
-uv sync
-uv run playwright install chromium
-```
-
-在 Cursor 中打开项目目录，插件自动加载。配置环境变量后即可使用：
-
-| 环境变量 | 说明 |
-|----------|------|
-| `ZINIAO_COMPANY` | 企业名 |
-| `ZINIAO_USERNAME` | 用户名 |
-| `ZINIAO_PASSWORD` | 密码 |
-| `ZINIAO_CLIENT_PATH` | 客户端路径（如 `D:\ziniao\ziniao.exe`） |
-
-> 完整安装说明（Plugin / MCP / PyPI / Claude Desktop 等多种方式）请参见 [安装与使用文档](docs/installation.md)。
-
-### 开发任务脚本
-
-项目根目录提供统一入口，方便执行常用命令：
-
-| 方式 | 用法示例 |
-|------|----------|
-| **Makefile**（需安装 make） | `make install` / `make run` / `make test` / `make upgrade` |
-| **PowerShell**（Windows） | `.\task.ps1 install` / `.\task.ps1 run` / `.\task.ps1 test` / `.\task.ps1 upgrade` |
-
-`make help` 或 `.\task.ps1 help` 可查看全部任务；集成测试需先配置 `.env`，对应任务为 `make test-integration` / `.\task.ps1 test-integration`。
 
 ## 工具列表
 
