@@ -2,6 +2,13 @@
 
 本文件记录 ziniao-browser 的版本变更，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 格式。
 
+## [0.1.2] - 2026-03-04
+
+### 修复
+
+- **MCP stdout 污染**：将 `ziniao_webdriver/client.py` 中所有 `print()` 改为 `logging`，避免 HTTP 连接失败时异常信息写入 stdout 导致 MCP 客户端 JSON 解析错误（`Unexpected token 'H', "HTTPConnec"...`）
+- **日志编码**：`ziniao_mcp/server.py` 中 `logging.basicConfig` 增加 `encoding="utf-8"`，避免中文乱码及 GBK 无法编码字符导致的异常
+
 ## [0.2.1] - 2026-03-03
 
 ### 新增
