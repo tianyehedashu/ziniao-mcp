@@ -17,10 +17,13 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
     @mcp.tool()
     async def list_stores() -> str:
         """获取所有店铺列表，返回店铺名称、ID、平台等信息。is_open 标识该店铺是否正在运行。
-        如果客户端未运行会自动启动。"""
+        如果客户端未运行会自动启动（可能需等待数十秒）。若长时间无响应，请先确认紫鸟客户端已启动且 config 中 socket_port 与客户端一致。"""
         stores = await session.list_stores()
         if not stores:
-            return "店铺列表为空，请检查登录信息"
+            return (
+                "店铺列表为空。请检查：1) 紫鸟客户端已启动；"
+                "2) config 中 socket_port 与客户端实际端口一致；3) 登录信息正确。"
+            )
 
         open_stores = await SessionManager.get_persisted_stores()
         open_ids = {s["store_id"] for s in open_stores}
@@ -60,19 +63,26 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
     @mcp.tool()
     async def open_store(store_id: str) -> str:
         """打开紫鸟店铺并建立 CDP 浏览器连接。成功后该店铺成为当前活动店铺，可执行浏览器操作。
-        注意：对已打开的店铺调用此工具会导致重启，如需连接已运行的店铺请使用 connect_store。
+        会自动执行前置检查（店铺是否存在、代理 IP 是否过期、是否已在运行），
+        若店铺已在运行则自动复用而不会重启。
 
         Args:
             store_id: 店铺标识（browserId 或 browserOauth，从 list_stores 获取）
         """
-        store_session = await session.open_store(store_id)
-        return json.dumps({
+        try:
+            store_session = await session.open_store(store_id)
+        except RuntimeError as e:
+            return json.dumps({"status": "error", "message": str(e)}, ensure_ascii=False)
+        result = {
             "status": "success",
             "store_id": store_session.store_id,
             "store_name": store_session.store_name,
             "cdp_port": store_session.cdp_port,
             "pages": len(store_session.pages),
-        }, ensure_ascii=False)
+        }
+        if store_session.launcher_page:
+            result["launcher_page"] = store_session.launcher_page
+        return json.dumps(result, ensure_ascii=False)
 
     @mcp.tool()
     async def connect_store(store_id: str) -> str:

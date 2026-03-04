@@ -180,9 +180,9 @@ def _register_prompts(mcp: FastMCP) -> None:
         return [
             {
                 "role": "user",
-                "content": """使用紫鸟 MCP 操控紫鸟浏览器时：
+                "content": """使用ziniao MCP 操控紫鸟浏览器时：
 - 获取店铺列表：list_stores 查店铺，open_store(store_id) 或 connect_store(store_id) 打开/连接店铺，之后才能做页面操作。
-- 页面操作：导航用 goto/reload/go_back，点击输入用 click/fill/select_option，弹窗用 set_dialog_handler，等待与截图用 wait/screenshot。
+- 页面操作：导航用 navigate_page，点击输入用 click/fill/type_text，弹窗用 handle_dialog，等待用 wait_for，截图用 take_screenshot。
 根据用户目标调用对应工具即可。""",
             },
         ]
@@ -209,7 +209,10 @@ def main() -> None:
         try:
             _logger.info("[stdin-monitor] Starting raw read on stdin.buffer")
             peek_fn = getattr(sys.stdin.buffer, "peek", None)
-            data = peek_fn(1) if callable(peek_fn) else b""
+            if callable(peek_fn):
+                data = peek_fn(1)
+            else:
+                data = b""
             _logger.info("[stdin-monitor] peek returned: %s", repr(data[:100] if data else data))
         except Exception as e:
             _logger.info("[stdin-monitor] peek error: %s", e)

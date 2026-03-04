@@ -141,7 +141,7 @@ class ZiniaoClient:
         code = response.get("statusCode")
         return str(code) if code is not None else None
 
-    def _request(self, data: dict, action: str) -> tuple[str, Optional[dict]]:
+    def _request(self, data: dict, action: str, timeout: Optional[int] = None) -> tuple[str, Optional[dict]]:
         """发送请求并解析响应。
 
         :return: (status, response)
@@ -150,7 +150,7 @@ class ZiniaoClient:
         data.setdefault("requestId", str(uuid.uuid4()))
         data.update(self.user_info)
 
-        r = self._send_http(data)
+        r = self._send_http(data, timeout=timeout if timeout is not None else 120)
         status = self._get_status(r)
 
         if r is None:
@@ -259,7 +259,7 @@ class ZiniaoClient:
 
         for attempt in range(max_retries):
             data["requestId"] = str(uuid.uuid4())
-            result = self._send_http(data)
+            result = self._send_http(data, timeout=10)
             if result is None:
                 _logger.info("等待客户端启动... (%d/%d)", attempt + 1, max_retries)
                 time.sleep(2)
@@ -282,12 +282,25 @@ class ZiniaoClient:
     # 店铺操作
     # ------------------------------------------------------------------
 
-    def get_browser_list(self) -> list[dict]:
-        """获取店铺列表。"""
-        status, r = self._request({"action": "getBrowserList"}, "获取店铺列表")
+    def get_browser_list(self, timeout: int = 15) -> list[dict]:
+        """获取店铺列表。timeout 过短时若客户端启动慢可能返回空，默认 15 秒避免长时间阻塞。"""
+        status, r = self._request(
+            {"action": "getBrowserList"}, "获取店铺列表", timeout=timeout
+        )
         if status == "ok" and r is not None:
             return r.get("browserList") or []
         return []
+
+    def get_store_info(self, store_id: str, timeout: int = 15) -> Optional[dict]:
+        """从店铺列表中查找指定店铺，返回其详细信息（含 isExpired 等）。
+
+        匹配规则：store_id 与 browserId 或 browserOauth 任一匹配即命中。
+        :return: 匹配到的店铺 dict，未找到返回 None
+        """
+        for s in self.get_browser_list(timeout=timeout):
+            if store_id in (str(s.get("browserId", "")), s.get("browserOauth", "")):
+                return s
+        return None
 
     def open_store(
         self,
@@ -326,7 +339,7 @@ class ZiniaoClient:
         if len(str(js_info)) > 2:
             data["injectJsInfo"] = json.dumps(js_info)
 
-        status, r = self._request(data, "打开店铺")
+        status, r = self._request(data, "打开店铺", timeout=60)
         return r if status == "ok" else None
 
     def close_store(self, browser_oauth: str) -> bool:
@@ -334,10 +347,11 @@ class ZiniaoClient:
         status, _ = self._request(
             {"action": "stopBrowser", "duplicate": 0, "browserOauth": browser_oauth},
             "关闭店铺",
+            timeout=15,
         )
         return status == "ok"
 
     def get_exit(self) -> None:
         """关闭紫鸟客户端。"""
-        self._request({"action": "exit"}, "退出客户端")
+        self._request({"action": "exit"}, "退出客户端", timeout=10)
 

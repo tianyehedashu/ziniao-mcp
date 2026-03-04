@@ -6,6 +6,8 @@ import sys
 import time
 from pathlib import Path
 
+import pytest
+
 sys.stdout.reconfigure(encoding="utf-8")
 sys.stderr.reconfigure(encoding="utf-8")
 
@@ -29,6 +31,7 @@ def _user_info():
 PORT = int(os.environ.get("ZINIAO_SOCKET_PORT", "16851"))
 
 
+@pytest.mark.parametrize("version", ["v5", "v6"])
 def test_version(version: str):
     env_key = f"ZINIAO_V{version[1:]}_CLIENT_PATH"
     client_path = os.environ.get(env_key, "")

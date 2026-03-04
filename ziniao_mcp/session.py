@@ -15,6 +15,14 @@ import httpx
 
 from ziniao_webdriver import ZiniaoClient, detect_ziniao_port
 
+if os.name == "nt":
+    import msvcrt
+else:
+    try:
+        import fcntl
+    except ImportError:
+        fcntl = None  # type: ignore[assignment]  # Windows 无 fcntl，此处仅满足静态分析
+
 _logger = logging.getLogger("ziniao-mcp-debug")
 
 _STATE_DIR = Path.home() / ".ziniao"
@@ -67,6 +75,7 @@ class StoreSession:
     context: BrowserContext
     pages: list[Page] = field(default_factory=list)
     active_page_index: int = 0
+    launcher_page: str = ""
     open_result: dict = field(default_factory=dict)
     console_messages: list[ConsoleMessage] = field(default_factory=list)
     network_requests: list[NetworkRequest] = field(default_factory=list)
@@ -77,6 +86,15 @@ class StoreSession:
     _listened_page_ids: set = field(default_factory=set)
 
 
+class _StoreAlreadyRunning(Exception):
+    """内部信号：店铺已在其他进程中运行，应改用 connect 复用。"""
+
+    def __init__(self, store_id: str, cdp_port: int):
+        self.store_id = store_id
+        self.cdp_port = cdp_port
+        super().__init__(f"store {store_id} already running on CDP port {cdp_port}")
+
+
 _LOCK_FILE = _STATE_FILE.with_suffix(".lock")
 
 
@@ -85,10 +103,8 @@ def _acquire_lock():
     _STATE_DIR.mkdir(parents=True, exist_ok=True)
     fd = os.open(str(_LOCK_FILE), os.O_CREAT | os.O_RDWR)
     if os.name == "nt":
-        import msvcrt
         msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
-    else:
-        import fcntl
+    elif fcntl is not None:
         fcntl.flock(fd, fcntl.LOCK_EX)
     return fd
 
@@ -97,11 +113,9 @@ def _release_lock(fd: int) -> None:
     """释放文件锁并关闭描述符。"""
     try:
         if os.name == "nt":
-            import msvcrt
             os.lseek(fd, 0, os.SEEK_SET)
             msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
-        else:
-            import fcntl
+        elif fcntl is not None:
             fcntl.flock(fd, fcntl.LOCK_UN)
     finally:
         os.close(fd)
@@ -309,6 +323,35 @@ class SessionManager:
         await self._ensure_client_running()
         return await asyncio.to_thread(self.client.get_browser_list)
 
+    async def _preflight_check(self, store_id: str) -> None:
+        """open_store 前置检查：验证 store_id 有效性、代理 IP 是否过期、CDP 是否已存活。
+
+        通过 getBrowserList 校验店铺存在性和 isExpired 状态。
+        通过状态文件检查是否已有其他进程打开了该店铺（CDP 端口存活）。
+        """
+        store_info = await asyncio.to_thread(self.client.get_store_info, store_id)
+        if store_info is None:
+            raise RuntimeError(
+                f"店铺 {store_id} 不存在，请通过 list_stores 确认正确的店铺 ID"
+            )
+        if store_info.get("isExpired"):
+            name = store_info.get("browserName", store_id)
+            raise RuntimeError(
+                f"店铺 {name} ({store_id}) 的代理 IP 已过期，无法打开。"
+                "请先在紫鸟客户端中更新代理 IP。"
+            )
+
+        state = _read_state_file()
+        info = state.get(store_id)
+        if info:
+            cdp_port = info.get("cdp_port")
+            if cdp_port and await _is_cdp_alive(cdp_port):
+                _logger.info(
+                    "店铺 %s 已在运行 (CDP port=%s)，将通过 connect 复用",
+                    store_id, cdp_port,
+                )
+                raise _StoreAlreadyRunning(store_id, cdp_port)
+
     async def open_store(self, store_id: str) -> StoreSession:
         """打开指定店铺并建立 CDP 连接与页面监听。"""
         if store_id in self._stores:
@@ -316,6 +359,11 @@ class SessionManager:
             return self._stores[store_id]
 
         await self._ensure_client_running()
+
+        try:
+            await self._preflight_check(store_id)
+        except _StoreAlreadyRunning:
+            return await self.connect_store(store_id)
 
         inject_js = ""
         if self.stealth_config.enabled and self.stealth_config.js_patches:
@@ -356,6 +404,7 @@ class SessionManager:
         pages = context.pages or [await context.new_page()]
 
         store_name = result.get("browserName", store_id)
+        launcher_page = result.get("launcherPage", "")
         session = StoreSession(
             store_id=store_id,
             store_name=store_name,
@@ -364,6 +413,7 @@ class SessionManager:
             context=context,
             pages=list(pages),
             active_page_index=0,
+            launcher_page=launcher_page,
             open_result=result,
         )
 
@@ -371,6 +421,14 @@ class SessionManager:
             self._setup_page_listeners(session, page)
 
         context.on("page", lambda page: self._setup_page_listeners(session, page))
+
+        if launcher_page:
+            try:
+                active_page = session.pages[0]
+                await active_page.goto(launcher_page, wait_until="domcontentloaded", timeout=30000)
+                _logger.info("已导航到店铺启动页: %s", launcher_page)
+            except Exception as exc:
+                _logger.warning("导航到启动页失败 (%s): %s", launcher_page, exc)
 
         self._stores[store_id] = session
         self._active_store_id = store_id

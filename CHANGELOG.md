@@ -2,6 +2,18 @@
 
 本文件记录 ziniao-browser 的版本变更，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 格式。
 
+## [0.1.17] - 2026-03-04
+
+### 修复
+
+- **open_store 空白页**：MCP 打开店铺后自动导航到紫鸟返回的 `launcherPage`（店铺平台默认启动页），与客户端手动打开行为一致
+- **HTTP 超时**：紫鸟客户端请求超时缩短，避免端口不通或客户端未启动时长时间卡住——`get_browser_list` 15s、`open_store` 60s、`close_store`/`get_exit` 15s/10s、`update_core` 单次轮询 10s
+
+### 变更
+
+- **open_store 返回值**：成功时增加 `launcher_page` 字段（若有）
+- **list_stores**：店铺列表为空时提示检查客户端已启动、socket_port 一致、登录信息
+
 ## [0.1.16] - 2026-03-04
 
 ### 修复
