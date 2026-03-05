@@ -11,14 +11,21 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
 
     @mcp.tool()
     async def start_client() -> str:
-        """启动紫鸟客户端进程。以 WebDriver 模式启动，如果客户端已在运行则跳过。"""
-        return await session.start_client()
+        """启动紫鸟客户端进程。以 WebDriver 模式启动，如果客户端已在运行则跳过。
+        若检测到客户端以普通模式运行，会自动终止并以 WebDriver 模式重启。"""
+        try:
+            return await session.start_client()
+        except Exception as e:
+            return json.dumps({"status": "error", "message": str(e)}, ensure_ascii=False)
 
     @mcp.tool()
     async def list_stores() -> str:
         """获取所有店铺列表，返回店铺名称、ID、平台等信息。is_open 标识该店铺是否正在运行。
         如果客户端未运行会自动启动（可能需等待数十秒）。若长时间无响应，请先确认紫鸟客户端已启动且 config 中 socket_port 与客户端一致。"""
-        stores = await session.list_stores()
+        try:
+            stores = await session.list_stores()
+        except Exception as e:
+            return json.dumps({"status": "error", "message": str(e)}, ensure_ascii=False)
         if not stores:
             return (
                 "店铺列表为空。请检查：1) 紫鸟客户端已启动；"

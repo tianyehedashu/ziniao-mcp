@@ -38,6 +38,7 @@ def detect_ziniao_port() -> Optional[int]:
                  "name like '%ziniao%' or name like '%SuperBrowser%'",
                  "get", "CommandLine"],
                 text=True, timeout=10,
+                stderr=subprocess.DEVNULL,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
         else:
@@ -179,6 +180,25 @@ class ZiniaoClient:
         data.update(self.user_info)
         return self._send_http(data, timeout=10) is not None
 
+    def is_process_running(self) -> bool:
+        """检查紫鸟客户端进程是否存在（不论是否为 WebDriver 模式）。"""
+        name = self._process_name
+        try:
+            if self._is_windows:
+                ret = subprocess.run(
+                    ["tasklist", "/FI", f"IMAGENAME eq {name}"],
+                    capture_output=True, text=True, timeout=10, check=False,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                )
+                return name.lower() in ret.stdout.lower()
+            ret = subprocess.run(
+                ["pgrep", "-x", name],
+                capture_output=True, timeout=10, check=False,
+            )
+            return ret.returncode == 0
+        except (subprocess.SubprocessError, FileNotFoundError):
+            return False
+
     def start_browser(self) -> None:
         """以 WebDriver 模式启动紫鸟客户端。"""
         if not (self.client_path and self.client_path.strip()):
@@ -196,16 +216,32 @@ class ZiniaoClient:
                 "--ipc_type=http",
                 f"--port={self.socket_port}",
             ]
+            # Cursor/VS Code 宿主会设置 ELECTRON_RUN_AS_NODE=1，
+            # 导致 Electron 应用以 Node.js 模式运行而非 GUI 模式。
+            # 必须从子进程环境中移除这类干扰变量。
+            clean_env = {
+                k: v for k, v in os.environ.items()
+                if k not in ("ELECTRON_RUN_AS_NODE",)
+            }
+            popen_kwargs: dict = {
+                "stdin": subprocess.DEVNULL,
+                "stdout": subprocess.DEVNULL,
+                "stderr": subprocess.DEVNULL,
+                "cwd": os.path.dirname(self.client_path) or None,
+                "env": clean_env,
+            }
             if self._is_windows:
                 cmd = [self.client_path, *args]
+                popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
             elif self._is_mac:
                 cmd = ["open", "-a", self.client_path, "--args", *args]
             elif self._is_linux:
                 cmd = [self.client_path, "--no-sandbox", *args]
             else:
                 return
-            subprocess.Popen(cmd)
-            time.sleep(5)
+            _logger.info("启动客户端: %s (cwd=%s)", cmd, popen_kwargs.get("cwd"))
+            subprocess.Popen(cmd, **popen_kwargs)
+            time.sleep(8)
         except Exception as e:
             _logger.error("启动客户端失败: %s", e)
             raise

@@ -2,17 +2,32 @@
 
 本文件记录 ziniao-browser 的版本变更，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 格式。
 
+## [0.1.18] - 2026-03-05
+
+### 修复
+
+- **start_client 无法启动 HTTP 服务**：从子进程环境中移除 `ELECTRON_RUN_AS_NODE`。Cursor/VS Code 宿主会设置该变量，导致 ziniao.exe 以 Node.js 模式运行而非 Electron GUI 模式，端口无法监听；`start_browser()` 现传入清理后的 `env` 再启动客户端。
+
 ## [0.1.17] - 2026-03-04
 
 ### 修复
 
 - **open_store 空白页**：MCP 打开店铺后自动导航到紫鸟返回的 `launcherPage`（店铺平台默认启动页），与客户端手动打开行为一致
 - **HTTP 超时**：紫鸟客户端请求超时缩短，避免端口不通或客户端未启动时长时间卡住——`get_browser_list` 15s、`open_store` 60s、`close_store`/`get_exit` 15s/10s、`update_core` 单次轮询 10s
+- **客户端启动卡死**：`_ensure_client_running()` 和 `start_client()` 均添加 `asyncio.wait_for` 超时保护（35 秒 / 45 秒），`update_core` 重试次数从 90 降至 15，避免 MCP 调用无限阻塞导致 Cursor 报 Aborted
+- **普通模式检测**：新增 `is_process_running()` 方法，检测紫鸟进程是否存在（无论模式）；当客户端以普通模式（非 WebDriver）运行时，立即返回清晰错误信息而非等待超时
+- **子进程 stdio 泄漏**：`start_browser()` 的 `subprocess.Popen` 改为显式重定向 `stdin/stdout/stderr` 到 `DEVNULL`，防止子进程继承 MCP 通信管道导致服务器崩溃
+- **工具层异常处理**：`list_stores` 和 `start_client` 工具添加 `try/except RuntimeError`，捕获错误返回结构化 JSON 而非崩溃 MCP 服务器
 
 ### 变更
 
 - **open_store 返回值**：成功时增加 `launcher_page` 字段（若有）
 - **list_stores**：店铺列表为空时提示检查客户端已启动、socket_port 一致、登录信息
+- **start_client**：检测到普通模式实例时自动终止并以 WebDriver 模式重启，描述中说明此行为
+
+### 文档
+
+- **installation.md**：新增「WebDriver 模式说明」章节（模式对比、最佳实践）和「客户端以普通模式运行」故障排查
 
 ## [0.1.16] - 2026-03-04
 

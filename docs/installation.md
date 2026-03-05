@@ -7,6 +7,19 @@ ziniao-browser 提供 MCP 工具（31 个）和 Cursor Plugin 两种使用形态
 - [紫鸟浏览器客户端](https://www.ziniao.com/)，并**开启 WebDriver 权限**（[开通说明](https://open.ziniao.com/docSupport?docId=99)）
 - [Cursor IDE](https://cursor.com/) 或支持 MCP 的其他客户端
 
+### WebDriver 模式说明
+
+紫鸟客户端有两种运行模式：
+
+| 模式 | 启动方式 | HTTP API | 自动化支持 |
+|------|----------|----------|------------|
+| **普通模式** | 双击桌面图标 | 不可用 | 不支持 |
+| **WebDriver 模式** | 带 `--run_type=web_driver` 参数启动 | 可用 | 支持 |
+
+**最佳实践：始终以 WebDriver 模式启动。** WebDriver 模式下的客户端功能与普通模式完全一致，日常操作不受影响，同时支持 MCP 自动化。紫鸟是**单实例应用**，无需也不能同时运行两个实例。
+
+MCP 的 `start_client` 工具会以 WebDriver 模式启动客户端。如果检测到普通模式实例正在运行，会**自动终止并以 WebDriver 模式重启**。
+
 ## 安装方式
 
 ### 方式一：通过 uvx 安装（推荐，最简单）
@@ -232,6 +245,22 @@ heartbeat 或工具调用一直卡住最终超时。
    - macOS/Linux：`ps aux | grep ziniao | grep -- --port`
 3. 在 MCP 配置的 `env` 中设置正确的端口：`"ZINIAO_SOCKET_PORT": "实际端口号"`
 4. **紫鸟是单实例应用**：如果客户端已在端口 A 运行，配置端口 B 会导致连接失败且无法启动新实例。v0.1.13+ 已自动处理此场景
+
+### 客户端以普通模式运行
+
+报错"紫鸟客户端正在运行，但未启用 WebDriver 模式"。
+
+这表示紫鸟客户端是通过桌面图标等方式以**普通模式**启动的，HTTP API 端口未开放。
+
+**解决方法（任选其一）：**
+
+1. **使用 `start_client` 工具**（推荐）：MCP 会自动终止普通模式进程并以 WebDriver 模式重启
+2. **手动操作**：关闭紫鸟客户端，然后在命令行启动：
+   ```bash
+   # Windows
+   "D:\soft\ziniao-v6\ziniao.exe" --run_type=web_driver --ipc_type=http --port=16851
+   ```
+3. **养成习惯**：日常也以 WebDriver 模式启动客户端，功能完全一致且支持自动化（参见[前提条件 - WebDriver 模式说明](#webdriver-模式说明)）
 
 ### 店铺连接失败
 

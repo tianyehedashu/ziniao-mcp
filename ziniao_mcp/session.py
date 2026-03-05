@@ -273,26 +273,62 @@ class SessionManager:
         return detected
 
     async def _ensure_client_running(self) -> None:
+        try:
+            await asyncio.wait_for(self._do_ensure_client(), timeout=35)
+        except asyncio.TimeoutError:
+            raise RuntimeError(
+                f"连接紫鸟客户端超时。请确认：\n"
+                f"1) 客户端已以 WebDriver 模式启动（需带 --port 参数）\n"
+                f"2) HTTP 端口 {self.client.socket_port} 与客户端实际端口一致\n"
+                "提示：通过桌面图标启动的客户端不支持 WebDriver 模式，"
+                "请使用 start_client 工具或手动添加 "
+                "--run_type=web_driver --ipc_type=http 参数启动。"
+            ) from None
+
+    async def _do_ensure_client(self) -> None:
+        """_ensure_client_running 的实际逻辑，由外层控制超时。"""
         if self._client_started and await self._is_client_running():
             return
         if await self._is_client_running():
             self._client_started = True
             return
-        # 配置端口无响应，尝试检测实际端口（紫鸟是单实例应用，可能在其他端口运行）
         detected = await asyncio.to_thread(self._try_switch_to_detected_port)
         if detected and await self._is_client_running():
             self._client_started = True
             return
+        if await asyncio.to_thread(self.client.is_process_running):
+            raise RuntimeError(
+                "紫鸟客户端正在运行，但未启用 WebDriver 模式（HTTP 端口未开放）。\n"
+                "请先关闭客户端，然后使用 start_client 工具重新启动，"
+                f"或手动以 --run_type=web_driver --ipc_type=http "
+                f"--port={self.client.socket_port} 参数重启。"
+            )
         await asyncio.to_thread(self.client.start_browser)
-        await asyncio.to_thread(self.client.update_core)
+        await asyncio.to_thread(self.client.update_core, 15)
         self._client_started = True
 
     async def start_client(self) -> str:
-        """启动紫鸟客户端，若已在运行则直接返回。"""
+        """启动紫鸟客户端，若已在运行则直接返回。
+
+        当检测到客户端进程存在但未启用 WebDriver 模式时，
+        自动终止旧进程并以 WebDriver 模式重新启动。
+        冷启动较慢（Electron 应用需派生子进程），超时设为 90 秒。
+        """
+        try:
+            return await asyncio.wait_for(self._do_start_client(), timeout=90)
+        except asyncio.TimeoutError:
+            raise RuntimeError(
+                f"启动紫鸟客户端超时（90 秒）。请确认：\n"
+                f"1) 客户端路径正确：{self.client.client_path}\n"
+                f"2) HTTP 端口 {self.client.socket_port} 未被其他程序占用\n"
+                "3) 客户端可以手动以 WebDriver 模式正常启动"
+            ) from None
+
+    async def _do_start_client(self) -> str:
+        """start_client 的实际逻辑，由外层控制超时。"""
         port = self.client.socket_port
         if await self._is_client_running():
             return f"紫鸟客户端已在运行 (端口 {port})"
-        # 检测是否在其他端口运行
         detected = await asyncio.to_thread(self._try_switch_to_detected_port)
         if detected and await self._is_client_running():
             self._client_started = True
@@ -300,8 +336,11 @@ class SessionManager:
                 f"紫鸟客户端已在运行 (端口 {detected})。"
                 f"注意：配置端口为 {port}，已自动切换到实际端口。"
             )
+        if await asyncio.to_thread(self.client.is_process_running):
+            _logger.info("检测到紫鸟进程但 WebDriver 端口不通，终止旧进程后重启")
+            await asyncio.to_thread(self.client.kill_process, True)
         await asyncio.to_thread(self.client.start_browser)
-        await asyncio.to_thread(self.client.update_core)
+        await asyncio.to_thread(self.client.update_core, 30)
         self._client_started = True
         if not await self._is_client_running():
             return (

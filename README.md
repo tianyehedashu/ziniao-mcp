@@ -65,7 +65,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 > **版本**：查看 `uvx ziniao-mcp -V`；刷新 `uvx --refresh ziniao-mcp --help`，再重启 Cursor MCP。
 >
-> **前提**：安装 [紫鸟客户端](https://www.ziniao.com/)，并**开启 WebDriver 权限**（[开通说明](https://open.ziniao.com/docSupport?docId=99)）。
+> **前提**：安装 [紫鸟客户端](https://www.ziniao.com/)，并**开启 WebDriver 权限**（[开通说明](https://open.ziniao.com/docSupport?docId=99)）。客户端需以 **WebDriver 模式**运行（使用 `start_client` 工具可自动处理；日常也建议以此模式启动，功能与普通模式完全一致）。
 >
 > 更多安装方式与故障排查见 [安装与使用](docs/installation.md)。
 
