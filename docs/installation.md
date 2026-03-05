@@ -60,12 +60,15 @@ uvx playwright install chromium
         "ZINIAO_COMPANY": "我的公司",
         "ZINIAO_USERNAME": "admin",
         "ZINIAO_PASSWORD": "xxx",
-        "ZINIAO_CLIENT_PATH": "D:\\ziniao\\ziniao.exe"
+        "ZINIAO_CLIENT_PATH": "D:\\ziniao\\ziniao.exe",
+        "ZINIAO_VERSION": "v6"
       }
     }
   }
 }
 ```
+
+> **版本说明**：`ZINIAO_VERSION` 可选，默认 `v6`。若使用紫鸟 **v5 客户端**，请设为 `"v5"`。路径 `ZINIAO_CLIENT_PATH` 需指向对应版本的 `ziniao.exe`（如 v5 用户可能是 `D:\\ziniao-v5\\ziniao.exe`）。
 
 > **端口说明**：`ZINIAO_SOCKET_PORT` 通常**无需配置**。MCP 启动时会自动检测运行中的紫鸟客户端端口（通过扫描进程命令行参数 `--port=XXXXX`）。如果客户端未运行且未配置端口，默认使用 `16851`。仅在自动检测不准确时才需要手动指定。
 
@@ -121,7 +124,8 @@ uv run playwright install chromium  # 可选，同方式一说明
           "ZINIAO_COMPANY": "我的公司",
           "ZINIAO_USERNAME": "admin",
           "ZINIAO_PASSWORD": "xxx",
-          "ZINIAO_CLIENT_PATH": "D:\\ziniao\\ziniao.exe"
+          "ZINIAO_CLIENT_PATH": "D:\\ziniao\\ziniao.exe",
+          "ZINIAO_VERSION": "v6"
         }
       }
     }
