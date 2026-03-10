@@ -1,4 +1,4 @@
-"""输入自动化工具 (9 tools)"""
+"""输入自动化工具 (8 tools)"""
 
 import json
 
@@ -23,68 +23,68 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
         Args:
             selector: CSS 选择器（如 "#submit-btn"、".login-button"）
         """
+        from ..iframe import find_element  # pylint: disable=import-outside-toplevel
+
         tab = session.get_active_tab()
+        store = session.get_active_session()
         cfg = _behavior_cfg()
+
+        elem = await find_element(tab, selector, store, timeout=10)
+        if not elem:
+            raise RuntimeError(f"未找到元素: {selector}")
         if cfg:
             from ..stealth import human_click, random_delay  # pylint: disable=import-outside-toplevel
             await random_delay(cfg=cfg)
-            await human_click(tab, selector, cfg=cfg)
+            await human_click(tab, selector, cfg=cfg, element=elem)
         else:
-            elem = await tab.select(selector, timeout=10)
-            if elem:
-                await elem.click()
-            else:
-                raise RuntimeError(f"未找到元素: {selector}")
+            await elem.click()
         return f"已点击: {selector}"
 
     @mcp.tool()
-    async def fill(selector: str, value: str) -> str:
-        """清空并填写输入框。
+    async def fill(
+        selector: str = "",
+        value: str = "",
+        fields_json: str = "",
+    ) -> str:
+        """清空并填写输入框。支持单字段和批量模式。
+
+        单字段模式：提供 selector + value。
+        批量模式：提供 fields_json，格式为 [{"selector": "#name", "value": "张三"}, ...]
 
         Args:
-            selector: 输入框的选择器
-            value: 要填入的值
+            selector: 输入框的选择器（单字段模式）
+            value: 要填入的值（单字段模式）
+            fields_json: JSON 格式的字段列表（批量模式，优先级高于 selector+value）
         """
+        from ..iframe import find_element  # pylint: disable=import-outside-toplevel
+
         tab = session.get_active_tab()
+        store = session.get_active_session()
         cfg = _behavior_cfg()
-        if cfg:
-            from ..stealth import human_fill, random_delay  # pylint: disable=import-outside-toplevel
-            await random_delay(cfg=cfg)
-            await human_fill(tab, selector, value, cfg=cfg)
+
+        if fields_json:
+            fields = json.loads(fields_json)
+        elif selector:
+            fields = [{"selector": selector, "value": value}]
         else:
-            elem = await tab.select(selector, timeout=10)
-            if elem:
-                await elem.clear_input()
-                await elem.send_keys(value)
-            else:
-                raise RuntimeError(f"未找到元素: {selector}")
-        return f"已填写 {selector}"
+            raise RuntimeError("请提供 selector+value 或 fields_json")
 
-    @mcp.tool()
-    async def fill_form(fields_json: str) -> str:
-        """批量填写表单字段。
-
-        Args:
-            fields_json: JSON 格式的字段列表，如 [{"selector": "#name", "value": "张三"}, {"selector": "#email", "value": "a@b.com"}]
-        """
-        tab = session.get_active_tab()
-        fields = json.loads(fields_json)
-        cfg = _behavior_cfg()
-        if cfg:
-            from ..stealth import human_fill, random_delay  # pylint: disable=import-outside-toplevel
-            for f in fields:
-                elem = await tab.select(f["selector"], timeout=10)
-                if not elem:
-                    raise RuntimeError(f"未找到元素: {f['selector']}")
+        for f in fields:
+            elem = await find_element(tab, f["selector"], store, timeout=10)
+            if not elem:
+                raise RuntimeError(f"未找到元素: {f['selector']}")
+            if cfg:
+                from ..stealth import human_fill, random_delay  # pylint: disable=import-outside-toplevel
                 await random_delay(cfg=cfg)
-                await human_fill(tab, f["selector"], f["value"], cfg=cfg)
-        else:
-            for f in fields:
-                elem = await tab.select(f["selector"], timeout=10)
-                if not elem:
-                    raise RuntimeError(f"未找到元素: {f['selector']}")
+                await human_fill(
+                    tab, f["selector"], f["value"], cfg=cfg, element=elem,
+                )
+            else:
                 await elem.clear_input()
                 await elem.send_keys(f["value"])
+
+        if len(fields) == 1:
+            return f"已填写 {fields[0]['selector']}"
         return f"已填写 {len(fields)} 个字段"
 
     @mcp.tool()
@@ -95,16 +95,23 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
             text: 要输入的文本
             selector: 可选，目标元素选择器。为空则在当前焦点元素输入
         """
+        from ..iframe import find_element  # pylint: disable=import-outside-toplevel
+
         tab = session.get_active_tab()
+        store = session.get_active_session()
         cfg = _behavior_cfg()
+
         if cfg:
             from ..stealth import human_type, random_delay  # pylint: disable=import-outside-toplevel
             await random_delay(cfg=cfg)
-            await human_type(tab, text, selector, cfg=cfg)
+            elem = None
+            if selector:
+                elem = await find_element(tab, selector, store, timeout=10)
+            await human_type(tab, text, selector, cfg=cfg, element=elem)
         else:
             from nodriver import cdp  # pylint: disable=import-outside-toplevel
             if selector:
-                elem = await tab.select(selector, timeout=10)
+                elem = await find_element(tab, selector, store, timeout=10)
                 if elem:
                     await elem.click()
             for char in text:
@@ -167,18 +174,21 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
         Args:
             selector: 目标元素的选择器
         """
+        from ..iframe import find_element  # pylint: disable=import-outside-toplevel
+
         tab = session.get_active_tab()
+        store = session.get_active_session()
         cfg = _behavior_cfg()
+
+        elem = await find_element(tab, selector, store, timeout=10)
+        if not elem:
+            raise RuntimeError(f"未找到元素: {selector}")
         if cfg:
             from ..stealth import human_hover, random_delay  # pylint: disable=import-outside-toplevel
             await random_delay(cfg=cfg)
-            await human_hover(tab, selector, cfg=cfg)
+            await human_hover(tab, selector, cfg=cfg, element=elem)
         else:
-            elem = await tab.select(selector, timeout=10)
-            if elem:
-                await elem.mouse_move()
-            else:
-                raise RuntimeError(f"未找到元素: {selector}")
+            await elem.mouse_move()
         return f"已悬停: {selector}"
 
     @mcp.tool()
@@ -189,23 +199,51 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
             source_selector: 源元素选择器
             target_selector: 目标元素选择器
         """
+        from ..iframe import find_element  # pylint: disable=import-outside-toplevel
+
         tab = session.get_active_tab()
+        store = session.get_active_session()
         cfg = _behavior_cfg()
         if cfg:
             from ..stealth import random_delay  # pylint: disable=import-outside-toplevel
             await random_delay(cfg=cfg)
 
-        src_elem = await tab.select(source_selector, timeout=10)
-        tgt_elem = await tab.select(target_selector, timeout=10)
+        src_elem = await find_element(tab, source_selector, store, timeout=10)
+        tgt_elem = await find_element(tab, target_selector, store, timeout=10)
         if not src_elem or not tgt_elem:
-            raise RuntimeError(f"未找到拖拽元素: {source_selector} 或 {target_selector}")
+            raise RuntimeError(
+                f"未找到拖拽元素: {source_selector} 或 {target_selector}"
+            )
 
         src_pos = await src_elem.get_position()
         tgt_pos = await tgt_elem.get_position()
         if not src_pos or not tgt_pos:
             raise RuntimeError("无法获取元素位置")
 
-        await tab.mouse_drag(src_pos.center, tgt_pos.center)
+        if store.iframe_context:
+            from nodriver import cdp  # pylint: disable=import-outside-toplevel
+
+            sx, sy = src_pos.center
+            tx, ty = tgt_pos.center
+            await tab.send(cdp.input_.dispatch_mouse_event(
+                "mousePressed", x=sx, y=sy,
+                button=cdp.input_.MouseButton.LEFT, buttons=1, click_count=1,
+            ))
+            steps = 10
+            for i in range(1, steps + 1):
+                ratio = i / steps
+                await tab.send(cdp.input_.dispatch_mouse_event(
+                    "mouseMoved",
+                    x=sx + (tx - sx) * ratio,
+                    y=sy + (ty - sy) * ratio,
+                ))
+            await tab.send(cdp.input_.dispatch_mouse_event(
+                "mouseReleased", x=tx, y=ty,
+                button=cdp.input_.MouseButton.LEFT, buttons=1, click_count=1,
+            ))
+        else:
+            await tab.mouse_drag(src_pos.center, tgt_pos.center)
+
         return f"已拖拽 {source_selector} → {target_selector}"
 
     @mcp.tool()
@@ -229,11 +267,14 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
             selector: 文件输入框的选择器（<input type="file">）
             file_paths_json: JSON 格式的文件路径列表，如 ["C:/images/photo.jpg"]
         """
+        from ..iframe import find_element  # pylint: disable=import-outside-toplevel
+
         tab = session.get_active_tab()
+        store = session.get_active_session()
         paths = json.loads(file_paths_json)
-        elem = await tab.select(selector, timeout=10)
-        if elem:
-            await elem.send_file(*paths)
-        else:
+
+        elem = await find_element(tab, selector, store, timeout=10)
+        if not elem:
             raise RuntimeError(f"未找到文件输入框: {selector}")
+        await elem.send_file(*paths)
         return f"已上传 {len(paths)} 个文件"

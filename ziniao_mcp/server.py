@@ -181,8 +181,9 @@ def _register_prompts(mcp: FastMCP) -> None:
             {
                 "role": "user",
                 "content": """使用ziniao MCP 操控紫鸟浏览器时：
-- 获取店铺列表：list_stores 查店铺，open_store(store_id) 或 connect_store(store_id) 打开/连接店铺，之后才能做页面操作。
-- 页面操作：导航用 navigate_page，点击输入用 click/fill/type_text，弹窗用 handle_dialog，等待用 wait_for，截图用 take_screenshot。
+- 获取店铺列表：list_stores 查店铺，open_store(store_id) 打开店铺（已运行的会自动复用），之后才能做页面操作。
+- 页面操作：导航用 navigate_page，点击用 click，填写用 fill，按键用 press_key，等待用 wait_for，截图用 take_screenshot。
+- 标签页管理：tab(action=list/switch/new/close)。iframe 操作：switch_frame(action=list/switch/main)。
 根据用户目标调用对应工具即可。""",
             },
         ]

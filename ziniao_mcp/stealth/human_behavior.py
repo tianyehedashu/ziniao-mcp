@@ -10,10 +10,13 @@ import asyncio
 import math
 import random
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional, Union
 
 if TYPE_CHECKING:
     from nodriver import Tab
+    from nodriver.core.element import Element
+
+    from ..iframe import IFrameElement
 
 
 @dataclass
@@ -118,11 +121,10 @@ async def _move_mouse_humanlike(
     )
 
 
-async def _get_element_box(tab: "Tab", selector: str) -> dict | None:
-    """获取元素的边界框信息。返回 {x, y, width, height} 或 None。"""
-    elem = await tab.select(selector, timeout=5)
-    if not elem:
-        return None
+async def _get_box_from_element(
+    elem: Union["Element", "IFrameElement"],
+) -> dict | None:
+    """从已解析的元素获取边界框。"""
     try:
         pos = await elem.get_position()
         if pos is None:
@@ -137,19 +139,35 @@ async def _get_element_box(tab: "Tab", selector: str) -> dict | None:
         return None
 
 
+async def _get_element_box(tab: "Tab", selector: str) -> dict | None:
+    """获取元素的边界框信息。返回 {x, y, width, height} 或 None。"""
+    elem = await tab.select(selector, timeout=5)
+    if not elem:
+        return None
+    return await _get_box_from_element(elem)
+
+
 async def human_click(
     tab: "Tab",
     selector: str,
     *,
     cfg: BehaviorConfig | None = None,
+    element: Optional[Union["Element", "IFrameElement"]] = None,
 ) -> None:
-    """拟人化点击：鼠标轨迹移动 -> 随机偏移 -> 点击。"""
+    """拟人化点击：鼠标轨迹移动 -> 随机偏移 -> 点击。
+
+    当 element 已提供（如 IFrameElement）时直接使用，跳过 tab.select。
+    """
     c = cfg or _DEFAULT_CFG
-    box = await _get_element_box(tab, selector)
+    if element:
+        box = await _get_box_from_element(element)
+    else:
+        box = await _get_element_box(tab, selector)
+
     if not box:
-        elem = await tab.select(selector, timeout=5)
-        if elem:
-            await elem.click()
+        target = element or await tab.select(selector, timeout=5)
+        if target:
+            await target.click()
         return
 
     offset_x = random.uniform(box["width"] * 0.2, box["width"] * 0.8)
@@ -168,13 +186,14 @@ async def human_type(
     selector: str = "",
     *,
     cfg: BehaviorConfig | None = None,
+    element: Optional[Union["Element", "IFrameElement"]] = None,
 ) -> None:
     """拟人化逐字输入：每个字符间隔随机波动，偶尔较长停顿模拟思考。"""
     from nodriver import cdp  # pylint: disable=import-outside-toplevel
 
     c = cfg or _DEFAULT_CFG
-    if selector:
-        await human_click(tab, selector, cfg=c)
+    if selector or element:
+        await human_click(tab, selector, cfg=c, element=element)
         await random_delay(100, 300, cfg=c)
 
     for i, char in enumerate(text):
@@ -191,22 +210,27 @@ async def human_fill(
     value: str,
     *,
     cfg: BehaviorConfig | None = None,
+    element: Optional[Union["Element", "IFrameElement"]] = None,
 ) -> None:
     """拟人化填写：点击聚焦 -> 全选清除 -> 逐字输入。"""
     from nodriver import cdp  # pylint: disable=import-outside-toplevel
 
     c = cfg or _DEFAULT_CFG
-    await human_click(tab, selector, cfg=c)
+    await human_click(tab, selector, cfg=c, element=element)
     await random_delay(100, 300, cfg=c)
     await tab.send(cdp.input_.dispatch_key_event(
-        "rawKeyDown", windows_virtual_key_code=65, modifiers=2  # Ctrl+A
+        "rawKeyDown", windows_virtual_key_code=65, modifiers=2,
     ))
-    await tab.send(cdp.input_.dispatch_key_event("keyUp", windows_virtual_key_code=65, modifiers=2))
+    await tab.send(cdp.input_.dispatch_key_event(
+        "keyUp", windows_virtual_key_code=65, modifiers=2,
+    ))
     await asyncio.sleep(random.uniform(0.05, 0.15))
     await tab.send(cdp.input_.dispatch_key_event(
-        "rawKeyDown", windows_virtual_key_code=8  # Backspace
+        "rawKeyDown", windows_virtual_key_code=8,
     ))
-    await tab.send(cdp.input_.dispatch_key_event("keyUp", windows_virtual_key_code=8))
+    await tab.send(cdp.input_.dispatch_key_event(
+        "keyUp", windows_virtual_key_code=8,
+    ))
     await asyncio.sleep(random.uniform(0.1, 0.25))
     await human_type(tab, value, cfg=c)
 
@@ -216,16 +240,21 @@ async def human_hover(
     selector: str,
     *,
     cfg: BehaviorConfig | None = None,
+    element: Optional[Union["Element", "IFrameElement"]] = None,
 ) -> None:
     """拟人化悬停：贝塞尔曲线移动鼠标到元素上。"""
     from nodriver import cdp  # pylint: disable=import-outside-toplevel
 
     c = cfg or _DEFAULT_CFG
-    box = await _get_element_box(tab, selector)
+    if element:
+        box = await _get_box_from_element(element)
+    else:
+        box = await _get_element_box(tab, selector)
+
     if not box:
-        elem = await tab.select(selector, timeout=5)
-        if elem:
-            await elem.mouse_move()
+        target = element or await tab.select(selector, timeout=5)
+        if target:
+            await target.mouse_move()
         return
 
     target_x = box["x"] + random.uniform(box["width"] * 0.3, box["width"] * 0.7)

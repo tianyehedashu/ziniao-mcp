@@ -1,4 +1,4 @@
-"""仿真工具 (2 tools)"""
+"""仿真工具 (1 tool)"""
 
 import json
 
@@ -26,58 +26,61 @@ DEVICE_PRESETS: dict[str, dict] = {
 def register_tools(mcp: FastMCP, session: SessionManager) -> None:
 
     @mcp.tool()
-    async def emulate(device_name: str) -> str:
-        """模拟指定设备（调整视口大小和 User-Agent）。
+    async def emulate(
+        device_name: str = "",
+        width: int = 0,
+        height: int = 0,
+    ) -> str:
+        """调整视口大小或模拟指定设备。
+
+        设备模式：提供 device_name（如 "iPhone 14"），自动设置视口和 User-Agent。
+        自定义模式：提供 width + height 自定义视口尺寸。
 
         Args:
-            device_name: 设备名，如 "iPhone 14"、"iPad Pro 11"、"Pixel 7"、"Desktop 1920x1080"
+            device_name: 设备名，如 "iPhone 14"、"iPad Pro 11"、"Desktop 1920x1080"
+            width: 自定义视口宽度（像素），仅在 device_name 为空时生效
+            height: 自定义视口高度（像素），仅在 device_name 为空时生效
         """
         from nodriver import cdp  # pylint: disable=import-outside-toplevel
 
-        if device_name not in DEVICE_PRESETS:
-            available = sorted(DEVICE_PRESETS.keys())
+        tab = session.get_active_tab()
+
+        if device_name:
+            if device_name not in DEVICE_PRESETS:
+                available = sorted(DEVICE_PRESETS.keys())
+                return json.dumps({
+                    "error": f"未知设备: {device_name}",
+                    "available_devices": available,
+                }, ensure_ascii=False, indent=2)
+
+            device = DEVICE_PRESETS[device_name]
+            vp = device["viewport"]
+            await tab.send(
+                cdp.emulation.set_device_metrics_override(
+                    width=vp["width"],
+                    height=vp["height"],
+                    device_scale_factor=device.get("scale", 1),
+                    mobile=device.get("mobile", False),
+                )
+            )
+            ua = device.get("user_agent", "")
+            if ua:
+                await tab.send(cdp.emulation.set_user_agent_override(user_agent=ua))
             return json.dumps({
-                "error": f"未知设备: {device_name}",
-                "available_devices": available,
-            }, ensure_ascii=False, indent=2)
+                "device": device_name,
+                "viewport": vp,
+                "user_agent": ua,
+            }, ensure_ascii=False)
 
-        device = DEVICE_PRESETS[device_name]
-        tab = session.get_active_tab()
-        vp = device["viewport"]
-        await tab.send(
-            cdp.emulation.set_device_metrics_override(
-                width=vp["width"],
-                height=vp["height"],
-                device_scale_factor=device.get("scale", 1),
-                mobile=device.get("mobile", False),
+        if width > 0 and height > 0:
+            await tab.send(
+                cdp.emulation.set_device_metrics_override(
+                    width=width,
+                    height=height,
+                    device_scale_factor=1,
+                    mobile=False,
+                )
             )
-        )
-        ua = device.get("user_agent", "")
-        if ua:
-            await tab.send(cdp.emulation.set_user_agent_override(user_agent=ua))
-        return json.dumps({
-            "device": device_name,
-            "viewport": vp,
-            "user_agent": ua,
-        }, ensure_ascii=False)
+            return f"视口已调整为 {width}x{height}"
 
-    @mcp.tool()
-    async def resize_page(width: int, height: int) -> str:
-        """调整页面视口大小。
-
-        Args:
-            width: 视口宽度（像素）
-            height: 视口高度（像素）
-        """
-        from nodriver import cdp  # pylint: disable=import-outside-toplevel
-
-        tab = session.get_active_tab()
-        await tab.send(
-            cdp.emulation.set_device_metrics_override(
-                width=width,
-                height=height,
-                device_scale_factor=1,
-                mobile=False,
-            )
-        )
-        return f"视口已调整为 {width}x{height}"
+        raise RuntimeError("请提供 device_name 或 width+height")

@@ -1,4 +1,4 @@
-"""调试工具 (5 tools)"""
+"""调试工具 (4 tools)"""
 
 import json
 
@@ -17,7 +17,14 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
             script: 要执行的 JavaScript 代码（如 "document.title"、"window.location.href"）
         """
         tab = session.get_active_tab()
-        result = await tab.evaluate(script, return_by_value=True)
+        store = session.get_active_session()
+        if store.iframe_context:
+            from ..iframe import eval_in_frame  # pylint: disable=import-outside-toplevel
+            result = await eval_in_frame(
+                tab, store.iframe_context.context_id, script,
+            )
+        else:
+            result = await tab.evaluate(script, return_by_value=True)
         return json.dumps(result, ensure_ascii=False, default=str)
 
     @mcp.tool()
@@ -31,19 +38,20 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
         from nodriver import cdp  # pylint: disable=import-outside-toplevel
 
         tab = session.get_active_tab()
+        store = session.get_active_session()
+
         if selector:
-            elem = await tab.select(selector, timeout=10)
+            from ..iframe import find_element  # pylint: disable=import-outside-toplevel
+
+            elem = await find_element(tab, selector, store, timeout=10)
             if not elem:
                 raise RuntimeError(f"未找到元素: {selector}")
             pos = await elem.get_position()
             if not pos:
                 raise RuntimeError(f"无法获取元素位置: {selector}")
             clip = cdp.page.Viewport(
-                x=pos.x,
-                y=pos.y,
-                width=pos.width,
-                height=pos.height,
-                scale=1,
+                x=pos.x, y=pos.y,
+                width=pos.width, height=pos.height, scale=1,
             )
             data = await tab.send(
                 cdp.page.capture_screenshot(format_="png", clip=clip)
@@ -63,17 +71,44 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
     async def take_snapshot() -> str:
         """获取当前页面的完整 HTML 快照。"""
         tab = session.get_active_tab()
+        store = session.get_active_session()
+        if store.iframe_context:
+            from ..iframe import eval_in_frame  # pylint: disable=import-outside-toplevel
+            html = await eval_in_frame(
+                tab, store.iframe_context.context_id,
+                "document.documentElement.outerHTML",
+            )
+            return html or ""
         return await tab.get_content()
 
     @mcp.tool()
-    async def list_console_messages(level: str = "", limit: int = 50) -> str:
-        """列出页面控制台消息。从打开店铺或切换页面起自动捕获。
+    async def console(
+        message_id: int = 0,
+        level: str = "",
+        limit: int = 50,
+    ) -> str:
+        """查看页面控制台消息。从打开店铺起自动捕获。
+
+        提供 message_id 时返回该消息的完整内容；否则列出消息摘要。
 
         Args:
+            message_id: 可选，指定消息 ID 查看完整内容（从列表结果中获取）
             level: 可选，按级别过滤（log、warning、error、info、debug）
-            limit: 返回条数上限，默认 50
+            limit: 列表模式的返回条数上限，默认 50
         """
         store = session.get_active_session()
+
+        if message_id:
+            for m in store.console_messages:
+                if m.id == message_id:
+                    return json.dumps({
+                        "id": m.id,
+                        "level": m.level,
+                        "text": m.text,
+                        "timestamp": m.timestamp,
+                    }, ensure_ascii=False, indent=2)
+            return f"未找到消息 ID: {message_id}"
+
         messages = store.console_messages
         if level:
             messages = [m for m in messages if m.level == level]
@@ -85,21 +120,3 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
                 "text": m.text[:500],
             })
         return json.dumps(result, ensure_ascii=False, indent=2)
-
-    @mcp.tool()
-    async def get_console_message(message_id: int) -> str:
-        """获取指定控制台消息的完整内容。
-
-        Args:
-            message_id: 消息 ID（从 list_console_messages 获取）
-        """
-        store = session.get_active_session()
-        for m in store.console_messages:
-            if m.id == message_id:
-                return json.dumps({
-                    "id": m.id,
-                    "level": m.level,
-                    "text": m.text,
-                    "timestamp": m.timestamp,
-                }, ensure_ascii=False, indent=2)
-        return f"未找到消息 ID: {message_id}"

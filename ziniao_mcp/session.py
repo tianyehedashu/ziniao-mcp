@@ -23,6 +23,9 @@ else:
     except ImportError:
         fcntl = None  # type: ignore[assignment]
 
+if TYPE_CHECKING:
+    from .iframe import IFrameContext
+
 _logger = logging.getLogger("ziniao-mcp-debug")
 
 _STATE_DIR = Path.home() / ".ziniao"
@@ -76,6 +79,7 @@ class StoreSession:
     network_requests: list[NetworkRequest] = field(default_factory=list)
     dialog_action: str = "dismiss"
     dialog_text: str = ""
+    iframe_context: Optional["IFrameContext"] = None
     _msg_counter: int = 0
     _req_counter: int = 0
     _listened_tab_ids: set = field(default_factory=set)
