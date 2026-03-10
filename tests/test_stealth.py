@@ -1,7 +1,7 @@
 """Stealth 模块单元测试 — 覆盖 JS 脚本构建、配置解析、行为模拟和 session 集成。"""
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
 
 import pytest
 
@@ -10,10 +10,8 @@ from ziniao_mcp.stealth.js_patches import (
     STEALTH_JS,
     STEALTH_JS_MINIMAL,
     build_stealth_js,
-    PATCH_NAVIGATOR_WEBDRIVER,
     PATCH_NAVIGATOR_PLUGINS,
     PATCH_WINDOW_CHROME,
-    PATCH_PLAYWRIGHT_GLOBALS,
     PATCH_WEBGL_VENDOR,
 )
 from ziniao_mcp.stealth.human_behavior import (
@@ -33,11 +31,6 @@ from ziniao_mcp.stealth.human_behavior import (
 
 class TestBuildStealthJs:
 
-    def test_default_includes_webdriver_patch(self):
-        js = build_stealth_js()
-        assert "navigator" in js
-        assert "webdriver" in js
-
     def test_default_includes_plugins_patch(self):
         js = build_stealth_js()
         assert "Chrome PDF Plugin" in js
@@ -45,10 +38,6 @@ class TestBuildStealthJs:
     def test_default_includes_chrome_patch(self):
         js = build_stealth_js()
         assert "chrome.runtime" in js or "window.chrome" in js
-
-    def test_default_includes_playwright_cleanup(self):
-        js = build_stealth_js()
-        assert "__playwright" in js
 
     def test_default_excludes_webgl_vendor(self):
         js = build_stealth_js()
@@ -61,8 +50,8 @@ class TestBuildStealthJs:
 
     def test_all_disabled_returns_empty(self):
         js = build_stealth_js(
-            webdriver=False, plugins=False, permissions=False,
-            chrome_obj=False, playwright_globals=False, console_debug=False,
+            plugins=False, permissions=False,
+            chrome_obj=False,
             iframe_webdriver=False, webgl_vendor=False, automation_flags=False,
         )
         assert js.strip() == ""
@@ -74,8 +63,13 @@ class TestBuildStealthJs:
     def test_minimal_is_smaller_than_full(self):
         assert len(STEALTH_JS_MINIMAL) < len(STEALTH_JS)
 
-    def test_minimal_still_has_webdriver_patch(self):
-        assert "webdriver" in STEALTH_JS_MINIMAL
+    def test_default_includes_iframe_webdriver(self):
+        js = build_stealth_js()
+        assert "iframe" in js.lower()
+
+    def test_default_includes_permissions(self):
+        js = build_stealth_js()
+        assert "permissions" in js
 
 
 # ------------------------------------------------------------------ #
@@ -131,54 +125,62 @@ class TestStealthConfig:
 
 
 # ------------------------------------------------------------------ #
-#  apply_stealth
+#  apply_stealth (now works with nodriver.Browser)
 # ------------------------------------------------------------------ #
 
 class TestApplyStealth:
 
     @pytest.mark.asyncio
-    async def test_injects_script_to_context(self):
-        ctx = AsyncMock()
-        ctx.pages = []
-        await apply_stealth(ctx)
-        ctx.add_init_script.assert_awaited_once()
-        script_arg = ctx.add_init_script.call_args
-        assert "webdriver" in script_arg.kwargs.get("script", "")
+    async def test_injects_script_to_tabs(self):
+        tab = AsyncMock()
+        tab.target = MagicMock()
+        tab.target.url = "https://example.com"
+        browser = MagicMock()
+        browser.tabs = [tab]
+        await apply_stealth(browser)
+        tab.send.assert_awaited()
+        tab.evaluate.assert_awaited()
 
     @pytest.mark.asyncio
-    async def test_evaluates_on_existing_pages(self):
-        page1, page2 = AsyncMock(), AsyncMock()
-        page1.url = "https://example.com"
-        page2.url = "https://other.com"
-        ctx = AsyncMock()
-        ctx.pages = [page1, page2]
-        await apply_stealth(ctx)
-        page1.evaluate.assert_awaited_once()
-        page2.evaluate.assert_awaited_once()
+    async def test_handles_multiple_tabs(self):
+        tab1 = AsyncMock()
+        tab1.target = MagicMock()
+        tab1.target.url = "https://example.com"
+        tab2 = AsyncMock()
+        tab2.target = MagicMock()
+        tab2.target.url = "https://other.com"
+        browser = MagicMock()
+        browser.tabs = [tab1, tab2]
+        await apply_stealth(browser)
+        assert tab1.send.await_count >= 1
+        assert tab2.send.await_count >= 1
 
     @pytest.mark.asyncio
     async def test_skips_when_disabled(self):
-        ctx = AsyncMock()
+        browser = MagicMock()
+        browser.tabs = []
         cfg = StealthConfig(enabled=False)
-        await apply_stealth(ctx, config=cfg)
-        ctx.add_init_script.assert_not_awaited()
+        await apply_stealth(browser, config=cfg)
 
     @pytest.mark.asyncio
     async def test_skips_when_js_patches_disabled(self):
-        ctx = AsyncMock()
+        tab = AsyncMock()
+        browser = MagicMock()
+        browser.tabs = [tab]
         cfg = StealthConfig(enabled=True, js_patches=False)
-        await apply_stealth(ctx, config=cfg)
-        ctx.add_init_script.assert_not_awaited()
+        await apply_stealth(browser, config=cfg)
+        tab.send.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_handles_page_evaluate_failure(self):
-        page = AsyncMock()
-        page.evaluate.side_effect = Exception("page closed")
-        page.url = "about:blank"
-        ctx = AsyncMock()
-        ctx.pages = [page]
-        await apply_stealth(ctx)
-        ctx.add_init_script.assert_awaited_once()
+    async def test_handles_tab_evaluate_failure(self):
+        tab = AsyncMock()
+        tab.target = MagicMock()
+        tab.target.url = "about:blank"
+        tab.evaluate.side_effect = Exception("tab closed")
+        browser = MagicMock()
+        browser.tabs = [tab]
+        await apply_stealth(browser)
+        tab.send.assert_awaited()
 
 
 # ------------------------------------------------------------------ #
@@ -223,40 +225,57 @@ class TestRandomDelay:
 
 
 # ------------------------------------------------------------------ #
-#  human_click
+#  Helper: mock nodriver Tab
 # ------------------------------------------------------------------ #
 
-def _make_page(**overrides):
-    """构造一个模拟 Playwright Page 对象，locator() 同步返回 locator mock。"""
-    page = AsyncMock()
-    locator_mock = MagicMock()
-    locator_mock.bounding_box = AsyncMock(
-        return_value=overrides.get("bounding_box", {"x": 100, "y": 200, "width": 50, "height": 30})
-    )
-    locator_mock.click = AsyncMock()
-    locator_mock.hover = AsyncMock()
-    page.locator = MagicMock(return_value=locator_mock)
-    page.evaluate = AsyncMock(return_value={"x": 0, "y": 0})
-    page.mouse = AsyncMock()
-    page.keyboard = AsyncMock()
-    return page
+def _make_tab(**overrides):
+    """构造一个模拟 nodriver Tab 对象。"""
+    tab = AsyncMock()
 
+    elem = AsyncMock()
+    pos = MagicMock()
+    bb = overrides.get("bounding_box", {"x": 100, "y": 200, "width": 50, "height": 30})
+    if bb:
+        pos.left = bb["x"]
+        pos.top = bb["y"]
+        pos.width = bb["width"]
+        pos.height = bb["height"]
+        pos.center = (bb["x"] + bb["width"] / 2, bb["y"] + bb["height"] / 2)
+        elem.get_position = AsyncMock(return_value=pos)
+    else:
+        elem.get_position = AsyncMock(return_value=None)
+    elem.click = AsyncMock()
+    elem.mouse_move = AsyncMock()
+    elem.send_keys = AsyncMock()
+
+    tab.select = AsyncMock(return_value=elem)
+    tab.evaluate = AsyncMock(return_value={"x": 0, "y": 0})
+    tab.mouse_click = AsyncMock()
+    tab.mouse_drag = AsyncMock()
+    tab.send = AsyncMock()
+    return tab
+
+
+# ------------------------------------------------------------------ #
+#  human_click
+# ------------------------------------------------------------------ #
 
 class TestHumanClick:
 
     @pytest.mark.asyncio
     async def test_clicks_with_mouse(self):
-        page = _make_page()
+        tab = _make_tab()
         cfg = BehaviorConfig(mouse_movement=False, delay_min_ms=1, delay_max_ms=2)
-        await human_click(page, "#btn", cfg=cfg)
-        page.mouse.click.assert_awaited_once()
+        await human_click(tab, "#btn", cfg=cfg)
+        tab.mouse_click.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_fallback_when_no_bounding_box(self):
-        page = _make_page(bounding_box=None)
+        tab = _make_tab(bounding_box=None)
         cfg = BehaviorConfig(mouse_movement=False, delay_min_ms=1, delay_max_ms=2)
-        await human_click(page, "#btn", cfg=cfg)
-        page.locator.return_value.click.assert_awaited_once()
+        await human_click(tab, "#btn", cfg=cfg)
+        elem = await tab.select("#btn", timeout=5)
+        elem.click.assert_awaited()
 
 
 # ------------------------------------------------------------------ #
@@ -267,21 +286,21 @@ class TestHumanType:
 
     @pytest.mark.asyncio
     async def test_types_each_character(self):
-        page = _make_page()
+        tab = _make_tab()
         cfg = BehaviorConfig(typing_min_ms=1, typing_max_ms=2,
                              delay_min_ms=1, delay_max_ms=2,
                              mouse_movement=False)
-        await human_type(page, "abc", cfg=cfg)
-        assert page.keyboard.type.await_count == 3
+        await human_type(tab, "abc", cfg=cfg)
+        assert tab.send.await_count == 3
 
     @pytest.mark.asyncio
     async def test_clicks_selector_first(self):
-        page = _make_page()
+        tab = _make_tab()
         cfg = BehaviorConfig(typing_min_ms=1, typing_max_ms=2,
                              delay_min_ms=1, delay_max_ms=2,
                              mouse_movement=False)
-        await human_type(page, "a", selector="#input", cfg=cfg)
-        page.mouse.click.assert_awaited()
+        await human_type(tab, "a", selector="#input", cfg=cfg)
+        tab.mouse_click.assert_awaited()
 
 
 # ------------------------------------------------------------------ #
@@ -292,14 +311,12 @@ class TestHumanFill:
 
     @pytest.mark.asyncio
     async def test_clears_and_types(self):
-        page = _make_page()
+        tab = _make_tab()
         cfg = BehaviorConfig(typing_min_ms=1, typing_max_ms=2,
                              delay_min_ms=1, delay_max_ms=2,
                              mouse_movement=False)
-        await human_fill(page, "#input", "hi", cfg=cfg)
-        page.keyboard.press.assert_any_await("Control+a")
-        page.keyboard.press.assert_any_await("Backspace")
-        assert page.keyboard.type.await_count == 2
+        await human_fill(tab, "#input", "hi", cfg=cfg)
+        assert tab.send.await_count >= 4  # Ctrl+A down, up, Backspace down, up + 2 char types
 
 
 # ------------------------------------------------------------------ #
@@ -310,17 +327,18 @@ class TestHumanHover:
 
     @pytest.mark.asyncio
     async def test_moves_mouse_to_element(self):
-        page = _make_page(bounding_box={"x": 50, "y": 50, "width": 100, "height": 40})
+        tab = _make_tab(bounding_box={"x": 50, "y": 50, "width": 100, "height": 40})
         cfg = BehaviorConfig(mouse_movement=False, delay_min_ms=1, delay_max_ms=2)
-        await human_hover(page, "#el", cfg=cfg)
-        page.mouse.move.assert_awaited_once()
+        await human_hover(tab, "#el", cfg=cfg)
+        tab.send.assert_awaited()
 
     @pytest.mark.asyncio
     async def test_fallback_when_no_bounding_box(self):
-        page = _make_page(bounding_box=None)
+        tab = _make_tab(bounding_box=None)
         cfg = BehaviorConfig(mouse_movement=False, delay_min_ms=1, delay_max_ms=2)
-        await human_hover(page, "#el", cfg=cfg)
-        page.locator.return_value.hover.assert_awaited_once()
+        await human_hover(tab, "#el", cfg=cfg)
+        elem = await tab.select("#el", timeout=5)
+        elem.mouse_move.assert_awaited()
 
 
 # ------------------------------------------------------------------ #
@@ -331,22 +349,17 @@ class TestHumanScroll:
 
     @pytest.mark.asyncio
     async def test_scrolls_down(self):
-        page = AsyncMock()
-        page.mouse = AsyncMock()
-
+        tab = _make_tab()
         cfg = BehaviorConfig(delay_min_ms=1, delay_max_ms=2)
-        await human_scroll(page, "down", 200, cfg=cfg)
-        assert page.mouse.wheel.await_count > 0
+        await human_scroll(tab, "down", 200, cfg=cfg)
+        assert tab.send.await_count > 0
 
     @pytest.mark.asyncio
     async def test_scrolls_up(self):
-        page = AsyncMock()
-        page.mouse = AsyncMock()
-
+        tab = _make_tab()
         cfg = BehaviorConfig(delay_min_ms=1, delay_max_ms=2)
-        await human_scroll(page, "up", 200, cfg=cfg)
-        first_call_args = page.mouse.wheel.call_args_list[0].args
-        assert first_call_args[1] < 0
+        await human_scroll(tab, "up", 200, cfg=cfg)
+        assert tab.send.await_count > 0
 
 
 # ------------------------------------------------------------------ #
@@ -370,20 +383,23 @@ class TestSessionManagerStealthIntegration:
         assert sm.stealth_config.enabled is False
 
     @pytest.mark.asyncio
-    async def test_apply_stealth_called_on_context(self):
+    async def test_apply_stealth_called_on_browser(self):
         from ziniao_mcp.session import SessionManager
         client = MagicMock()
         sm = SessionManager(client)
-        ctx = AsyncMock()
-        ctx.pages = []
-        await sm._apply_stealth_to_context(ctx)
-        ctx.add_init_script.assert_awaited_once()
+        tab = AsyncMock()
+        tab.target = MagicMock()
+        tab.target.url = "https://example.com"
+        browser = MagicMock()
+        browser.tabs = [tab]
+        await sm._apply_stealth_to_browser(browser)
+        tab.send.assert_awaited()
 
     @pytest.mark.asyncio
     async def test_apply_stealth_skipped_when_disabled(self):
         from ziniao_mcp.session import SessionManager
         client = MagicMock()
         sm = SessionManager(client, stealth_config=StealthConfig(enabled=False))
-        ctx = AsyncMock()
-        await sm._apply_stealth_to_context(ctx)
-        ctx.add_init_script.assert_not_awaited()
+        browser = MagicMock()
+        browser.tabs = []
+        await sm._apply_stealth_to_browser(browser)

@@ -85,7 +85,7 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
             "store_id": store_session.store_id,
             "store_name": store_session.store_name,
             "cdp_port": store_session.cdp_port,
-            "pages": len(store_session.pages),
+            "tabs": len(store_session.tabs),
         }
         if store_session.launcher_page:
             result["launcher_page"] = store_session.launcher_page
@@ -106,7 +106,7 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
             "store_id": store_session.store_id,
             "store_name": store_session.store_name,
             "cdp_port": store_session.cdp_port,
-            "pages": len(store_session.pages),
+            "tabs": len(store_session.tabs),
         }, ensure_ascii=False)
 
     @mcp.tool()

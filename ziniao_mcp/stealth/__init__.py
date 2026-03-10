@@ -1,7 +1,7 @@
 """CDP 反检测模块。
 
 提供两层防护：
-1. JS 环境伪装 — 通过 add_init_script 覆盖自动化痕迹
+1. JS 环境伪装 — 通过 CDP Page.addScriptToEvaluateOnNewDocument 覆盖自动化痕迹
 2. 人类行为模拟 — 为输入操作注入拟人化随机性
 """
 
@@ -23,10 +23,7 @@ from .human_behavior import (
 from .js_patches import STEALTH_JS, build_stealth_js
 
 if TYPE_CHECKING:
-    from playwright.async_api import (  # type: ignore[reportMissingImports]
-        BrowserContext,
-        Page,
-    )
+    from nodriver import Browser, Tab
 
 __all__ = [
     "StealthConfig",
@@ -84,28 +81,38 @@ class StealthConfig:
 
 
 async def apply_stealth(
-    context: "BrowserContext",
+    browser: "Browser",
     *,
     config: StealthConfig | None = None,
     webgl_vendor: bool = False,
 ) -> None:
-    """为 BrowserContext 注入反检测脚本。
+    """为 Browser 的所有 tab 注入反检测脚本。
 
-    在 context 级别注入 init_script，确保后续新页面自动继承。
-    同时对已有页面执行 evaluate 立即生效。
+    通过 CDP Page.addScriptToEvaluateOnNewDocument 注入，
+    确保后续新页面自动继承。同时对已有页面执行 evaluate 立即生效。
     """
+    from nodriver import cdp  # pylint: disable=import-outside-toplevel
+
     cfg = config or StealthConfig()
     if not cfg.enabled or not cfg.js_patches:
         _logger.debug("stealth JS patches 未启用，跳过注入")
         return
 
     script = build_stealth_js(webgl_vendor=webgl_vendor)
-    await context.add_init_script(script=script)
-    _logger.info("stealth init_script 已注入到 context")
 
-    for page in context.pages:
+    from ..session import _filter_tabs  # pylint: disable=import-outside-toplevel
+
+    for tab in _filter_tabs(browser.tabs):
         try:
-            await page.evaluate(script)
-            _logger.debug("stealth 已 evaluate 到已有页面: %s", page.url)
+            await tab.send(
+                cdp.page.add_script_to_evaluate_on_new_document(source=script)
+            )
+            _logger.debug("stealth init_script 已注入到 tab: %s", tab.target.url)
         except Exception:  # pylint: disable=broad-exception-caught
-            _logger.debug("evaluate stealth 到页面失败（页面可能已关闭）")
+            _logger.debug("注入 init_script 到 tab 失败（tab 可能已关闭）")
+
+        try:
+            await tab.evaluate(script)
+            _logger.debug("stealth 已 evaluate 到已有 tab: %s", tab.target.url)
+        except Exception:  # pylint: disable=broad-exception-caught
+            _logger.debug("evaluate stealth 到 tab 失败（tab 可能已关闭）")

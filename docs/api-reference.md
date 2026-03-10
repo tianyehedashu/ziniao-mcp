@@ -74,7 +74,7 @@
   "store_id": "xxx",
   "store_name": "我的店铺",
   "cdp_port": 9222,
-  "pages": 1
+  "tabs": 1
 }
 ```
 
@@ -92,7 +92,7 @@
 |------|------|------|------|
 | `store_id` | `string` | 是 | 店铺标识 |
 
-**返回**：`string` — JSON 对象（同 `open_store`，`status` 为 `"connected"`）
+**返回**：`string` — JSON 对象（同 `open_store`，`status` 为 `"connected"`，`pages` 替换为 `tabs`）
 
 ---
 
@@ -140,7 +140,7 @@
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `selector` | `string` | 是 | CSS 选择器、XPath 或 Playwright 选择器（如 `text=登录`、`#submit-btn`、`xpath=//button`） |
+| `selector` | `string` | 是 | CSS 选择器（如 `#submit-btn`、`.login-button`、`input[type=text]`） |
 
 **返回**：`string` — 操作确认消息
 
@@ -298,7 +298,7 @@
 {
   "url": "https://www.amazon.com/",
   "title": "Amazon.com",
-  "status": 200
+  "status": "ok"
 }
 ```
 
@@ -371,7 +371,7 @@
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `selector` | `string` | 否 | 等待的元素选择器。为空则等待页面加载完成（networkidle） |
+| `selector` | `string` | 否 | 等待的元素选择器。为空则等待页面加载完成 |
 | `state` | `string` | 否 | 等待状态：`visible`（默认）、`hidden`、`attached`、`detached` |
 | `timeout` | `int` | 否 | 超时毫秒数（默认 30000） |
 
@@ -389,9 +389,9 @@
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `device_name` | `string` | 是 | Playwright 预置设备名 |
+| `device_name` | `string` | 是 | 预置设备名 |
 
-常用设备名：`iPhone 14`、`iPhone 14 Pro Max`、`iPad Pro 11`、`Pixel 7`、`Galaxy S9+`
+常用设备名：`iPhone 14`、`iPhone 14 Pro Max`、`iPhone 15`、`iPad Pro 11`、`Pixel 7`、`Samsung Galaxy S23`、`Desktop 1920x1080`
 
 **返回**：`string` — JSON 对象（device、viewport、user_agent）。如设备名无效，返回可用设备列表。
 

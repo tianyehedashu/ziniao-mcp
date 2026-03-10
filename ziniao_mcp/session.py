@@ -21,7 +21,7 @@ else:
     try:
         import fcntl
     except ImportError:
-        fcntl = None  # type: ignore[assignment]  # Windows 无 fcntl，此处仅满足静态分析
+        fcntl = None  # type: ignore[assignment]
 
 _logger = logging.getLogger("ziniao-mcp-debug")
 
@@ -29,12 +29,8 @@ _STATE_DIR = Path.home() / ".ziniao"
 _STATE_FILE = _STATE_DIR / "sessions.json"
 
 if TYPE_CHECKING:
-    from playwright.async_api import (  # type: ignore[reportMissingImports]
-        Browser,
-        BrowserContext,
-        Page,
-        Playwright,
-    )
+    import nodriver
+    from nodriver import Browser, Tab
 
     from .stealth import StealthConfig
 
@@ -66,15 +62,14 @@ class NetworkRequest:
 
 @dataclass
 class StoreSession:
-    """单个店铺的 CDP 会话（browser/context/pages 及控制台、网络追踪）。"""
+    """单个店铺的 CDP 会话（browser/tabs 及控制台、网络追踪）。"""
 
     store_id: str
     store_name: str
     cdp_port: int
-    browser: Browser
-    context: BrowserContext
-    pages: list[Page] = field(default_factory=list)
-    active_page_index: int = 0
+    browser: "Browser"
+    tabs: list["Tab"] = field(default_factory=list)
+    active_tab_index: int = 0
     launcher_page: str = ""
     open_result: dict = field(default_factory=dict)
     console_messages: list[ConsoleMessage] = field(default_factory=list)
@@ -83,7 +78,12 @@ class StoreSession:
     dialog_text: str = ""
     _msg_counter: int = 0
     _req_counter: int = 0
-    _listened_page_ids: set = field(default_factory=set)
+    _listened_tab_ids: set = field(default_factory=set)
+
+    @property
+    def pages(self) -> list["Tab"]:
+        """tabs 的别名，兼容外部对 .pages 的访问。"""
+        return self.tabs
 
 
 class _StoreAlreadyRunning(Exception):
@@ -188,6 +188,31 @@ async def _is_cdp_alive(port: int, timeout: float = 2.0) -> bool:
         return False
 
 
+_INTERNAL_URL_PREFIXES = ("chrome-extension://", "devtools://", "chrome://")
+
+
+def _is_regular_tab(tab: "Tab") -> bool:
+    """判断 tab 是否为普通网页（过滤掉扩展 offscreen、devtools 等内部页面）。"""
+    url = getattr(getattr(tab, "target", None), "url", "") or ""
+    return not any(url.startswith(p) for p in _INTERNAL_URL_PREFIXES)
+
+
+def _filter_tabs(tabs: list) -> list:
+    """从 browser.tabs 中过滤出普通网页标签。"""
+    return [t for t in tabs if _is_regular_tab(t)]
+
+
+async def _connect_cdp(port: int) -> "Browser":
+    """通过 nodriver 连接到已有的 CDP 端口。"""
+    import nodriver  # pylint: disable=import-outside-toplevel
+
+    browser = await nodriver.Browser.create(
+        host="127.0.0.1",
+        port=port,
+    )
+    return browser
+
+
 class SessionManager:
     """管理紫鸟客户端生命周期、CDP 连接和页面状态。"""
 
@@ -200,23 +225,45 @@ class SessionManager:
 
         self.client = client
         self.stealth_config = stealth_config or StealthConfig()
-        self._playwright: Optional[Playwright] = None
         self._stores: dict[str, StoreSession] = {}
         self._active_store_id: Optional[str] = None
         self._client_started = False
 
-    async def _ensure_playwright(self) -> "Playwright":
-        if not self._playwright:
-            from playwright.async_api import async_playwright  # pylint: disable=import-outside-toplevel  # type: ignore[reportMissingImports]
-            self._playwright = await async_playwright().start()
-        return self._playwright
-
-    async def _apply_stealth_to_context(self, context: "BrowserContext") -> None:
-        """向 BrowserContext 注入反检测脚本（若启用）。"""
+    async def _apply_stealth_to_browser(self, browser: "Browser") -> None:
+        """向 Browser 的所有 tab 注入反检测脚本（若启用）。"""
         if not self.stealth_config.enabled:
             return
         from .stealth import apply_stealth  # pylint: disable=import-outside-toplevel
-        await apply_stealth(context, config=self.stealth_config)
+        await apply_stealth(browser, config=self.stealth_config)
+
+    async def _sync_viewport_to_window(self, store: StoreSession) -> None:
+        """将 CDP 视口同步为当前窗口内容区尺寸，避免连接后出现右侧/底部大片空白。"""
+        if not store.tabs:
+            return
+        tab = store.tabs[store.active_tab_index] if store.active_tab_index < len(store.tabs) else store.tabs[0]
+        try:
+            size = await tab.evaluate(
+                "({ width: window.innerWidth, height: window.innerHeight })",
+                return_by_value=True,
+            )
+            if not size or not isinstance(size, dict):
+                return
+            width = int(size.get("width", 0))
+            height = int(size.get("height", 0))
+            if width <= 0 or height <= 0:
+                return
+            from nodriver import cdp  # pylint: disable=import-outside-toplevel
+            await tab.send(
+                cdp.emulation.set_device_metrics_override(
+                    width=width,
+                    height=height,
+                    device_scale_factor=1,
+                    mobile=False,
+                )
+            )
+            _logger.debug("视口已同步为窗口尺寸: %dx%d", width, height)
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            _logger.debug("同步视口到窗口失败（可忽略）: %s", exc)
 
     def _save_store_state(self, store_id: str, store_name: str,
                           cdp_port: int, browser_oauth: str) -> None:
@@ -258,10 +305,7 @@ class SessionManager:
         return await asyncio.to_thread(self.client.heartbeat)
 
     def _try_switch_to_detected_port(self) -> Optional[int]:
-        """检测紫鸟客户端实际运行端口，若与配置不同则自动切换。
-
-        返回检测到的端口（已切换），或 None（未检测到）。
-        """
+        """检测紫鸟客户端实际运行端口，若与配置不同则自动切换。"""
         detected = detect_ziniao_port()
         if detected and detected != self.client.socket_port:
             _logger.warning(
@@ -308,12 +352,7 @@ class SessionManager:
         self._client_started = True
 
     async def start_client(self) -> str:
-        """启动紫鸟客户端，若已在运行则直接返回。
-
-        当检测到客户端进程存在但未启用 WebDriver 模式时，
-        自动终止旧进程并以 WebDriver 模式重新启动。
-        冷启动较慢（Electron 应用需派生子进程），超时设为 90 秒。
-        """
+        """启动紫鸟客户端，若已在运行则直接返回。"""
         try:
             return await asyncio.wait_for(self._do_start_client(), timeout=90)
         except asyncio.TimeoutError:
@@ -363,11 +402,7 @@ class SessionManager:
         return await asyncio.to_thread(self.client.get_browser_list)
 
     async def _preflight_check(self, store_id: str) -> None:
-        """open_store 前置检查：验证 store_id 有效性、代理 IP 是否过期、CDP 是否已存活。
-
-        通过 getBrowserList 校验店铺存在性和 isExpired 状态。
-        通过状态文件检查是否已有其他进程打开了该店铺（CDP 端口存活）。
-        """
+        """open_store 前置检查。"""
         store_info = await asyncio.to_thread(self.client.get_store_info, store_id)
         if store_info is None:
             raise RuntimeError(
@@ -419,15 +454,11 @@ class SessionManager:
         if not cdp_port:
             raise RuntimeError("未获取到 CDP 调试端口")
 
-        pw = await self._ensure_playwright()
-
         retries = 3
         browser = None
         for attempt in range(retries):
             try:
-                browser = await pw.chromium.connect_over_cdp(
-                    f"http://127.0.0.1:{cdp_port}"
-                )
+                browser = await _connect_cdp(cdp_port)
                 break
             except Exception as exc:
                 if attempt < retries - 1:
@@ -437,10 +468,8 @@ class SessionManager:
                         f"无法连接到 CDP 端口 {cdp_port}，请检查店铺是否已正常打开"
                     ) from exc
 
-        contexts = browser.contexts
-        context = contexts[0] if contexts else await browser.new_context()
-        await self._apply_stealth_to_context(context)
-        pages = context.pages or [await context.new_page()]
+        await self._apply_stealth_to_browser(browser)
+        tabs = _filter_tabs(browser.tabs)
 
         store_name = result.get("browserName", store_id)
         launcher_page = result.get("launcherPage", "")
@@ -449,28 +478,28 @@ class SessionManager:
             store_name=store_name,
             cdp_port=cdp_port,
             browser=browser,
-            context=context,
-            pages=list(pages),
-            active_page_index=0,
+            tabs=tabs,
+            active_tab_index=0,
             launcher_page=launcher_page,
             open_result=result,
         )
 
-        for page in session.pages:
-            self._setup_page_listeners(session, page)
-
-        context.on("page", lambda page: self._setup_page_listeners(session, page))
+        for tab in session.tabs:
+            await self._setup_tab_listeners(session, tab)
 
         if launcher_page:
             try:
-                active_page = session.pages[0]
-                await active_page.goto(launcher_page, wait_until="domcontentloaded", timeout=30000)
-                _logger.info("已导航到店铺启动页: %s", launcher_page)
+                active_tab = session.tabs[0] if session.tabs else None
+                if active_tab:
+                    await active_tab.get(launcher_page)
+                    _logger.info("已导航到店铺启动页: %s", launcher_page)
             except Exception as exc:
                 _logger.warning("导航到启动页失败 (%s): %s", launcher_page, exc)
 
         self._stores[store_id] = session
         self._active_store_id = store_id
+
+        await self._sync_viewport_to_window(session)
 
         browser_oauth = result.get("browserOauth", store_id)
         self._save_store_state(store_id, store_name, cdp_port, browser_oauth)
@@ -488,33 +517,26 @@ class SessionManager:
         if info:
             cdp_port = info.get("cdp_port")
             if cdp_port and await _is_cdp_alive(cdp_port):
-                pw = await self._ensure_playwright()
                 try:
-                    browser = await pw.chromium.connect_over_cdp(
-                        f"http://127.0.0.1:{cdp_port}"
-                    )
-                    contexts = browser.contexts
-                    context = contexts[0] if contexts else await browser.new_context()
-                    await self._apply_stealth_to_context(context)
-                    pages = context.pages or [await context.new_page()]
+                    browser = await _connect_cdp(cdp_port)
+                    await self._apply_stealth_to_browser(browser)
+                    tabs = _filter_tabs(browser.tabs)
 
                     session = StoreSession(
                         store_id=store_id,
                         store_name=info.get("store_name", store_id),
                         cdp_port=cdp_port,
                         browser=browser,
-                        context=context,
-                        pages=list(pages),
-                        active_page_index=0,
+                        tabs=tabs,
+                        active_tab_index=0,
                         open_result=info,
                     )
-                    for page in session.pages:
-                        self._setup_page_listeners(session, page)
-
-                    context.on("page", lambda page: self._setup_page_listeners(session, page))
+                    for tab in session.tabs:
+                        await self._setup_tab_listeners(session, tab)
 
                     self._stores[store_id] = session
                     self._active_store_id = store_id
+                    await self._sync_viewport_to_window(session)
                     return session
                 except Exception as exc:  # pylint: disable=broad-exception-caught
                     _logger.warning("CDP 重连失败 (port=%s)，fallback 到 open_store: %s", cdp_port, exc)
@@ -528,7 +550,7 @@ class SessionManager:
         if not session:
             return
         try:
-            await session.browser.close()
+            session.browser.stop()
         except Exception:  # pylint: disable=broad-exception-caught
             pass
         browser_oauth = (
@@ -548,74 +570,93 @@ class SessionManager:
             )
         return self._stores[self._active_store_id]
 
-    def get_active_page(self) -> Page:
-        """返回当前店铺会话中的活动页面。"""
+    def get_active_tab(self) -> "Tab":
+        """返回当前店铺会话中的活动 Tab。"""
         session = self.get_active_session()
-        session.pages = list(session.context.pages)
-        if not session.pages:
+        session.tabs = _filter_tabs(session.browser.tabs)
+        if not session.tabs:
             raise RuntimeError("没有打开的页面")
-        if session.active_page_index >= len(session.pages):
-            session.active_page_index = 0
-        return session.pages[session.active_page_index]
+        if session.active_tab_index >= len(session.tabs):
+            session.active_tab_index = 0
+        return session.tabs[session.active_tab_index]
 
     def get_open_store_ids(self) -> list[str]:
         """返回当前已打开店铺的 ID 列表。"""
         return list(self._stores.keys())
 
-    def _setup_page_listeners(self, store: StoreSession, page: Page) -> None:
-        """为页面绑定 console/request/response/dialog 等监听并写入 store。"""
-        page_id = id(page)
-        if page_id in store._listened_page_ids:  # pylint: disable=protected-access
+    async def _setup_tab_listeners(self, store: StoreSession, tab: "Tab") -> None:
+        """为 tab 绑定 console/network/dialog 等事件监听。"""
+        if not _is_regular_tab(tab):
             return
-        store._listened_page_ids.add(page_id)  # pylint: disable=protected-access
+        from nodriver import cdp  # pylint: disable=import-outside-toplevel
 
-        def on_console(msg):
-            store._msg_counter += 1  # pylint: disable=protected-access
+        tab_id = id(tab)
+        if tab_id in store._listened_tab_ids:
+            return
+        store._listened_tab_ids.add(tab_id)
+
+        await tab.send(cdp.network.enable())
+        await tab.send(cdp.page.enable())
+        await tab.send(cdp.runtime.enable())
+
+        def on_console(event: cdp.runtime.ConsoleAPICalled):
+            store._msg_counter += 1
+            text_parts = []
+            for arg in event.args:
+                if arg.value is not None:
+                    text_parts.append(str(arg.value))
+                elif arg.description:
+                    text_parts.append(arg.description)
+                elif arg.unserializable_value:
+                    text_parts.append(arg.unserializable_value)
             store.console_messages.append(
                 ConsoleMessage(
-                    id=store._msg_counter,  # pylint: disable=protected-access
-                    level=msg.type,
-                    text=msg.text,
+                    id=store._msg_counter,
+                    level=event.type_,
+                    text=" ".join(text_parts),
                     timestamp=time.time(),
                 )
             )
 
-        def on_request(request):
-            store._req_counter += 1  # pylint: disable=protected-access
+        def on_request(event: cdp.network.RequestWillBeSent):
+            store._req_counter += 1
             store.network_requests.append(
                 NetworkRequest(
-                    id=store._req_counter,  # pylint: disable=protected-access
-                    url=request.url,
-                    method=request.method,
-                    resource_type=request.resource_type,
-                    request_headers=dict(request.headers),
+                    id=store._req_counter,
+                    url=event.request.url,
+                    method=event.request.method,
+                    resource_type=event.type_.value if event.type_ else "",
+                    request_headers=dict(event.request.headers) if event.request.headers else {},
                     timestamp=time.time(),
                 )
             )
 
-        def on_response(response):
+        def on_response(event: cdp.network.ResponseReceived):
             for req in reversed(store.network_requests):
-                if req.url == response.url and req.status is None:
-                    req.status = response.status
-                    req.status_text = response.status_text
-                    req.response_headers = dict(response.headers)
+                if req.url == event.response.url and req.status is None:
+                    req.status = event.response.status
+                    req.status_text = event.response.status_text
+                    req.response_headers = (
+                        dict(event.response.headers) if event.response.headers else {}
+                    )
                     break
 
-        async def on_dialog(dialog):
-            if store.dialog_action == "accept":
-                await dialog.accept(store.dialog_text or None)
-            else:
-                await dialog.dismiss()
+        async def on_dialog(event: cdp.page.JavascriptDialogOpening):
+            accept = store.dialog_action == "accept"
+            prompt_text = store.dialog_text if store.dialog_text else None
+            await tab.send(
+                cdp.page.handle_javascript_dialog(
+                    accept=accept,
+                    prompt_text=prompt_text,
+                )
+            )
 
-        page.on("console", on_console)
-        page.on("request", on_request)
-        page.on("response", on_response)
-        page.on("dialog", on_dialog)
+        tab.add_handler(cdp.runtime.ConsoleAPICalled, on_console)
+        tab.add_handler(cdp.network.RequestWillBeSent, on_request)
+        tab.add_handler(cdp.network.ResponseReceived, on_response)
+        tab.add_handler(cdp.page.JavascriptDialogOpening, on_dialog)
 
     async def cleanup(self) -> None:
-        """关闭所有店铺会话并停止 Playwright。"""
+        """关闭所有店铺会话。"""
         for store_id in list(self._stores):
             await self.close_store(store_id)
-        if self._playwright:
-            await self._playwright.stop()
-            self._playwright = None

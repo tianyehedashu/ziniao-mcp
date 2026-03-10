@@ -72,7 +72,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 ## 特性
 
 - **31 个 MCP 工具**：覆盖店铺管理、页面导航、输入自动化、网络监控、调试截图等场景
-- **3 个 AI 技能（Skills）**：浏览器自动化、店铺管理、亚马逊运营的领域知识指南
+- **4 个 AI 技能（Skills）**：浏览器自动化、店铺管理、亚马逊运营、店铺运营 RPA 脚本生成
 - **1 个专用 Agent**：紫鸟运营专家角色，具备跨境电商领域知识
 - **2 个快捷命令（Commands）**：一键检查店铺状态、批量截图
 - **跨会话状态持久化**：MCP 进程重启后可自动恢复已打开店铺的 CDP 连接
@@ -193,8 +193,13 @@ ziniao-mcp/
 │   │   └── SKILL.md
 │   ├── store-management/    # 多店铺管理技能
 │   │   └── SKILL.md
-│   └── amazon-operations/   # 亚马逊运营技能
-│       └── SKILL.md
+│   ├── amazon-operations/   # 亚马逊运营技能
+│   │   └── SKILL.md
+│   └── store-rpa-scripting/ # 店铺运营 RPA 脚本生成（探索→确认→生成脚本+过程文档）
+│       ├── SKILL.md
+│       ├── tools-reference.md
+│       ├── doc-template.md
+│       └── examples.md
 ├── agents/                  # 自定义 Agent 角色
 │   └── ziniao-operator.md   # 紫鸟运营专家
 ├── commands/                # 快捷命令
@@ -235,6 +240,7 @@ ziniao-mcp/
 | `ziniao-browser` | 浏览器自动化操作、页面交互、截图调试 |
 | `store-management` | 多店铺管理、会话恢复、批量操作 |
 | `amazon-operations` | 亚马逊 Listing 管理、订单处理、广告分析 |
+| `store-rpa-scripting` | RPA 脚本生成：用 MCP 工具探索页面 → 确认步骤 → 生成可独立运行的 Python 脚本（nodriver + ziniao_webdriver）及复现文档 |
 
 ### Agents（专用角色）
 
@@ -254,7 +260,7 @@ ziniao-mcp/
 | 组件 | 技术 |
 |------|------|
 | MCP 协议 | [mcp](https://pypi.org/project/mcp/) (FastMCP) |
-| 浏览器自动化 | [Playwright](https://playwright.dev/python/) (CDP) |
+| 浏览器自动化 | [nodriver](https://github.com/ultrafunkamsterdam/nodriver) (CDP) |
 | 客户端通信 | [requests](https://docs.python-requests.org/) (HTTP) |
 | CDP 探测 | [httpx](https://www.python-httpx.org/) (异步) |
 | 配置解析 | [PyYAML](https://pyyaml.org/) |
@@ -263,7 +269,7 @@ ziniao-mcp/
 ## CDP 调试端口说明
 
 - `open_store` 调用紫鸟的 `startBrowser` API，紫鸟自动为店铺浏览器实例开启 CDP 端口
-- MCP 服务器通过 Playwright 的 `connect_over_cdp()` 连接到该端口
+- MCP 服务器通过 nodriver 的 `Browser.create()` 连接到该端口
 - 所有浏览器自动化工具通过此连接操作店铺页面
 - 已打开店铺的 CDP 信息持久化在 `~/.ziniao/sessions.json`，支持跨进程恢复
 

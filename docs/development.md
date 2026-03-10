@@ -17,9 +17,6 @@ cd ziniao
 
 # 安装依赖
 uv sync
-
-# 安装 Playwright 浏览器驱动
-uv run playwright install chromium
 ```
 
 ### 验证安装
@@ -78,10 +75,13 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
         """双击页面元素。
 
         Args:
-            selector: CSS 选择器、XPath 或 Playwright 选择器
+            selector: CSS 选择器
         """
-        page = session.get_active_page()
-        await page.locator(selector).dblclick()
+        tab = session.get_active_tab()
+        elem = await tab.select(selector, timeout=10)
+        if elem:
+            await elem.click()
+            await elem.click()
         return f"已双击: {selector}"
 ```
 
@@ -111,9 +111,10 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
         Args:
             url: 可选，按 URL 过滤
         """
-        store = session.get_active_session()
-        cookies = await store.context.cookies(url or None)
-        return json.dumps(cookies, ensure_ascii=False, indent=2)
+        from nodriver import cdp
+        tab = session.get_active_tab()
+        cookies = await tab.send(cdp.storage.get_cookies())
+        return json.dumps([c.to_json() for c in cookies], ensure_ascii=False, indent=2)
 ```
 
 然后在 `server.py` 中注册：
@@ -172,7 +173,7 @@ rm ~/.ziniao/sessions.json                      # Unix
 | 依赖 | 用途 | 引用位置 |
 |------|------|----------|
 | `mcp` | MCP 协议实现与 FastMCP 框架 | `server.py` |
-| `playwright` | 通过 CDP 连接并操作浏览器 | `session.py` |
+| `nodriver` | 通过 CDP 连接并操作浏览器（反自动化检测优化） | `session.py` |
 | `requests` | 与紫鸟客户端 HTTP 通信 | `client.py` |
 | `httpx` | 异步检查 CDP 端口连通性 | `session.py` |
 | `PyYAML` | 解析 config.yaml | `server.py` |

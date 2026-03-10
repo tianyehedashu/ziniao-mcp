@@ -1,6 +1,5 @@
 """调试工具 (5 tools)"""
 
-import base64
 import json
 
 from mcp.server.fastmcp import FastMCP
@@ -17,8 +16,8 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
         Args:
             script: 要执行的 JavaScript 代码（如 "document.title"、"window.location.href"）
         """
-        page = session.get_active_page()
-        result = await page.evaluate(script)
+        tab = session.get_active_tab()
+        result = await tab.evaluate(script, return_by_value=True)
         return json.dumps(result, ensure_ascii=False, default=str)
 
     @mcp.tool()
@@ -29,19 +28,42 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
             selector: 可选，元素选择器。为空则截取整个可视区域
             full_page: 是否截取完整页面（包括滚动区域），仅在无 selector 时生效
         """
-        page = session.get_active_page()
+        from nodriver import cdp  # pylint: disable=import-outside-toplevel
+
+        tab = session.get_active_tab()
         if selector:
-            screenshot = await page.locator(selector).screenshot()
+            elem = await tab.select(selector, timeout=10)
+            if not elem:
+                raise RuntimeError(f"未找到元素: {selector}")
+            pos = await elem.get_position()
+            if not pos:
+                raise RuntimeError(f"无法获取元素位置: {selector}")
+            clip = cdp.page.Viewport(
+                x=pos.x,
+                y=pos.y,
+                width=pos.width,
+                height=pos.height,
+                scale=1,
+            )
+            data = await tab.send(
+                cdp.page.capture_screenshot(format_="png", clip=clip)
+            )
         else:
-            screenshot = await page.screenshot(full_page=full_page)
-        b64 = base64.b64encode(screenshot).decode()
-        return f"data:image/png;base64,{b64}"
+            data = await tab.send(
+                cdp.page.capture_screenshot(
+                    format_="png",
+                    capture_beyond_viewport=full_page,
+                )
+            )
+        if not data:
+            raise RuntimeError("截图失败，页面可能尚未加载完成")
+        return f"data:image/png;base64,{data}"
 
     @mcp.tool()
     async def take_snapshot() -> str:
         """获取当前页面的完整 HTML 快照。"""
-        page = session.get_active_page()
-        return await page.content()
+        tab = session.get_active_tab()
+        return await tab.get_content()
 
     @mcp.tool()
     async def list_console_messages(level: str = "", limit: int = 50) -> str:

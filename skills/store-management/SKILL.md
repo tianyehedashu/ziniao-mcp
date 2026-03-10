@@ -77,7 +77,7 @@ connect_store("target_store_id")  → 目标店铺成为活动店铺
 `connect_store` 的恢复流程：
 1. 读取状态文件获取 CDP 端口
 2. 通过 HTTP GET `/json/version` 验证端口连通性
-3. 端口存活 → Playwright `connect_over_cdp()` 恢复连接
+3. 端口存活 → nodriver `Browser.create()` 恢复 CDP 连接
 4. 端口失效 → 清理状态记录 → fallback 到 `open_store` 重新打开
 
 ## 常见问题

@@ -1,6 +1,6 @@
 """人类行为模拟工具函数。
 
-为 Playwright 页面操作注入拟人化的随机性：延迟、鼠标轨迹、输入节奏等，
+为 nodriver Tab 操作注入拟人化的随机性：延迟、鼠标轨迹、输入节奏等，
 降低被行为分析系统检测为自动化程序的概率。
 """
 
@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from playwright.async_api import Page  # type: ignore[reportMissingImports]
+    from nodriver import Tab
 
 
 @dataclass
@@ -85,41 +85,71 @@ def _bezier_curve(
 
 
 async def _move_mouse_humanlike(
-    page: "Page",
+    tab: "Tab",
     target_x: float,
     target_y: float,
     *,
     cfg: BehaviorConfig | None = None,
 ) -> None:
     """沿贝塞尔曲线将鼠标从当前位置移动到目标坐标。"""
+    from nodriver import cdp  # pylint: disable=import-outside-toplevel
+
     c = cfg or _DEFAULT_CFG
-    current = await page.evaluate(
-        "() => ({x: window._lastMouseX || 0, y: window._lastMouseY || 0})"
+    current = await tab.evaluate(
+        "(() => ({x: window._lastMouseX || 0, y: window._lastMouseY || 0}))",
+        return_by_value=True,
     )
-    start = (current["x"], current["y"])
+    if isinstance(current, dict):
+        start = (current.get("x", 0), current.get("y", 0))
+    else:
+        start = (0, 0)
+
     end = (target_x, target_y)
     points = _bezier_curve(start, end, c.mouse_steps)
 
     for px, py in points:
-        await page.mouse.move(px, py)
+        await tab.send(
+            cdp.input_.dispatch_mouse_event("mouseMoved", x=px, y=py)
+        )
         await asyncio.sleep(random.uniform(0.005, 0.02))
 
-    await page.evaluate(
-        f"() => {{ window._lastMouseX = {target_x}; window._lastMouseY = {target_y}; }}"
+    await tab.evaluate(
+        f"(() => {{ window._lastMouseX = {target_x}; window._lastMouseY = {target_y}; }})"
     )
 
 
+async def _get_element_box(tab: "Tab", selector: str) -> dict | None:
+    """获取元素的边界框信息。返回 {x, y, width, height} 或 None。"""
+    elem = await tab.select(selector, timeout=5)
+    if not elem:
+        return None
+    try:
+        pos = await elem.get_position()
+        if pos is None:
+            return None
+        return {
+            "x": pos.left,
+            "y": pos.top,
+            "width": pos.width,
+            "height": pos.height,
+        }
+    except Exception:
+        return None
+
+
 async def human_click(
-    page: "Page",
+    tab: "Tab",
     selector: str,
     *,
     cfg: BehaviorConfig | None = None,
 ) -> None:
     """拟人化点击：鼠标轨迹移动 -> 随机偏移 -> 点击。"""
     c = cfg or _DEFAULT_CFG
-    box = await page.locator(selector).bounding_box()
+    box = await _get_element_box(tab, selector)
     if not box:
-        await page.locator(selector).click()
+        elem = await tab.select(selector, timeout=5)
+        if elem:
+            await elem.click()
         return
 
     offset_x = random.uniform(box["width"] * 0.2, box["width"] * 0.8)
@@ -128,25 +158,27 @@ async def human_click(
     target_y = box["y"] + offset_y
 
     if c.mouse_movement:
-        await _move_mouse_humanlike(page, target_x, target_y, cfg=c)
-    await page.mouse.click(target_x, target_y)
+        await _move_mouse_humanlike(tab, target_x, target_y, cfg=c)
+    await tab.mouse_click(target_x, target_y)
 
 
 async def human_type(
-    page: "Page",
+    tab: "Tab",
     text: str,
     selector: str = "",
     *,
     cfg: BehaviorConfig | None = None,
 ) -> None:
     """拟人化逐字输入：每个字符间隔随机波动，偶尔较长停顿模拟思考。"""
+    from nodriver import cdp  # pylint: disable=import-outside-toplevel
+
     c = cfg or _DEFAULT_CFG
     if selector:
-        await human_click(page, selector, cfg=c)
+        await human_click(tab, selector, cfg=c)
         await random_delay(100, 300, cfg=c)
 
     for i, char in enumerate(text):
-        await page.keyboard.type(char, delay=0)
+        await tab.send(cdp.input_.dispatch_key_event("char", text=char))
         base_delay = random.uniform(c.typing_min_ms, c.typing_max_ms)
         if i > 0 and random.random() < 0.05:
             base_delay += random.uniform(300, 800)
@@ -154,60 +186,84 @@ async def human_type(
 
 
 async def human_fill(
-    page: "Page",
+    tab: "Tab",
     selector: str,
     value: str,
     *,
     cfg: BehaviorConfig | None = None,
 ) -> None:
     """拟人化填写：点击聚焦 -> 全选清除 -> 逐字输入。"""
+    from nodriver import cdp  # pylint: disable=import-outside-toplevel
+
     c = cfg or _DEFAULT_CFG
-    await human_click(page, selector, cfg=c)
+    await human_click(tab, selector, cfg=c)
     await random_delay(100, 300, cfg=c)
-    await page.keyboard.press("Control+a")
+    await tab.send(cdp.input_.dispatch_key_event(
+        "rawKeyDown", windows_virtual_key_code=65, modifiers=2  # Ctrl+A
+    ))
+    await tab.send(cdp.input_.dispatch_key_event("keyUp", windows_virtual_key_code=65, modifiers=2))
     await asyncio.sleep(random.uniform(0.05, 0.15))
-    await page.keyboard.press("Backspace")
+    await tab.send(cdp.input_.dispatch_key_event(
+        "rawKeyDown", windows_virtual_key_code=8  # Backspace
+    ))
+    await tab.send(cdp.input_.dispatch_key_event("keyUp", windows_virtual_key_code=8))
     await asyncio.sleep(random.uniform(0.1, 0.25))
-    await human_type(page, value, cfg=c)
+    await human_type(tab, value, cfg=c)
 
 
 async def human_hover(
-    page: "Page",
+    tab: "Tab",
     selector: str,
     *,
     cfg: BehaviorConfig | None = None,
 ) -> None:
     """拟人化悬停：贝塞尔曲线移动鼠标到元素上。"""
+    from nodriver import cdp  # pylint: disable=import-outside-toplevel
+
     c = cfg or _DEFAULT_CFG
-    box = await page.locator(selector).bounding_box()
+    box = await _get_element_box(tab, selector)
     if not box:
-        await page.locator(selector).hover()
+        elem = await tab.select(selector, timeout=5)
+        if elem:
+            await elem.mouse_move()
         return
 
     target_x = box["x"] + random.uniform(box["width"] * 0.3, box["width"] * 0.7)
     target_y = box["y"] + random.uniform(box["height"] * 0.3, box["height"] * 0.7)
 
     if c.mouse_movement:
-        await _move_mouse_humanlike(page, target_x, target_y, cfg=c)
+        await _move_mouse_humanlike(tab, target_x, target_y, cfg=c)
     else:
-        await page.mouse.move(target_x, target_y)
+        await tab.send(
+            cdp.input_.dispatch_mouse_event("mouseMoved", x=target_x, y=target_y)
+        )
 
 
 async def human_scroll(
-    page: "Page",
+    tab: "Tab",
     direction: str = "down",
     distance: int = 500,
     *,
     cfg: BehaviorConfig | None = None,
 ) -> None:
     """拟人化滚动：分多段小幅滚动，每段距离和间隔随机化。"""
+    from nodriver import cdp  # pylint: disable=import-outside-toplevel
+
     c = cfg or _DEFAULT_CFG
     remaining = abs(distance)
     sign = -1 if direction == "up" else 1
 
     while remaining > 0:
         chunk = min(remaining, random.randint(40, 120))
-        await page.mouse.wheel(0, sign * chunk)
+        await tab.send(
+            cdp.input_.dispatch_mouse_event(
+                "mouseWheel",
+                x=0,
+                y=0,
+                delta_x=0,
+                delta_y=sign * chunk,
+            )
+        )
         remaining -= chunk
         await asyncio.sleep(random.uniform(0.02, 0.08))
 

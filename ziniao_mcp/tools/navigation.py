@@ -1,10 +1,11 @@
 """导航自动化工具 (6 tools)"""
 
+import asyncio
 import json
 
 from mcp.server.fastmcp import FastMCP
 
-from ..session import SessionManager
+from ..session import SessionManager, _filter_tabs
 
 
 def register_tools(mcp: FastMCP, session: SessionManager) -> None:
@@ -16,28 +17,32 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
         Args:
             url: 目标 URL（如 "https://www.amazon.com"）
         """
-        page = session.get_active_page()
-        response = await page.goto(url, wait_until="domcontentloaded")
-        status = response.status if response else "unknown"
-        title = await page.title()
+        from nodriver import cdp  # pylint: disable=import-outside-toplevel
+
+        tab = session.get_active_tab()
+        frame_id, loader_id, *_ = await tab.send(cdp.page.navigate(url=url))
+        await tab  # wait for events
+        await tab.sleep(0.5)
+        await tab  # refresh target info
+        title = tab.target.title or ""
         return json.dumps({
-            "url": page.url,
+            "url": tab.target.url,
             "title": title,
-            "status": status,
+            "status": "ok",
         }, ensure_ascii=False)
 
     @mcp.tool()
     async def list_pages() -> str:
         """列出当前店铺浏览器的所有标签页。"""
         store = session.get_active_session()
-        store.pages = list(store.context.pages)
+        store.tabs = _filter_tabs(store.browser.tabs)
         result = []
-        for i, page in enumerate(store.pages):
+        for i, tab in enumerate(store.tabs):
             result.append({
                 "index": i,
-                "url": page.url,
-                "title": await page.title(),
-                "is_active": i == store.active_page_index,
+                "url": tab.target.url,
+                "title": tab.target.title or "",
+                "is_active": i == store.active_tab_index,
             })
         return json.dumps(result, ensure_ascii=False, indent=2)
 
@@ -49,17 +54,17 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
             page_index: 标签页索引（从 0 开始，通过 list_pages 查看）
         """
         store = session.get_active_session()
-        store.pages = list(store.context.pages)
-        if page_index < 0 or page_index >= len(store.pages):
-            return f"无效索引 {page_index}，当前共 {len(store.pages)} 个标签页"
-        store.active_page_index = page_index
-        page = store.pages[page_index]
-        await page.bring_to_front()
-        session._setup_page_listeners(store, page)
+        store.tabs = _filter_tabs(store.browser.tabs)
+        if page_index < 0 or page_index >= len(store.tabs):
+            return f"无效索引 {page_index}，当前共 {len(store.tabs)} 个标签页"
+        store.active_tab_index = page_index
+        tab = store.tabs[page_index]
+        await tab.bring_to_front()
+        await session._setup_tab_listeners(store, tab)
         return json.dumps({
             "index": page_index,
-            "url": page.url,
-            "title": await page.title(),
+            "url": tab.target.url,
+            "title": tab.target.title or "",
         }, ensure_ascii=False)
 
     @mcp.tool()
@@ -70,16 +75,15 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
             url: 可选，新标签页要打开的 URL
         """
         store = session.get_active_session()
-        page = await store.context.new_page()
-        store.pages = list(store.context.pages)
-        store.active_page_index = len(store.pages) - 1
-        session._setup_page_listeners(store, page)
-        if url:
-            await page.goto(url, wait_until="domcontentloaded")
+        target_url = url or "about:blank"
+        new_tab = await store.browser.get(target_url, new_tab=True)
+        store.tabs = _filter_tabs(store.browser.tabs)
+        store.active_tab_index = len(store.tabs) - 1
+        await session._setup_tab_listeners(store, new_tab)
         return json.dumps({
-            "index": store.active_page_index,
-            "url": page.url,
-            "total_pages": len(store.pages),
+            "index": store.active_tab_index,
+            "url": new_tab.target.url,
+            "total_pages": len(store.tabs),
         }, ensure_ascii=False)
 
     @mcp.tool()
@@ -90,18 +94,19 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
             page_index: 要关闭的标签页索引，-1 表示关闭当前活动页
         """
         store = session.get_active_session()
-        store.pages = list(store.context.pages)
-        idx = store.active_page_index if page_index == -1 else page_index
-        if idx < 0 or idx >= len(store.pages):
+        store.tabs = _filter_tabs(store.browser.tabs)
+        idx = store.active_tab_index if page_index == -1 else page_index
+        if idx < 0 or idx >= len(store.tabs):
             return f"无效索引 {idx}"
-        url = store.pages[idx].url
-        await store.pages[idx].close()
-        store.pages = list(store.context.pages)
-        if store.active_page_index >= len(store.pages):
-            store.active_page_index = max(0, len(store.pages) - 1)
+        url = store.tabs[idx].target.url
+        await store.tabs[idx].close()
+        await asyncio.sleep(0.3)
+        store.tabs = _filter_tabs(store.browser.tabs)
+        if store.active_tab_index >= len(store.tabs):
+            store.active_tab_index = max(0, len(store.tabs) - 1)
         return json.dumps({
             "closed_url": url,
-            "remaining_pages": len(store.pages),
+            "remaining_pages": len(store.tabs),
         }, ensure_ascii=False)
 
     @mcp.tool()
@@ -117,9 +122,25 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
             state: 等待状态：visible、hidden、attached、detached
             timeout: 超时毫秒数，默认 30000
         """
-        page = session.get_active_page()
+        tab = session.get_active_tab()
+        timeout_sec = timeout / 1000
         if selector:
-            await page.locator(selector).wait_for(state=state, timeout=timeout)
-            return f"元素 {selector} 已达到状态: {state}"
-        await page.wait_for_load_state("networkidle", timeout=timeout)
+            if state in ("visible", "attached"):
+                elem = await tab.select(selector, timeout=timeout_sec)
+                if elem:
+                    return f"元素 {selector} 已达到状态: {state}"
+                raise RuntimeError(f"等待元素 {selector} 超时")
+            elif state in ("hidden", "detached"):
+                deadline = asyncio.get_event_loop().time() + timeout_sec
+                while asyncio.get_event_loop().time() < deadline:
+                    try:
+                        elem = await tab.select(selector, timeout=0.5)
+                        if not elem:
+                            return f"元素 {selector} 已达到状态: {state}"
+                    except Exception:
+                        return f"元素 {selector} 已达到状态: {state}"
+                    await asyncio.sleep(0.5)
+                raise RuntimeError(f"等待元素 {selector} 消失超时")
+        await tab.sleep(min(timeout_sec, 5))
+        await tab
         return "页面已加载完成"

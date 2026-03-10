@@ -1,18 +1,11 @@
 """JavaScript 环境伪装脚本集合。
 
-通过 page.add_init_script() 或 context.add_init_script() 在页面加载前注入，
-覆盖 CDP/Playwright 暴露的自动化痕迹。
-"""
+通过 CDP Page.addScriptToEvaluateOnNewDocument 在页面加载前注入，
+覆盖可能暴露的自动化痕迹。
 
-PATCH_NAVIGATOR_WEBDRIVER = """
-(() => {
-    try {
-        Object.defineProperty(navigator, 'webdriver', {
-            get: () => undefined,
-            configurable: false,
-        });
-    } catch(e) {}
-})();
+nodriver 原生不产生 __playwright*/__pw_* 全局变量，也不设置 navigator.webdriver，
+因此相比 Playwright 时代精简了 PATCH_NAVIGATOR_WEBDRIVER、PATCH_PLAYWRIGHT_GLOBALS
+和 PATCH_CONSOLE_DEBUG_TRAP 三个补丁。
 """
 
 PATCH_NAVIGATOR_PLUGINS = """
@@ -147,37 +140,6 @@ PATCH_WINDOW_CHROME = """
 })();
 """
 
-PATCH_PLAYWRIGHT_GLOBALS = """
-(() => {
-    for (const key of Object.getOwnPropertyNames(window)) {
-        if (key.startsWith('__playwright') || key.startsWith('__pw_')) {
-            try {
-                const val = window[key];
-                Object.defineProperty(window, key, {
-                    value: val,
-                    enumerable: false,
-                    configurable: true,
-                    writable: true,
-                });
-            } catch(e) {}
-        }
-    }
-})();
-"""
-
-PATCH_CONSOLE_DEBUG_TRAP = """
-(() => {
-    const _origDebug = console.debug;
-    console.debug = function(...args) {
-        if (args.length === 1 && typeof args[0] === 'string' &&
-            (args[0].includes('CDP') || args[0].includes('DevTools'))) {
-            return;
-        }
-        return _origDebug.apply(console, args);
-    };
-})();
-"""
-
 PATCH_IFRAME_WEBDRIVER = """
 (() => {
     function patchIframe(iframe) {
@@ -276,12 +238,9 @@ PATCH_AUTOMATION_FLAGS = """
 
 def build_stealth_js(
     *,
-    webdriver: bool = True,
     plugins: bool = True,
     permissions: bool = True,
     chrome_obj: bool = True,
-    playwright_globals: bool = True,
-    console_debug: bool = True,
     iframe_webdriver: bool = True,
     webgl_vendor: bool = False,
     automation_flags: bool = True,
@@ -289,20 +248,16 @@ def build_stealth_js(
     """按需拼接反检测 JS 脚本。
 
     webgl_vendor 默认关闭，因为紫鸟浏览器通常自行处理 WebGL 指纹。
+    nodriver 原生不产生 Playwright 特有的痕迹，因此移除了 webdriver/playwright_globals/
+    console_debug 三个补丁。
     """
     parts: list[str] = []
-    if webdriver:
-        parts.append(PATCH_NAVIGATOR_WEBDRIVER)
     if plugins:
         parts.append(PATCH_NAVIGATOR_PLUGINS)
     if permissions:
         parts.append(PATCH_NAVIGATOR_PERMISSIONS)
     if chrome_obj:
         parts.append(PATCH_WINDOW_CHROME)
-    if playwright_globals:
-        parts.append(PATCH_PLAYWRIGHT_GLOBALS)
-    if console_debug:
-        parts.append(PATCH_CONSOLE_DEBUG_TRAP)
     if iframe_webdriver:
         parts.append(PATCH_IFRAME_WEBDRIVER)
     if webgl_vendor:
@@ -316,7 +271,6 @@ STEALTH_JS = build_stealth_js()
 
 STEALTH_JS_MINIMAL = build_stealth_js(
     plugins=False,
-    console_debug=False,
     iframe_webdriver=False,
     automation_flags=False,
 )

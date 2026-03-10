@@ -6,7 +6,7 @@
 
 help:
 	@echo "常用任务："
-	@echo "  make install         - 安装依赖并安装 Playwright 浏览器"
+	@echo "  make install         - 安装依赖"
 	@echo "  make run             - 启动 MCP 服务器 (ziniao-mcp)"
 	@echo "  make test            - 运行单元/常规测试（不含集成）"
 	@echo "  make test-all        - 运行全部测试（含集成，需 .env）"
@@ -17,7 +17,6 @@ help:
 
 install:
 	uv sync
-	uv run playwright install chromium
 
 run:
 	uv run ziniao-mcp

@@ -1,12 +1,12 @@
 {
   "name": "ziniao-browser",
-  "version": "0.1.0",
+  "version": "0.1.19",
   "description": "紫鸟浏览器 AI 自动化工具集 — 跨境电商多店铺浏览器管理、自动化操作与调试",
   "author": {
     "name": "ziniao"
   },
   "homepage": "https://open.ziniao.com",
   "repository": "https://github.com/tianyehedashu/ziniao-mcp",
-  "license": "MIT",
+  "license": "AGPL-3.0",
   "keywords": ["ziniao", "browser", "e-commerce", "automation", "cdp", "cross-border"]
 }

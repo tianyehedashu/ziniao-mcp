@@ -14,6 +14,7 @@ def mock_client():
     c.user_info = {"company": "c", "username": "u", "password": "p"}
     c.socket_port = 16851
     c.heartbeat = MagicMock(return_value=True)
+    c.is_process_running = MagicMock(return_value=False)
     c.kill_process = MagicMock(return_value=True)
     c.start_browser = MagicMock()
     c.update_core = MagicMock(return_value=True)
