@@ -2,6 +2,16 @@
 
 本文件记录 ziniao-browser 的版本变更，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 格式。
 
+## [0.1.20] - 2026-03-10
+
+### 文档
+
+- **stealth.md**：反检测模块说明与配置参考
+
+### 测试
+
+- 新增 `tests/test_stealth.py`，覆盖 stealth 相关行为
+
 ## [0.1.18] - 2026-03-05
 
 ### 修复

@@ -4,8 +4,58 @@
 覆盖可能暴露的自动化痕迹。
 
 nodriver 原生不产生 __playwright*/__pw_* 全局变量，也不设置 navigator.webdriver，
-因此相比 Playwright 时代精简了 PATCH_NAVIGATOR_WEBDRIVER、PATCH_PLAYWRIGHT_GLOBALS
-和 PATCH_CONSOLE_DEBUG_TRAP 三个补丁。
+因此相比 Playwright 时代精简了 PATCH_PLAYWRIGHT_GLOBALS 和 PATCH_CONSOLE_DEBUG_TRAP
+两个补丁。但仍主动覆盖 navigator.webdriver 作为安全兜底。
+
+补丁注入顺序：
+- PATCH_NATIVE_TOSTRING 必须最先注入，为后续所有被覆盖函数建立 toString 保护
+- PATCH_STEALTH_CLEANUP 必须最后注入，清除临时辅助属性
+"""
+
+# ---------------------------------------------------------------------------
+# 基础设施 — 必须第一个注入
+# ---------------------------------------------------------------------------
+
+PATCH_NATIVE_TOSTRING = """
+(() => {
+    const _origToString = Function.prototype.toString;
+    const _overrides = new WeakMap();
+
+    Function.prototype.toString = function() {
+        if (_overrides.has(this)) return _overrides.get(this);
+        return _origToString.call(this);
+    };
+
+    _overrides.set(
+        Function.prototype.toString,
+        'function toString() { [native code] }'
+    );
+
+    Object.defineProperty(window, '__stealth_native', {
+        value: function(fn, name) {
+            _overrides.set(
+                fn,
+                'function ' + (name || fn.name || '') + '() { [native code] }'
+            );
+        },
+        configurable: true,
+        writable: false,
+        enumerable: false,
+    });
+})();
+"""
+
+# ---------------------------------------------------------------------------
+# Navigator 系列
+# ---------------------------------------------------------------------------
+
+PATCH_NAVIGATOR_WEBDRIVER = """
+(() => {
+    Object.defineProperty(navigator, 'webdriver', {
+        get: () => false,
+        configurable: true,
+    });
+})();
 """
 
 PATCH_NAVIGATOR_PLUGINS = """
@@ -92,12 +142,39 @@ PATCH_NAVIGATOR_PERMISSIONS = """
         }
         return originalQuery(desc);
     };
+    if (window.__stealth_native) {
+        window.__stealth_native(navigator.permissions.query, 'query');
+    }
 })();
 """
+
+# ---------------------------------------------------------------------------
+# window.chrome 补全（含 chrome.app）
+# ---------------------------------------------------------------------------
 
 PATCH_WINDOW_CHROME = """
 (() => {
     if (!window.chrome) window.chrome = {};
+
+    if (!window.chrome.app) {
+        window.chrome.app = {
+            InstallState: {
+                DISABLED: 'disabled',
+                INSTALLED: 'installed',
+                NOT_INSTALLED: 'not_installed',
+            },
+            RunningState: {
+                CANNOT_RUN: 'cannot_run',
+                READY_TO_RUN: 'ready_to_run',
+                RUNNING: 'running',
+            },
+            getDetails: function() { return null; },
+            getIsInstalled: function() { return false; },
+            installState: function(cb) { if (cb) cb('not_installed'); },
+            isInstalled: false,
+        };
+    }
+
     if (!window.chrome.runtime) {
         window.chrome.runtime = {
             connect: function() { return { onMessage: { addListener: function() {} },
@@ -137,8 +214,22 @@ PATCH_WINDOW_CHROME = """
             };
         };
     }
+
+    if (window.__stealth_native) {
+        window.__stealth_native(window.chrome.loadTimes, 'loadTimes');
+        window.__stealth_native(window.chrome.csi, 'csi');
+        if (window.chrome.app) {
+            window.__stealth_native(window.chrome.app.getDetails, 'getDetails');
+            window.__stealth_native(window.chrome.app.getIsInstalled, 'getIsInstalled');
+            window.__stealth_native(window.chrome.app.installState, 'installState');
+        }
+    }
 })();
 """
+
+# ---------------------------------------------------------------------------
+# iframe webdriver 修补
+# ---------------------------------------------------------------------------
 
 PATCH_IFRAME_WEBDRIVER = """
 (() => {
@@ -183,6 +274,10 @@ PATCH_IFRAME_WEBDRIVER = """
 })();
 """
 
+# ---------------------------------------------------------------------------
+# WebGL 指纹伪造
+# ---------------------------------------------------------------------------
+
 PATCH_WEBGL_VENDOR = """
 (() => {
     const getParameterProto = WebGLRenderingContext.prototype.getParameter;
@@ -204,8 +299,141 @@ PATCH_WEBGL_VENDOR = """
             return getParameterProto2.call(this, param);
         };
     }
+
+    if (window.__stealth_native) {
+        window.__stealth_native(
+            WebGLRenderingContext.prototype.getParameter, 'getParameter'
+        );
+        if (typeof WebGL2RenderingContext !== 'undefined') {
+            window.__stealth_native(
+                WebGL2RenderingContext.prototype.getParameter, 'getParameter'
+            );
+        }
+    }
 })();
 """
+
+# ---------------------------------------------------------------------------
+# Canvas 指纹噪声 — 对 toDataURL / toBlob 输出注入微量像素扰动
+# ---------------------------------------------------------------------------
+
+PATCH_CANVAS_FINGERPRINT = """
+(() => {
+    const origToDataURL = HTMLCanvasElement.prototype.toDataURL;
+    const origToBlob = HTMLCanvasElement.prototype.toBlob;
+    const origGetImageData = CanvasRenderingContext2D.prototype.getImageData;
+
+    const seed = Math.floor(Math.random() * 256);
+
+    function addNoise(data) {
+        for (let i = 0; i < data.length; i += 4) {
+            const idx = i / 4;
+            if (((idx * 13 + seed) & 0xFF) < 5) {
+                const ch = ((idx * 7 + seed) & 0xFF) % 3;
+                const delta = (((idx * 11 + seed) & 0xFF) % 2) === 0 ? 1 : -1;
+                data[i + ch] = Math.max(0, Math.min(255, data[i + ch] + delta));
+            }
+        }
+    }
+
+    HTMLCanvasElement.prototype.toDataURL = function(...args) {
+        try {
+            const ctx = this.getContext('2d');
+            if (ctx && this.width > 0 && this.height > 0) {
+                const imgData = origGetImageData.call(ctx, 0, 0, this.width, this.height);
+                addNoise(imgData.data);
+                const tmp = document.createElement('canvas');
+                tmp.width = this.width; tmp.height = this.height;
+                tmp.getContext('2d').putImageData(imgData, 0, 0);
+                return origToDataURL.apply(tmp, args);
+            }
+        } catch(e) {}
+        return origToDataURL.apply(this, args);
+    };
+
+    HTMLCanvasElement.prototype.toBlob = function(cb, ...rest) {
+        try {
+            const ctx = this.getContext('2d');
+            if (ctx && this.width > 0 && this.height > 0) {
+                const imgData = origGetImageData.call(ctx, 0, 0, this.width, this.height);
+                addNoise(imgData.data);
+                const tmp = document.createElement('canvas');
+                tmp.width = this.width; tmp.height = this.height;
+                tmp.getContext('2d').putImageData(imgData, 0, 0);
+                return origToBlob.call(tmp, cb, ...rest);
+            }
+        } catch(e) {}
+        return origToBlob.call(this, cb, ...rest);
+    };
+
+    if (window.__stealth_native) {
+        window.__stealth_native(HTMLCanvasElement.prototype.toDataURL, 'toDataURL');
+        window.__stealth_native(HTMLCanvasElement.prototype.toBlob, 'toBlob');
+    }
+})();
+"""
+
+# ---------------------------------------------------------------------------
+# AudioContext 指纹噪声 — 对 getChannelData 注入微量扰动
+# ---------------------------------------------------------------------------
+
+PATCH_AUDIO_FINGERPRINT = """
+(() => {
+    if (typeof AudioBuffer === 'undefined') return;
+
+    const origGetChannelData = AudioBuffer.prototype.getChannelData;
+    const seed = Math.floor(Math.random() * 10000);
+
+    AudioBuffer.prototype.getChannelData = function(channel) {
+        const buf = origGetChannelData.call(this, channel);
+        for (let i = 0; i < buf.length; i += 100) {
+            buf[i] += ((i * 7 + seed + channel) % 10 - 5) * 0.0000001;
+        }
+        return buf;
+    };
+
+    if (window.__stealth_native) {
+        window.__stealth_native(AudioBuffer.prototype.getChannelData, 'getChannelData');
+    }
+})();
+"""
+
+# ---------------------------------------------------------------------------
+# WebRTC IP 泄露防护 — 强制 relay-only ICE 策略
+# ---------------------------------------------------------------------------
+
+PATCH_WEBRTC_LEAK = """
+(() => {
+    const OrigRTC = window.RTCPeerConnection || window.webkitRTCPeerConnection;
+    if (!OrigRTC) return;
+
+    const handler = {
+        construct(target, args) {
+            const config = Object.assign({}, args[0] || {});
+            config.iceTransportPolicy = 'relay';
+            if (!config.iceServers) config.iceServers = [];
+            args[0] = config;
+            return Reflect.construct(target, args);
+        },
+    };
+
+    const PatchedRTC = new Proxy(OrigRTC, handler);
+
+    if (window.RTCPeerConnection) {
+        window.RTCPeerConnection = PatchedRTC;
+        if (window.__stealth_native) {
+            window.__stealth_native(PatchedRTC, 'RTCPeerConnection');
+        }
+    }
+    if (window.webkitRTCPeerConnection) {
+        window.webkitRTCPeerConnection = PatchedRTC;
+    }
+})();
+"""
+
+# ---------------------------------------------------------------------------
+# 自动化标志修正
+# ---------------------------------------------------------------------------
 
 PATCH_AUTOMATION_FLAGS = """
 (() => {
@@ -235,23 +463,51 @@ PATCH_AUTOMATION_FLAGS = """
 })();
 """
 
+# ---------------------------------------------------------------------------
+# 清理 — 必须最后一个注入
+# ---------------------------------------------------------------------------
+
+PATCH_STEALTH_CLEANUP = """
+(() => {
+    try { delete window.__stealth_native; } catch(e) {
+        Object.defineProperty(window, '__stealth_native', {
+            value: undefined, configurable: true, writable: true,
+        });
+    }
+})();
+"""
+
+
+# ---------------------------------------------------------------------------
+# 构建函数
+# ---------------------------------------------------------------------------
 
 def build_stealth_js(
     *,
+    native_tostring: bool = True,
+    webdriver: bool = True,
     plugins: bool = True,
     permissions: bool = True,
     chrome_obj: bool = True,
     iframe_webdriver: bool = True,
     webgl_vendor: bool = False,
+    canvas_fingerprint: bool = True,
+    audio_fingerprint: bool = True,
+    webrtc_leak: bool = True,
     automation_flags: bool = True,
 ) -> str:
     """按需拼接反检测 JS 脚本。
 
+    注入顺序有约束：native_tostring 必须在最前，cleanup 在最后。
     webgl_vendor 默认关闭，因为紫鸟浏览器通常自行处理 WebGL 指纹。
-    nodriver 原生不产生 Playwright 特有的痕迹，因此移除了 webdriver/playwright_globals/
-    console_debug 三个补丁。
     """
     parts: list[str] = []
+
+    if native_tostring:
+        parts.append(PATCH_NATIVE_TOSTRING)
+
+    if webdriver:
+        parts.append(PATCH_NAVIGATOR_WEBDRIVER)
     if plugins:
         parts.append(PATCH_NAVIGATOR_PLUGINS)
     if permissions:
@@ -262,8 +518,18 @@ def build_stealth_js(
         parts.append(PATCH_IFRAME_WEBDRIVER)
     if webgl_vendor:
         parts.append(PATCH_WEBGL_VENDOR)
+    if canvas_fingerprint:
+        parts.append(PATCH_CANVAS_FINGERPRINT)
+    if audio_fingerprint:
+        parts.append(PATCH_AUDIO_FINGERPRINT)
+    if webrtc_leak:
+        parts.append(PATCH_WEBRTC_LEAK)
     if automation_flags:
         parts.append(PATCH_AUTOMATION_FLAGS)
+
+    if native_tostring:
+        parts.append(PATCH_STEALTH_CLEANUP)
+
     return "\n".join(parts)
 
 
@@ -272,5 +538,9 @@ STEALTH_JS = build_stealth_js()
 STEALTH_JS_MINIMAL = build_stealth_js(
     plugins=False,
     iframe_webdriver=False,
+    webgl_vendor=False,
+    canvas_fingerprint=False,
+    audio_fingerprint=False,
+    webrtc_leak=False,
     automation_flags=False,
 )

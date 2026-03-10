@@ -10,9 +10,15 @@ from ziniao_mcp.stealth.js_patches import (
     STEALTH_JS,
     STEALTH_JS_MINIMAL,
     build_stealth_js,
+    PATCH_NATIVE_TOSTRING,
+    PATCH_NAVIGATOR_WEBDRIVER,
     PATCH_NAVIGATOR_PLUGINS,
     PATCH_WINDOW_CHROME,
     PATCH_WEBGL_VENDOR,
+    PATCH_CANVAS_FINGERPRINT,
+    PATCH_AUDIO_FINGERPRINT,
+    PATCH_WEBRTC_LEAK,
+    PATCH_STEALTH_CLEANUP,
 )
 from ziniao_mcp.stealth.human_behavior import (
     random_delay,
@@ -50,9 +56,12 @@ class TestBuildStealthJs:
 
     def test_all_disabled_returns_empty(self):
         js = build_stealth_js(
+            native_tostring=False, webdriver=False,
             plugins=False, permissions=False,
-            chrome_obj=False,
-            iframe_webdriver=False, webgl_vendor=False, automation_flags=False,
+            chrome_obj=False, iframe_webdriver=False,
+            webgl_vendor=False, canvas_fingerprint=False,
+            audio_fingerprint=False, webrtc_leak=False,
+            automation_flags=False,
         )
         assert js.strip() == ""
 
@@ -70,6 +79,56 @@ class TestBuildStealthJs:
     def test_default_includes_permissions(self):
         js = build_stealth_js()
         assert "permissions" in js
+
+    def test_default_includes_native_tostring(self):
+        js = build_stealth_js()
+        assert "__stealth_native" in js
+        assert "WeakMap" in js
+
+    def test_default_includes_webdriver_override(self):
+        js = build_stealth_js()
+        assert "navigator" in js and "webdriver" in js
+
+    def test_default_includes_chrome_app(self):
+        js = build_stealth_js()
+        assert "chrome.app" in js
+        assert "InstallState" in js
+
+    def test_default_includes_canvas_fingerprint(self):
+        js = build_stealth_js()
+        assert "toDataURL" in js
+        assert "toBlob" in js
+
+    def test_default_includes_audio_fingerprint(self):
+        js = build_stealth_js()
+        assert "AudioBuffer" in js
+        assert "getChannelData" in js
+
+    def test_default_includes_webrtc_leak(self):
+        js = build_stealth_js()
+        assert "RTCPeerConnection" in js
+        assert "iceTransportPolicy" in js
+
+    def test_cleanup_is_last_when_native_tostring_enabled(self):
+        js = build_stealth_js()
+        assert js.rstrip().endswith("})();")
+        assert "delete window.__stealth_native" in js
+
+    def test_native_marks_applied_to_overridden_fns(self):
+        js = build_stealth_js()
+        assert js.count("__stealth_native") > 2
+
+    def test_canvas_disabled(self):
+        js = build_stealth_js(canvas_fingerprint=False)
+        assert "toDataURL" not in js
+
+    def test_audio_disabled(self):
+        js = build_stealth_js(audio_fingerprint=False)
+        assert "AudioBuffer" not in js
+
+    def test_webrtc_disabled(self):
+        js = build_stealth_js(webrtc_leak=False)
+        assert "RTCPeerConnection" not in js
 
 
 # ------------------------------------------------------------------ #
