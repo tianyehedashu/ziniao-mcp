@@ -240,6 +240,26 @@ def _register_prompts(mcp: FastMCP) -> None:
             },
         ]
 
+    @mcp.prompt(
+        name="ziniao_recorder",
+        title="录制与回放（record / stop record / replay）",
+        description="浏览器操作录制与回放：开始录制、停止并保存、回放已保存录制。适用于需要记录或重复用户操作时使用。",
+    )
+    def ziniao_recorder_guide() -> list[dict[str, Any]]:
+        return [
+            {
+                "role": "user",
+                "content": """使用 recorder 工具进行浏览器操作录制与回放：
+
+- **开始录制**：recorder(action='start')。先打开目标页面并切到要操作的标签，再调用；会在当前页注入监听，之后在浏览器中的点击、输入、按键、导航都会被记录。**支持页面跳转**：点击链接等导致整页导航时，会自动重新注入录制器并记录 navigate，无需手动处理。
+- **停止录制**：recorder(action='stop', name='可选名称')。停止录制并保存到 ~/.ziniao/recordings/，同时生成 .json 与可独立运行的 .py 脚本。
+- **回放**：recorder(action='replay', name='录制名称') 或 recorder(action='replay', actions_json='[...]')。按 name 加载已保存录制并回放，可用 speed 调节回放速度。
+- **列出录制**：recorder(action='list')。recorder(action='delete', name='...') 删除指定录制。
+
+用户说「录一下」「停止录制」「回放刚才的」或类似需求时，按上述对应 action 调用即可。""",
+            },
+        ]
+
 
 def main() -> None:
     # 先解析参数，使 --help 在启动任何线程前退出，避免解释器关闭时与 daemon 线程争用 stdin

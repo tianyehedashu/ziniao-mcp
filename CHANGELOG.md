@@ -2,6 +2,12 @@
 
 本文件记录 ziniao-mcp 的版本变更，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 格式。
 
+## [0.1.23] - 2026-03-11
+
+### 新增
+
+- **Prompt「录制与回放」**：`ziniao_recorder` 指引 AI 使用 recorder 的 start/stop/replay/list/delete，含跨页录制说明
+
 ## [0.1.22] - 2026-03-11
 
 ### 新增
