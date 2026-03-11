@@ -2,6 +2,24 @@
 
 本文件记录 ziniao-mcp 的版本变更，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 格式。
 
+## [0.1.24] - 2026-03-11
+
+### 新增
+
+- **紫鸟配置可选**：不配置紫鸟环境变量也能正常启动 MCP Server，使用全部 Chrome 浏览器功能（launch_chrome、connect_chrome、页面操作、录制回放等）
+- 未配置紫鸟时调用店铺工具（list_stores、open_store 等）会返回友好提示而非超时报错
+
+### 变更
+
+- `SessionManager` 的 `client` 参数改为 Optional，紫鸟相关方法在无 client 时抛出明确错误信息
+- `create_server()` 仅在检测到紫鸟配置时才创建 `ZiniaoClient` 和检测端口，避免无紫鸟环境下的不必要开销
+- 环境变量空字符串不再被视为有效配置值
+
+### 文档
+
+- README 快速使用新增「仅使用 Chrome 浏览器」零配置示例
+- 特性列表新增「紫鸟可选」说明
+
 ## [0.1.23] - 2026-03-11
 
 ### 新增

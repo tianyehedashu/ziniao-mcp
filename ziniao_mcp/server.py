@@ -15,9 +15,6 @@ except (ImportError, PackageNotFoundError):
 
 from mcp.server.fastmcp import FastMCP
 
-from ziniao_webdriver import ZiniaoClient, detect_ziniao_port
-from ziniao_webdriver.client import _DEFAULT_PORT
-
 from .session import SessionManager
 
 _debug_log = Path(__file__).resolve().parent.parent / "mcp_debug.log"
@@ -103,7 +100,7 @@ def _resolve_config() -> dict[str, Any]:
     env_config: dict[str, Any] = {}
     for key, env_var in env_map.items():
         val = os.environ.get(env_var)
-        if val is not None:
+        if val:
             env_config[key] = int(val) if key == "socket_port" else val
 
     all_keys = ["company", "username", "password", "client_path", "socket_port", "version"]
@@ -144,34 +141,52 @@ def _resolve_config() -> dict[str, Any]:
     return config
 
 
+def _has_ziniao_config(config: dict[str, Any]) -> bool:
+    """判断是否配置了紫鸟相关信息（任一关键字段非空即视为已配置）。"""
+    return bool(
+        config.get("company")
+        or config.get("username")
+        or config.get("client_path")
+        or config.get("socket_port")
+    )
+
+
 def create_server() -> tuple[FastMCP, SessionManager]:
     config = _resolve_config()
-
-    configured_port = config.get("socket_port")
-    if configured_port:
-        port = int(configured_port)
-    else:
-        detected = detect_ziniao_port()
-        port = detected if detected else _DEFAULT_PORT
-        _logger.info("未配置 ZINIAO_SOCKET_PORT，%s端口: %s",
-                      "自动检测到" if detected else "使用默认", port)
-
-    client = ZiniaoClient(
-        client_path=config.get("client_path") or "",
-        socket_port=port,
-        user_info={
-            "company": config.get("company") or "",
-            "username": config.get("username") or "",
-            "password": config.get("password") or "",
-        },
-        version=config.get("version") or "v6",
-    )
 
     from .stealth import StealthConfig  # pylint: disable=import-outside-toplevel
 
     stealth_cfg = StealthConfig.from_dict(config.get("stealth") or {})
     _logger.info("Stealth 配置: enabled=%s, js_patches=%s, human_behavior=%s",
                  stealth_cfg.enabled, stealth_cfg.js_patches, stealth_cfg.human_behavior)
+
+    client = None
+    if _has_ziniao_config(config):
+        from ziniao_webdriver import ZiniaoClient, detect_ziniao_port  # pylint: disable=import-outside-toplevel
+        from ziniao_webdriver.client import _DEFAULT_PORT  # pylint: disable=import-outside-toplevel
+
+        configured_port = config.get("socket_port")
+        if configured_port:
+            port = int(configured_port)
+        else:
+            detected = detect_ziniao_port()
+            port = detected if detected else _DEFAULT_PORT
+            _logger.info("未配置 ZINIAO_SOCKET_PORT，%s端口: %s",
+                          "自动检测到" if detected else "使用默认", port)
+
+        client = ZiniaoClient(
+            client_path=config.get("client_path") or "",
+            socket_port=port,
+            user_info={
+                "company": config.get("company") or "",
+                "username": config.get("username") or "",
+                "password": config.get("password") or "",
+            },
+            version=config.get("version") or "v6",
+        )
+        _logger.info("紫鸟客户端已配置 (port=%s)", port)
+    else:
+        _logger.info("未配置紫鸟信息，仅启用 Chrome 浏览器功能")
 
     session = SessionManager(client, stealth_config=stealth_cfg)
     mcp = FastMCP(

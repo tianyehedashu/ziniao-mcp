@@ -16,8 +16,6 @@ from typing import TYPE_CHECKING, Any, Optional
 
 import httpx
 
-from ziniao_webdriver import ZiniaoClient, detect_ziniao_port
-
 if os.name == "nt":
     import msvcrt
 else:
@@ -27,9 +25,18 @@ else:
         fcntl = None  # type: ignore[assignment]
 
 if TYPE_CHECKING:
+    from ziniao_webdriver import ZiniaoClient
+
     from .iframe import IFrameContext
 
 _logger = logging.getLogger("ziniao-mcp-debug")
+
+_ZINIAO_NOT_CONFIGURED = (
+    "紫鸟客户端未配置。如需使用紫鸟店铺功能，请设置环境变量 "
+    "ZINIAO_COMPANY / ZINIAO_USERNAME / ZINIAO_CLIENT_PATH，"
+    "或在 config.yaml 中配置 ziniao 部分。"
+    "当前仅可使用 Chrome 浏览器功能（launch_chrome / connect_chrome）。"
+)
 
 _STATE_DIR = Path.home() / ".ziniao"
 _STATE_FILE = _STATE_DIR / "sessions.json"
@@ -268,11 +275,11 @@ def _find_free_port() -> int:
 
 
 class SessionManager:
-    """管理紫鸟客户端生命周期、CDP 连接和页面状态。"""
+    """管理紫鸟客户端 / Chrome 浏览器生命周期、CDP 连接和页面状态。"""
 
     def __init__(
         self,
-        client: ZiniaoClient,
+        client: Optional["ZiniaoClient"] = None,
         stealth_config: Optional["StealthConfig"] = None,
     ):
         from .stealth import StealthConfig  # pylint: disable=import-outside-toplevel
@@ -282,6 +289,12 @@ class SessionManager:
         self._stores: dict[str, StoreSession] = {}
         self._active_store_id: Optional[str] = None
         self._client_started = False
+
+    def _require_ziniao_client(self) -> "ZiniaoClient":
+        """获取紫鸟客户端实例，未配置时抛出友好错误。"""
+        if self.client is None:
+            raise RuntimeError(_ZINIAO_NOT_CONFIGURED)
+        return self.client
 
     async def _apply_stealth_to_browser(self, browser: "Browser") -> None:
         """向 Browser 的所有 tab 注入反检测脚本（若启用）。"""
@@ -366,28 +379,33 @@ class SessionManager:
 
     async def _is_client_running(self) -> bool:
         """通过心跳请求判断紫鸟客户端是否在运行。"""
-        return await asyncio.to_thread(self.client.heartbeat)
+        client = self._require_ziniao_client()
+        return await asyncio.to_thread(client.heartbeat)
 
     def _try_switch_to_detected_port(self) -> Optional[int]:
         """检测紫鸟客户端实际运行端口，若与配置不同则自动切换。"""
+        from ziniao_webdriver import detect_ziniao_port  # pylint: disable=import-outside-toplevel
+
+        client = self._require_ziniao_client()
         detected = detect_ziniao_port()
-        if detected and detected != self.client.socket_port:
+        if detected and detected != client.socket_port:
             _logger.warning(
                 "配置端口 %s 无响应，检测到紫鸟客户端运行在端口 %s，自动切换",
-                self.client.socket_port, detected,
+                client.socket_port, detected,
             )
-            self.client.socket_port = detected
+            client.socket_port = detected
             return detected
         return detected
 
     async def _ensure_client_running(self) -> None:
+        client = self._require_ziniao_client()
         try:
             await asyncio.wait_for(self._do_ensure_client(), timeout=35)
         except asyncio.TimeoutError:
             raise RuntimeError(
                 f"连接紫鸟客户端超时。请确认：\n"
                 f"1) 客户端已以 WebDriver 模式启动（需带 --port 参数）\n"
-                f"2) HTTP 端口 {self.client.socket_port} 与客户端实际端口一致\n"
+                f"2) HTTP 端口 {client.socket_port} 与客户端实际端口一致\n"
                 "提示：通过桌面图标启动的客户端不支持 WebDriver 模式，"
                 "请使用 start_client 工具或手动添加 "
                 "--run_type=web_driver --ipc_type=http 参数启动。"
@@ -395,6 +413,7 @@ class SessionManager:
 
     async def _do_ensure_client(self) -> None:
         """_ensure_client_running 的实际逻辑，由外层控制超时。"""
+        client = self._require_ziniao_client()
         if self._client_started and await self._is_client_running():
             return
         if await self._is_client_running():
@@ -404,32 +423,34 @@ class SessionManager:
         if detected and await self._is_client_running():
             self._client_started = True
             return
-        if await asyncio.to_thread(self.client.is_process_running):
+        if await asyncio.to_thread(client.is_process_running):
             raise RuntimeError(
                 "紫鸟客户端正在运行，但未启用 WebDriver 模式（HTTP 端口未开放）。\n"
                 "请先关闭客户端，然后使用 start_client 工具重新启动，"
                 f"或手动以 --run_type=web_driver --ipc_type=http "
-                f"--port={self.client.socket_port} 参数重启。"
+                f"--port={client.socket_port} 参数重启。"
             )
-        await asyncio.to_thread(self.client.start_browser)
-        await asyncio.to_thread(self.client.update_core, 15)
+        await asyncio.to_thread(client.start_browser)
+        await asyncio.to_thread(client.update_core, 15)
         self._client_started = True
 
     async def start_client(self) -> str:
         """启动紫鸟客户端，若已在运行则直接返回。"""
+        client = self._require_ziniao_client()
         try:
             return await asyncio.wait_for(self._do_start_client(), timeout=90)
         except asyncio.TimeoutError:
             raise RuntimeError(
                 f"启动紫鸟客户端超时（90 秒）。请确认：\n"
-                f"1) 客户端路径正确：{self.client.client_path}\n"
-                f"2) HTTP 端口 {self.client.socket_port} 未被其他程序占用\n"
+                f"1) 客户端路径正确：{client.client_path}\n"
+                f"2) HTTP 端口 {client.socket_port} 未被其他程序占用\n"
                 "3) 客户端可以手动以 WebDriver 模式正常启动"
             ) from None
 
     async def _do_start_client(self) -> str:
         """start_client 的实际逻辑，由外层控制超时。"""
-        port = self.client.socket_port
+        client = self._require_ziniao_client()
+        port = client.socket_port
         if await self._is_client_running():
             return f"紫鸟客户端已在运行 (端口 {port})"
         detected = await asyncio.to_thread(self._try_switch_to_detected_port)
@@ -439,21 +460,22 @@ class SessionManager:
                 f"紫鸟客户端已在运行 (端口 {detected})。"
                 f"注意：配置端口为 {port}，已自动切换到实际端口。"
             )
-        if await asyncio.to_thread(self.client.is_process_running):
+        if await asyncio.to_thread(client.is_process_running):
             _logger.info("检测到紫鸟进程但 WebDriver 端口不通，终止旧进程后重启")
-            await asyncio.to_thread(self.client.kill_process, True)
-        await asyncio.to_thread(self.client.start_browser)
-        await asyncio.to_thread(self.client.update_core, 30)
+            await asyncio.to_thread(client.kill_process, True)
+        await asyncio.to_thread(client.start_browser)
+        await asyncio.to_thread(client.update_core, 30)
         self._client_started = True
         if not await self._is_client_running():
             return (
-                f"紫鸟客户端启动后仍无法连接 (端口 {self.client.socket_port})。"
+                f"紫鸟客户端启动后仍无法连接 (端口 {client.socket_port})。"
                 f"请检查 ZINIAO_SOCKET_PORT 是否与客户端实际监听端口一致。"
             )
-        return f"紫鸟客户端已启动 (端口 {self.client.socket_port})"
+        return f"紫鸟客户端已启动 (端口 {client.socket_port})"
 
     async def stop_client(self) -> None:
         """关闭所有紫鸟店铺会话并退出紫鸟客户端。Chrome 会话不受影响。"""
+        client = self._require_ziniao_client()
         ziniao_ids = [
             sid for sid, s in self._stores.items()
             if s.backend_type == "ziniao"
@@ -465,17 +487,19 @@ class SessionManager:
                 if state.get(k, {}).get("backend_type", "ziniao") == "ziniao":
                     del state[k]
         _update_state_file(_clear_ziniao)
-        await asyncio.to_thread(self.client.get_exit)
+        await asyncio.to_thread(client.get_exit)
         self._client_started = False
 
     async def list_stores(self) -> list[dict]:
         """获取当前账号下的店铺列表。"""
+        client = self._require_ziniao_client()
         await self._ensure_client_running()
-        return await asyncio.to_thread(self.client.get_browser_list)
+        return await asyncio.to_thread(client.get_browser_list)
 
     async def _preflight_check(self, store_id: str) -> None:
         """open_store 前置检查。"""
-        store_info = await asyncio.to_thread(self.client.get_store_info, store_id)
+        client = self._require_ziniao_client()
+        store_info = await asyncio.to_thread(client.get_store_info, store_id)
         if store_info is None:
             raise RuntimeError(
                 f"店铺 {store_id} 不存在，请通过 list_stores 确认正确的店铺 ID"
@@ -500,6 +524,7 @@ class SessionManager:
 
     async def open_store(self, store_id: str) -> StoreSession:
         """打开指定店铺并建立 CDP 连接与页面监听。"""
+        client = self._require_ziniao_client()
         if store_id in self._stores:
             self._active_store_id = store_id
             return self._stores[store_id]
@@ -517,7 +542,7 @@ class SessionManager:
             inject_js = STEALTH_JS_MINIMAL
 
         result = await asyncio.to_thread(
-            self.client.open_store, store_id, js_info=inject_js,
+            client.open_store, store_id, js_info=inject_js,
         )
         if not result:
             raise RuntimeError(f"打开店铺失败: {store_id}")
@@ -626,7 +651,7 @@ class SessionManager:
         except Exception:  # pylint: disable=broad-exception-caught
             pass
 
-        if session.backend_type == "ziniao":
+        if session.backend_type == "ziniao" and self.client is not None:
             browser_oauth = (
                 session.open_result.get("browserOauth") or session.store_id
             )

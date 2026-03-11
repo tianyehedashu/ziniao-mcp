@@ -110,5 +110,8 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
     @mcp.tool()
     async def stop_client() -> str:
         """退出紫鸟客户端。会先关闭所有已打开的店铺。"""
-        await session.stop_client()
+        try:
+            await session.stop_client()
+        except RuntimeError as e:
+            return json.dumps({"status": "error", "message": str(e)}, ensure_ascii=False)
         return "紫鸟客户端已退出"

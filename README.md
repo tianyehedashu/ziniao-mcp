@@ -6,7 +6,7 @@
 
 ## 快速使用
 
-只需两步即可在 Cursor 中使用全部 MCP 工具（紫鸟店铺 + Chrome 浏览器）。
+只需两步即可在 Cursor 中使用全部 MCP 工具。紫鸟配置**可选**——不配置紫鸟也能使用全部 Chrome 浏览器功能。
 
 **1. 安装 [uv](https://docs.astral.sh/uv/)**
 
@@ -20,7 +20,24 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 **2. 配置 MCP**
 
-打开 `Cursor Settings → MCP → New MCP Server`，粘贴以下配置（将环境变量替换为你的账号信息）：
+打开 `Cursor Settings → MCP → New MCP Server`，根据你的使用场景选择配置：
+
+**仅使用 Chrome 浏览器**（无需紫鸟账号）：
+
+```json
+{
+  "mcpServers": {
+    "ziniao": {
+      "command": "uvx",
+      "args": ["ziniao-mcp"]
+    }
+  }
+}
+```
+
+配置完成后即可使用 `launch_chrome`、`connect_chrome` 及所有页面操作、录制回放等工具。
+
+**紫鸟店铺 + Chrome 浏览器**（完整功能）：
 
 ```json
 {
@@ -52,6 +69,10 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 配置完成后，在 Cursor 对话框中试试：
 
 ```
+启动 Chrome 浏览器，打开百度
+```
+
+```
 列出我所有的紫鸟店铺
 ```
 
@@ -59,18 +80,15 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 打开第一个亚马逊店铺，截图看看当前页面
 ```
 
-```
-连接我之前打开的店铺，导航到亚马逊卖家后台
-```
-
 > **版本**：查看 `uvx ziniao-mcp -V`；刷新 `uvx --refresh ziniao-mcp --help`，再重启 Cursor MCP。
 >
-> **前提**：安装 [紫鸟客户端](https://www.ziniao.com/)，并**开启 WebDriver 权限**（[开通说明](https://open.ziniao.com/docSupport?docId=99)）。客户端需以 **WebDriver 模式**运行（使用 `start_client` 工具可自动处理；日常也建议以此模式启动，功能与普通模式完全一致）。
+> **紫鸟前提**：使用紫鸟店铺功能需安装 [紫鸟客户端](https://www.ziniao.com/) 并**开启 WebDriver 权限**（[开通说明](https://open.ziniao.com/docSupport?docId=99)）。不使用紫鸟功能时无需安装。
 >
 > 更多安装方式与故障排查见 [安装与使用](docs/installation.md)。
 
 ## 特性
 
+- **紫鸟可选**：不配置紫鸟也能使用全部 Chrome 浏览器功能（启动/连接/页面操作/录制回放），零配置即可上手
 - **统一浏览器支持**：紫鸟店铺（多店铺、WebDriver）与本地 Chrome（启动/连接 CDP）同一套 MCP 工具
 - **全部 MCP 工具**：店铺管理、Chrome 管理、统一会话、页面导航、输入自动化、录制回放、网络监控、调试截图等
 - **4 个 AI 技能（Skills）**：浏览器自动化、店铺管理、亚马逊运营、店铺运营 RPA 脚本生成
@@ -157,6 +175,39 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 | `take_snapshot` | 获取页面 HTML 快照 |
 | `list_console_messages` | 列出控制台消息 |
 | `get_console_message` | 获取消息详情 |
+
+### 录制与回放（1 个）
+
+| 工具 | 说明 |
+|------|------|
+| `recorder` | 录制浏览器操作（点击/输入/按键/导航），停止后生成 .json + 可独立运行的 .py 脚本；支持回放、列表、删除 |
+
+## RPA 与录制
+
+### RPA 自动化技巧
+
+用 MCP 做店铺或 Chrome 的 RPA 时，建议遵循「探索 → 验证 → 固化」的思路：
+
+- **选择器优先**：`#id` > `[name="x"]` > `[data-testid="x"]` > 有唯一性的 class，避免依赖复杂 DOM 层级。
+- **每步验证**：每次 `click` / `fill` / `press_key` 后，用 `wait_for(结果元素)` 或 `take_snapshot()` 确认页面状态，再继续下一步，避免脚本在页面未就绪时操作。
+- **异常与弹窗**：操作前可 `handle_dialog(action="accept")` 预设弹窗策略；对懒加载/分页，先滚动或点击下一页再 `wait_for` 新内容。
+- **数据与 API**：需要批量取数时，可用 `list_network_requests` / `get_network_request` 抓接口，评估用接口还是页面操作更稳。
+- **多店铺一致**：多店铺场景下用 `list_stores`、`connect_store` 切换店铺，在同一流程上验证各站点差异并记录。
+
+配合 **store-rpa-scripting** 技能，可把探索好的步骤整理成文档，再生成不依赖 MCP 的独立 Python 脚本（ziniao_webdriver + nodriver），用于定时任务或本地直接运行。
+
+### 录制与回放
+
+`recorder` 工具提供「录操作 → 停录保存 → 回放或生成脚本」的完整能力，对紫鸟店铺和 Chrome 通用（需先有活动会话）。
+
+| 操作 | 说明 |
+|------|------|
+| **开始录制** | `recorder(action='start')`：在当前页注入监听，之后在浏览器中的点击、输入、按键、导航都会被记录。**支持跨页**：点击链接导致整页跳转时，会自动在新页重新注入并记录一次 `navigate`。 |
+| **停止并保存** | `recorder(action='stop', name='可选名称')`：停止录制，将操作序列保存到 `~/.ziniao/recordings/`，并生成 `.json`（供 MCP 回放）与可独立运行的 `.py` 脚本（基于 nodriver）。 |
+| **回放** | `recorder(action='replay', name='录制名称')` 或传入 `actions_json` 直接回放；可用 `speed` 调节回放速度。 |
+| **管理** | `recorder(action='list')` 列出已保存录制，`recorder(action='delete', name='...')` 删除指定录制。 |
+
+典型用法：先 `open_store` 或 `launch_chrome` 打开目标页面，再让 Agent 调用 `recorder(action='start')`，你在浏览器里操作一遍，最后 `recorder(action='stop')` 即可得到可复用的脚本与回放数据。
 
 ## 典型使用流程
 
@@ -296,7 +347,7 @@ ziniao-mcp/
 | [安装与使用](docs/installation.md) | Plugin / MCP / PyPI 多种安装方式、配置、故障排查 |
 | [Windows 下安装 uv](docs/install-uv-windows.md) | 在 Windows 上安装 uv（PowerShell / WinGet / Scoop） |
 | [架构设计](docs/architecture.md) | 三层架构、模块职责、数据流 |
-| [API 参考](docs/api-reference.md) | 31 个 MCP 工具的详细参数和返回值 |
+| [API 参考](docs/api-reference.md) | 全部 MCP 工具的详细参数和返回值 |
 | [开发指南](docs/development.md) | 添加新工具、调试、构建发布、GitHub 自动发布 PyPI |
 
 ## 许可证
