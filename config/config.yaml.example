@@ -25,3 +25,15 @@ ziniao:
     delay_range: [200, 800]
     typing_speed: [50, 150]
     mouse_movement: true
+
+# Chrome 浏览器配置（可选，与紫鸟可同时使用）
+# 也可通过环境变量配置：CHROME_EXECUTABLE_PATH, CHROME_CDP_PORT, CHROME_USER_DATA_DIR
+chrome:
+  # Chrome 可执行文件路径（留空则自动检测系统安装的 Chrome）
+  executable_path: ""
+  # 默认 CDP 远程调试端口（0 则每次自动分配空闲端口）
+  default_cdp_port: 0
+  # 用户数据目录（留空则使用 ~/.ziniao/chrome-profile，复用登录与状态）
+  user_data_dir: ""
+  # 是否以无头模式启动
+  headless: false

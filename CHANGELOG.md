@@ -1,6 +1,27 @@
 # Changelog
 
-本文件记录 ziniao-browser 的版本变更，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 格式。
+本文件记录 ziniao-mcp 的版本变更，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 格式。
+
+## [0.1.22] - 2026-03-11
+
+### 新增
+
+- **Chrome 浏览器支持**：`launch_chrome`、`connect_chrome`、`list_chrome`、`close_chrome`，与紫鸟店铺共用同一套 MCP 工具
+- **统一会话管理**：`browser_session` 列出/切换/查看所有浏览器会话（紫鸟 + Chrome）
+- **录制与代码生成**：`recorder` 工具支持 start/stop/replay/list/delete，生成基于 nodriver 的独立 Python 脚本
+- 配置项 `chrome`（executable_path、default_cdp_port、user_data_dir、headless），支持环境变量覆盖
+
+### 变更
+
+- 项目描述与文档统一为「紫鸟与 Chrome 浏览器」双后端
+- `stop_client` 仅关闭紫鸟店铺会话并清理对应状态，Chrome 会话不受影响
+- 状态持久化区分 `backend_type`（ziniao/chrome），支持跨进程恢复两类会话
+- Prompt「ziniao MCP 使用指引」补充 Chrome、会话管理、录制说明
+
+### 文档
+
+- README、api-reference、architecture、installation 同步更新工具列表与架构说明
+- config.yaml.example 增加 chrome 配置示例
 
 ## [0.1.20] - 2026-03-10
 

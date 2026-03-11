@@ -1,4 +1,4 @@
-"""会话管理：紫鸟客户端生命周期 + CDP 连接 + 页面事件追踪 + 跨会话状态持久化"""
+"""会话管理：紫鸟客户端 / Chrome 浏览器生命周期 + CDP 连接 + 页面事件追踪 + 跨会话状态持久化"""
 
 from __future__ import annotations
 
@@ -6,6 +6,9 @@ import asyncio
 import json
 import logging
 import os
+import shutil
+import socket
+import subprocess
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -30,6 +33,7 @@ _logger = logging.getLogger("ziniao-mcp-debug")
 
 _STATE_DIR = Path.home() / ".ziniao"
 _STATE_FILE = _STATE_DIR / "sessions.json"
+_DEFAULT_CHROME_USER_DATA_DIR = _STATE_DIR / "chrome-profile"
 
 if TYPE_CHECKING:
     import nodriver
@@ -80,9 +84,13 @@ class StoreSession:
     dialog_action: str = "dismiss"
     dialog_text: str = ""
     iframe_context: Optional["IFrameContext"] = None
+    recording: bool = False
+    recording_start_url: str = ""
     _msg_counter: int = 0
     _req_counter: int = 0
     _listened_tab_ids: set = field(default_factory=set)
+    backend_type: str = "ziniao"
+    chrome_process: Any = None
 
     @property
     def pages(self) -> list["Tab"]:
@@ -217,6 +225,48 @@ async def _connect_cdp(port: int) -> "Browser":
     return browser
 
 
+def _find_chrome_executable() -> str:
+    """自动检测系统中 Chrome / Chromium 可执行文件路径。"""
+    if os.name == "nt":
+        candidates = [
+            os.path.expandvars(r"%ProgramFiles%\Google\Chrome\Application\chrome.exe"),
+            os.path.expandvars(r"%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe"),
+            os.path.expandvars(r"%LocalAppData%\Google\Chrome\Application\chrome.exe"),
+        ]
+    elif os.uname().sysname == "Darwin" if hasattr(os, "uname") else False:
+        candidates = [
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        ]
+    else:
+        candidates = [
+            "/usr/bin/google-chrome",
+            "/usr/bin/google-chrome-stable",
+            "/usr/bin/chromium",
+            "/usr/bin/chromium-browser",
+        ]
+
+    for path in candidates:
+        if os.path.isfile(path):
+            return path
+
+    for name in ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome"):
+        found = shutil.which(name)
+        if found:
+            return found
+
+    raise RuntimeError(
+        "未找到 Chrome 浏览器。请通过 executable_path 参数指定路径，"
+        "或安装 Google Chrome。"
+    )
+
+
+def _find_free_port() -> int:
+    """获取一个空闲的本地 TCP 端口号。"""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
 class SessionManager:
     """管理紫鸟客户端生命周期、CDP 连接和页面状态。"""
 
@@ -270,13 +320,15 @@ class SessionManager:
             _logger.debug("同步视口到窗口失败（可忽略）: %s", exc)
 
     def _save_store_state(self, store_id: str, store_name: str,
-                          cdp_port: int, browser_oauth: str) -> None:
-        """将已打开店铺的 CDP 信息持久化到状态文件。"""
+                          cdp_port: int, browser_oauth: str,
+                          backend_type: str = "ziniao") -> None:
+        """将已打开会话的 CDP 信息持久化到状态文件。"""
         entry = {
             "store_id": store_id,
             "store_name": store_name,
             "cdp_port": cdp_port,
             "browser_oauth": browser_oauth,
+            "backend_type": backend_type,
             "opened_at": time.time(),
         }
         _update_state_file(lambda s: s.update({store_id: entry}))
@@ -287,14 +339,22 @@ class SessionManager:
         _update_state_file(lambda s: s.pop(store_id, None))
 
     @staticmethod
-    async def get_persisted_stores() -> list[dict[str, Any]]:
-        """读取状态文件并验证每个店铺的 CDP 连通性，清理失效记录。"""
+    async def get_persisted_stores(
+        backend_type: Optional[str] = "ziniao",
+    ) -> list[dict[str, Any]]:
+        """读取状态文件并验证每个会话的 CDP 连通性，清理失效记录。
+
+        Args:
+            backend_type: 按后端类型过滤。None 返回全部，"ziniao" 仅紫鸟，"chrome" 仅 Chrome。
+        """
         state = _read_state_file()
         if not state:
             return []
         alive: list[dict[str, Any]] = []
         dead_keys: list[str] = []
         for key, info in state.items():
+            if backend_type and info.get("backend_type", "ziniao") != backend_type:
+                continue
             port = info.get("cdp_port")
             if port and await _is_cdp_alive(port):
                 alive.append(info)
@@ -393,10 +453,18 @@ class SessionManager:
         return f"紫鸟客户端已启动 (端口 {self.client.socket_port})"
 
     async def stop_client(self) -> None:
-        """关闭所有店铺会话并退出紫鸟客户端。"""
-        for store_id in list(self._stores):
+        """关闭所有紫鸟店铺会话并退出紫鸟客户端。Chrome 会话不受影响。"""
+        ziniao_ids = [
+            sid for sid, s in self._stores.items()
+            if s.backend_type == "ziniao"
+        ]
+        for store_id in ziniao_ids:
             await self.close_store(store_id)
-        _update_state_file(lambda s: s.clear())
+        def _clear_ziniao(state: dict) -> None:
+            for k in list(state):
+                if state.get(k, {}).get("backend_type", "ziniao") == "ziniao":
+                    del state[k]
+        _update_state_file(_clear_ziniao)
         await asyncio.to_thread(self.client.get_exit)
         self._client_started = False
 
@@ -557,20 +625,31 @@ class SessionManager:
             session.browser.stop()
         except Exception:  # pylint: disable=broad-exception-caught
             pass
-        browser_oauth = (
-            session.open_result.get("browserOauth") or session.store_id
-        )
-        await asyncio.to_thread(self.client.close_store, browser_oauth)
+
+        if session.backend_type == "ziniao":
+            browser_oauth = (
+                session.open_result.get("browserOauth") or session.store_id
+            )
+            await asyncio.to_thread(self.client.close_store, browser_oauth)
+        elif session.backend_type == "chrome" and session.chrome_process:
+            try:
+                session.chrome_process.terminate()
+                session.chrome_process.wait(timeout=5)
+            except Exception:  # pylint: disable=broad-exception-caught
+                _logger.debug("Chrome 进程终止失败（可忽略）")
+
         del self._stores[store_id]
         if self._active_store_id == store_id:
             self._active_store_id = next(iter(self._stores), None)
         self._remove_store_state(store_id)
 
     def get_active_session(self) -> StoreSession:
-        """返回当前选中的店铺会话。"""
+        """返回当前活跃的浏览器会话。"""
         if not self._active_store_id or self._active_store_id not in self._stores:
             raise RuntimeError(
-                "没有活动的店铺。请先使用 open_store 打开一个店铺。"
+                "没有活动的浏览器会话。"
+                "请先使用 open_store 打开紫鸟店铺，"
+                "或使用 launch_chrome / connect_chrome 连接 Chrome 浏览器。"
             )
         return self._stores[self._active_store_id]
 
@@ -587,6 +666,210 @@ class SessionManager:
     def get_open_store_ids(self) -> list[str]:
         """返回当前已打开店铺的 ID 列表。"""
         return list(self._stores.keys())
+
+    @property
+    def active_session_id(self) -> Optional[str]:
+        """当前活跃会话的 ID，无活跃会话时为 None。"""
+        return self._active_store_id
+
+    # ── Chrome 浏览器管理 ──────────────────────────────────────────────
+
+    async def launch_chrome(
+        self,
+        name: str = "",
+        executable_path: str = "",
+        cdp_port: int = 0,
+        user_data_dir: str = "",
+        headless: bool = False,
+        url: str = "",
+    ) -> StoreSession:
+        """独立启动一个 Chrome 实例并通过 CDP 连接。"""
+        if not executable_path:
+            executable_path = _find_chrome_executable()
+
+        if cdp_port <= 0:
+            cdp_port = _find_free_port()
+
+        session_id = name or f"chrome-{cdp_port}"
+        if session_id in self._stores:
+            self._active_store_id = session_id
+            return self._stores[session_id]
+
+        if not user_data_dir:
+            user_data_dir = str(_DEFAULT_CHROME_USER_DATA_DIR)
+            _DEFAULT_CHROME_USER_DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+        args = [
+            executable_path,
+            f"--remote-debugging-port={cdp_port}",
+            f"--user-data-dir={user_data_dir}",
+        ]
+        if headless:
+            args.append("--headless=new")
+        if url:
+            args.append(url)
+
+        proc = subprocess.Popen(
+            args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+
+        for _attempt in range(15):
+            if await _is_cdp_alive(cdp_port):
+                break
+            if proc.poll() is not None:
+                raise RuntimeError(
+                    f"Chrome 进程已退出 (exit code {proc.returncode})。"
+                    f"请检查路径是否正确: {executable_path}"
+                )
+            await asyncio.sleep(1)
+        else:
+            proc.terminate()
+            raise RuntimeError(
+                f"Chrome CDP 端口 {cdp_port} 在 15 秒内未就绪"
+            )
+
+        browser = await _connect_cdp(cdp_port)
+        await self._apply_stealth_to_browser(browser)
+        tabs = _filter_tabs(browser.tabs)
+
+        session = StoreSession(
+            store_id=session_id,
+            store_name=name or f"Chrome ({cdp_port})",
+            cdp_port=cdp_port,
+            browser=browser,
+            tabs=tabs,
+            active_tab_index=0,
+            backend_type="chrome",
+            chrome_process=proc,
+        )
+
+        for tab in session.tabs:
+            await self._setup_tab_listeners(session, tab)
+
+        self._stores[session_id] = session
+        self._active_store_id = session_id
+
+        await self._sync_viewport_to_window(session)
+
+        self._save_store_state(
+            session_id, session.store_name, cdp_port, session_id,
+            backend_type="chrome",
+        )
+
+        return session
+
+    async def connect_chrome(
+        self, cdp_port: int, name: str = "",
+    ) -> StoreSession:
+        """连接到一个已运行的 Chrome 实例（通过 CDP 端口）。"""
+        session_id = name or f"chrome-{cdp_port}"
+        if session_id in self._stores:
+            self._active_store_id = session_id
+            return self._stores[session_id]
+
+        if not await _is_cdp_alive(cdp_port):
+            raise RuntimeError(
+                f"无法连接到 CDP 端口 {cdp_port}。请确认 Chrome 已启动并带有 "
+                f"--remote-debugging-port={cdp_port} 参数。"
+            )
+
+        browser = await _connect_cdp(cdp_port)
+        await self._apply_stealth_to_browser(browser)
+        tabs = _filter_tabs(browser.tabs)
+
+        session = StoreSession(
+            store_id=session_id,
+            store_name=name or f"Chrome ({cdp_port})",
+            cdp_port=cdp_port,
+            browser=browser,
+            tabs=tabs,
+            active_tab_index=0,
+            backend_type="chrome",
+        )
+
+        for tab in session.tabs:
+            await self._setup_tab_listeners(session, tab)
+
+        self._stores[session_id] = session
+        self._active_store_id = session_id
+
+        await self._sync_viewport_to_window(session)
+
+        self._save_store_state(
+            session_id, session.store_name, cdp_port, session_id,
+            backend_type="chrome",
+        )
+
+        return session
+
+    async def close_chrome(self, session_id: str) -> None:
+        """关闭 Chrome 会话。"""
+        session = self._stores.get(session_id)
+        if not session or session.backend_type != "chrome":
+            return
+        await self.close_store(session_id)
+
+    def list_chrome_sessions(self) -> list[dict]:
+        """列出所有 Chrome 类型的活跃会话。"""
+        result = []
+        for sid, s in self._stores.items():
+            if s.backend_type == "chrome":
+                result.append({
+                    "session_id": sid,
+                    "name": s.store_name,
+                    "cdp_port": s.cdp_port,
+                    "tabs": len(_filter_tabs(s.browser.tabs)),
+                    "is_active": sid == self._active_store_id,
+                })
+        return result
+
+    # ── 统一会话管理 ──────────────────────────────────────────────────
+
+    def list_all_sessions(self) -> list[dict]:
+        """列出所有活跃会话（紫鸟 + Chrome）。"""
+        result = []
+        for sid, s in self._stores.items():
+            result.append({
+                "session_id": sid,
+                "name": s.store_name,
+                "type": s.backend_type,
+                "cdp_port": s.cdp_port,
+                "tabs": len(_filter_tabs(s.browser.tabs)),
+                "is_active": sid == self._active_store_id,
+            })
+        return result
+
+    def switch_session(self, session_id: str) -> StoreSession:
+        """切换当前活跃会话。"""
+        if session_id not in self._stores:
+            available = ", ".join(self._stores.keys()) if self._stores else "无"
+            raise RuntimeError(
+                f"会话 '{session_id}' 不存在。可用会话: {available}"
+            )
+        self._active_store_id = session_id
+        return self._stores[session_id]
+
+    def get_session_info(self, session_id: str) -> dict:
+        """获取指定会话的详细信息。"""
+        session = self._stores.get(session_id)
+        if not session:
+            raise RuntimeError(f"会话 '{session_id}' 不存在")
+        tabs_info = []
+        for i, tab in enumerate(_filter_tabs(session.browser.tabs)):
+            tabs_info.append({
+                "index": i,
+                "url": getattr(getattr(tab, "target", None), "url", ""),
+                "title": getattr(getattr(tab, "target", None), "title", ""),
+            })
+        return {
+            "session_id": session.store_id,
+            "name": session.store_name,
+            "type": session.backend_type,
+            "cdp_port": session.cdp_port,
+            "active_tab_index": session.active_tab_index,
+            "tabs": tabs_info,
+            "is_active": session.store_id == self._active_store_id,
+        }
 
     async def _setup_tab_listeners(self, store: StoreSession, tab: "Tab") -> None:
         """为 tab 绑定 console/network/dialog 等事件监听。"""

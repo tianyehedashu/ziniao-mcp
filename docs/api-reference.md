@@ -1,10 +1,10 @@
 # API 参考
 
-本文档列出 ziniao-mcp 提供的全部 31 个 MCP 工具的详细参数和返回值。
+本文档列出 ziniao-mcp 提供的全部 MCP 工具（紫鸟店铺 + Chrome 浏览器）的详细参数和返回值。
 
 ---
 
-## 店铺管理
+## 店铺管理（紫鸟）
 
 ### `start_client`
 
@@ -512,3 +512,293 @@
 | `message_id` | `int` | 是 | 消息 ID（从 `list_console_messages` 获取） |
 
 **返回**：`string` — JSON 对象，包含 `id`、`level`、`text`（完整内容）、`timestamp`
+
+---
+
+## 录制与代码生成
+
+### `recorder`
+
+浏览器操作录制与代码生成（类 Playwright Codegen）。录制用户在浏览器中的交互操作（点击、输入、按键、导航），停止后生成可独立运行的 Python 脚本（基于 nodriver），也可在 MCP 内回放。支持跨页面导航——页面跳转后自动重新注入录制器。
+
+**参数**：
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `action` | `string` | 否 | 操作类型（默认 `"start"`），见下表 |
+| `name` | `string` | 否 | 录制名称（`stop` 时保存用，`replay`/`delete` 时指定目标） |
+| `actions_json` | `string` | 否 | 回放时可直接传入 JSON 动作列表（优先级高于 `name`） |
+| `speed` | `float` | 否 | 回放速度倍率（默认 `1.0`，`2.0` 表示双倍速） |
+
+**action 取值**：
+
+| action | 说明 |
+|--------|------|
+| `start` | 开始录制：向当前页面注入 JS 事件监听器，绑定跨页面导航重注入 |
+| `stop` | 停止录制：提取操作序列，生成 Python 脚本并保存到 `~/.ziniao/recordings/` |
+| `replay` | 回放录制：通过 `name` 加载已保存的录制，或传入 `actions_json` 直接回放 |
+| `list` | 列出所有已保存的录制 |
+| `delete` | 删除指定录制 |
+
+#### action = `"start"`
+
+注入 JS 录制器到当前活动页面，开始捕获用户交互。支持录制以下操作类型：
+
+- **click** — 点击元素
+- **fill** — 输入框填写（自动去抖合并连续输入）
+- **select** — 下拉选择
+- **press_key** — 特殊按键（Enter、Tab、Escape 等）
+- **navigate** — 页面导航（跨页面自动检测）
+
+**返回**：`string` — JSON 对象：
+
+```json
+{
+  "status": "recording",
+  "message": "录制已开始，请在浏览器中操作。完成后调用 recorder(action='stop') 停止。",
+  "start_url": "https://www.amazon.com/"
+}
+```
+
+#### action = `"stop"`
+
+停止录制，提取操作序列，同时生成：
+- `.json` 文件 — 元数据 + 动作序列（供 MCP 回放）
+- `.py` 文件 — 可独立运行的 Python 脚本（基于 nodriver）
+
+**返回**：`string` — JSON 对象：
+
+```json
+{
+  "status": "saved",
+  "name": "rec_20260311_143022",
+  "action_count": 12,
+  "files": {
+    "json": "C:/Users/xxx/.ziniao/recordings/rec_20260311_143022.json",
+    "py": "C:/Users/xxx/.ziniao/recordings/rec_20260311_143022.py"
+  },
+  "message": "已录制 12 个操作，Python 脚本已生成: ..."
+}
+```
+
+生成的 Python 脚本特点：
+- 完全独立，只依赖 nodriver
+- CDP 端口可通过 `--port` 参数覆盖
+- 每步带注释，保留原始操作间隔
+
+#### action = `"replay"`
+
+在 MCP 内回放录制的操作序列。通过 `name` 加载已保存的录制，或通过 `actions_json` 传入动作列表。`speed` 控制回放速度。
+
+**返回**：`string` — JSON 对象：
+
+```json
+{
+  "status": "done",
+  "replayed": 12,
+  "total": 12,
+  "message": "已回放 12/12 个操作"
+}
+```
+
+#### action = `"list"`
+
+列出 `~/.ziniao/recordings/` 下所有已保存的录制。
+
+**返回**：`string` — JSON 对象：
+
+```json
+{
+  "recordings": [
+    {
+      "name": "rec_20260311_143022",
+      "created_at": "2026-03-11T14:30:22",
+      "start_url": "https://www.amazon.com/",
+      "action_count": 12,
+      "py_file": "C:/Users/xxx/.ziniao/recordings/rec_20260311_143022.py"
+    }
+  ],
+  "count": 1
+}
+```
+
+#### action = `"delete"`
+
+删除指定名称的录制（同时删除 `.json` 和 `.py` 文件）。
+
+**返回**：`string` — JSON 对象：
+
+```json
+{
+  "status": "deleted",
+  "name": "rec_20260311_143022"
+}
+```
+
+---
+
+## Chrome 浏览器管理
+
+### `launch_chrome`
+
+启动一个新的 Chrome 浏览器实例并通过 CDP 连接。成功后成为当前活动浏览器。
+
+**参数**：
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `name` | `string` | `""` | 会话名称（可选，用于标识和后续切换） |
+| `url` | `string` | `""` | 启动后打开的 URL |
+| `executable_path` | `string` | `""` | Chrome 可执行文件路径（空则自动检测） |
+| `cdp_port` | `int` | `0` | CDP 远程调试端口（0 则自动分配） |
+| `user_data_dir` | `string` | `""` | 用户数据目录（空则使用 ~/.ziniao/chrome-profile，复用登录与状态） |
+| `headless` | `bool` | `false` | 是否以无头模式启动 |
+
+**返回**：`string` — JSON 对象：
+
+```json
+{
+  "status": "success",
+  "session_id": "research",
+  "name": "research",
+  "cdp_port": 9222,
+  "tabs": 1
+}
+```
+
+---
+
+### `connect_chrome`
+
+连接到一个已运行的 Chrome 浏览器（通过 CDP 端口）。成功后成为当前活动浏览器。
+
+**参数**：
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `cdp_port` | `int` | — | Chrome 的 CDP 远程调试端口（必填） |
+| `name` | `string` | `""` | 会话名称（可选） |
+
+**返回**：`string` — JSON 对象，格式同 `launch_chrome`
+
+---
+
+### `list_chrome`
+
+列出当前所有 Chrome 浏览器会话。
+
+**参数**：无
+
+**返回**：`string` — JSON 对象：
+
+```json
+{
+  "sessions": [
+    {
+      "session_id": "chrome-9222",
+      "name": "Chrome (9222)",
+      "cdp_port": 9222,
+      "tabs": 3,
+      "is_active": true
+    }
+  ],
+  "count": 1
+}
+```
+
+---
+
+### `close_chrome`
+
+关闭指定的 Chrome 浏览器会话。
+
+**参数**：
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `session_id` | `string` | 会话标识 |
+
+**返回**：`string` — JSON 对象，包含 `status` 和 `remaining_chrome_sessions`
+
+---
+
+## 统一会话管理
+
+### `browser_session`
+
+管理所有浏览器会话（跨紫鸟店铺和 Chrome 实例）。
+
+**参数**：
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `action` | `string` | `"list"` | 操作类型：`list` / `switch` / `info` |
+| `session_id` | `string` | `""` | `switch` / `info` 时的目标会话 ID |
+
+#### action = `"list"`
+
+列出所有活跃浏览器会话，标记当前活跃的那个。
+
+**返回**：
+
+```json
+{
+  "active_session": "store-abc123",
+  "sessions": [
+    {
+      "session_id": "store-abc123",
+      "name": "Amazon US 店铺",
+      "type": "ziniao",
+      "cdp_port": 12345,
+      "tabs": 3,
+      "is_active": true
+    },
+    {
+      "session_id": "chrome-9222",
+      "name": "research",
+      "type": "chrome",
+      "cdp_port": 9222,
+      "tabs": 5,
+      "is_active": false
+    }
+  ],
+  "count": 2
+}
+```
+
+#### action = `"switch"`
+
+切换当前活跃会话。后续所有页面操作（click/fill/navigate 等）将作用于新的活跃会话。
+
+**返回**：
+
+```json
+{
+  "status": "success",
+  "active_session": "chrome-9222",
+  "name": "research",
+  "type": "chrome",
+  "tabs": 5
+}
+```
+
+#### action = `"info"`
+
+查看指定会话的详细信息。
+
+**返回**：
+
+```json
+{
+  "session_id": "chrome-9222",
+  "name": "research",
+  "type": "chrome",
+  "cdp_port": 9222,
+  "active_tab_index": 0,
+  "tabs": [
+    {"index": 0, "url": "https://google.com", "title": "Google"},
+    {"index": 1, "url": "https://example.com", "title": "Example"}
+  ],
+  "is_active": true
+}
+```

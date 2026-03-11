@@ -1,12 +1,12 @@
-# ziniao-browser
+# ziniao-mcp
 
-紫鸟浏览器 AI 自动化工具集 — 让 AI Agent（Cursor、Claude 等）直接操控紫鸟店铺。
+紫鸟与 Chrome 浏览器 AI 自动化 — 让 AI Agent（Cursor、Claude 等）操控紫鸟店铺与本地 Chrome，统一会话、统一工具。
 
 **GitHub**：[https://github.com/tianyehedashu/ziniao-mcp](https://github.com/tianyehedashu/ziniao-mcp)
 
 ## 快速使用
 
-只需两步即可在 Cursor 中使用全部 31 个 MCP 工具。
+只需两步即可在 Cursor 中使用全部 MCP 工具（紫鸟店铺 + Chrome 浏览器）。
 
 **1. 安装 [uv](https://docs.astral.sh/uv/)**
 
@@ -71,17 +71,18 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 ## 特性
 
-- **31 个 MCP 工具**：覆盖店铺管理、页面导航、输入自动化、网络监控、调试截图等场景
+- **统一浏览器支持**：紫鸟店铺（多店铺、WebDriver）与本地 Chrome（启动/连接 CDP）同一套 MCP 工具
+- **全部 MCP 工具**：店铺管理、Chrome 管理、统一会话、页面导航、输入自动化、录制回放、网络监控、调试截图等
 - **4 个 AI 技能（Skills）**：浏览器自动化、店铺管理、亚马逊运营、店铺运营 RPA 脚本生成
 - **1 个专用 Agent**：紫鸟运营专家角色，具备跨境电商领域知识
 - **2 个快捷命令（Commands）**：一键检查店铺状态、批量截图
-- **跨会话状态持久化**：MCP 进程重启后可自动恢复已打开店铺的 CDP 连接
-- **多店铺并行**：同时打开多个店铺，按需切换活动会话
+- **跨会话状态持久化**：MCP 进程重启后可恢复已打开店铺或 Chrome 的 CDP 连接
+- **多会话并行**：同时打开多个紫鸟店铺或 Chrome 实例，按需切换活动会话
 - **跨平台**：支持 Windows / macOS / Linux
 
 ## 工具列表
 
-### 店铺管理（7 个）
+### 店铺管理（紫鸟，7 个）
 
 | 工具 | 说明 |
 |------|------|
@@ -92,6 +93,21 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 | `connect_store` | 连接已运行的店铺（不重启，推荐） |
 | `close_store` | 关闭店铺并断开 CDP |
 | `stop_client` | 退出紫鸟客户端 |
+
+### Chrome 管理（4 个）
+
+| 工具 | 说明 |
+|------|------|
+| `launch_chrome` | 启动本地 Chrome 并通过 CDP 连接 |
+| `connect_chrome` | 连接已运行的 Chrome（需带 `--remote-debugging-port` 启动） |
+| `list_chrome` | 列出当前所有 Chrome 会话 |
+| `close_chrome` | 关闭指定 Chrome 会话 |
+
+### 统一会话（1 个）
+
+| 工具 | 说明 |
+|------|------|
+| `browser_session` | 列出/切换/查看所有浏览器会话（紫鸟 + Chrome） |
 
 ### 输入自动化（9 个）
 

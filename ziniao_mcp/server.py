@@ -40,7 +40,9 @@ def _print_package_version_and_exit() -> None:
 def _resolve_config() -> dict[str, Any]:
     """解析配置，优先级: 环境变量 > 命令行参数 > config.yaml"""
     _print_package_version_and_exit()
-    parser = argparse.ArgumentParser(description="紫鸟 MCP 服务器")
+    parser = argparse.ArgumentParser(
+        description="紫鸟与 Chrome 浏览器 MCP 服务器 — 统一操控紫鸟店铺与本地 Chrome"
+    )
     parser.add_argument("-V", "--package-version", action="store_true", help="显示包版本并退出")
     parser.add_argument("--config", default=None, help="配置文件路径")
     parser.add_argument("--company", default=None, help="企业名")
@@ -115,6 +117,30 @@ def _resolve_config() -> dict[str, Any]:
 
     config["stealth"] = yaml_config.get("stealth", {})
 
+    chrome_yaml = {}
+    if config_path and Path(config_path).exists():
+        import yaml  # pylint: disable=import-outside-toplevel
+        with open(config_path, "r", encoding="utf-8") as f:
+            raw_cfg = yaml.safe_load(f) or {}
+        chrome_yaml = raw_cfg.get("chrome", {})
+
+    chrome_env = {
+        "executable_path": os.environ.get("CHROME_EXECUTABLE_PATH"),
+        "default_cdp_port": os.environ.get("CHROME_CDP_PORT"),
+        "user_data_dir": os.environ.get("CHROME_USER_DATA_DIR"),
+    }
+    _port_raw = chrome_env["default_cdp_port"] or chrome_yaml.get("default_cdp_port", 0)
+    try:
+        _default_cdp_port = int(_port_raw)
+    except (ValueError, TypeError):
+        _default_cdp_port = 0
+    config["chrome"] = {
+        "executable_path": chrome_env["executable_path"] or chrome_yaml.get("executable_path", ""),
+        "default_cdp_port": _default_cdp_port,
+        "user_data_dir": chrome_env["user_data_dir"] or chrome_yaml.get("user_data_dir", ""),
+        "headless": chrome_yaml.get("headless", False),
+    }
+
     return config
 
 
@@ -148,21 +174,30 @@ def create_server() -> tuple[FastMCP, SessionManager]:
                  stealth_cfg.enabled, stealth_cfg.js_patches, stealth_cfg.human_behavior)
 
     session = SessionManager(client, stealth_config=stealth_cfg)
-    mcp = FastMCP("ziniao-mcp")
+    mcp = FastMCP(
+        "ziniao-mcp",
+        instructions="紫鸟店铺与 Chrome 浏览器自动化：店铺管理（list_stores/open_store）、Chrome 管理（launch_chrome/connect_chrome）、统一会话（browser_session）、页面操作（navigate/click/fill）、录制回放（recorder）等，对紫鸟与 Chrome 共用同一套工具。",
+    )
 
+    from .tools.chrome import register_tools as register_chrome
     from .tools.debug import register_tools as register_debug
     from .tools.emulation import register_tools as register_emulation
     from .tools.input import register_tools as register_input
     from .tools.navigation import register_tools as register_navigation
     from .tools.network import register_tools as register_network
+    from .tools.recorder import register_tools as register_recorder
+    from .tools.session_mgr import register_tools as register_session
     from .tools.store import register_tools as register_store
 
     register_store(mcp, session)
+    register_chrome(mcp, session)
+    register_session(mcp, session)
     register_input(mcp, session)
     register_navigation(mcp, session)
     register_emulation(mcp, session)
     register_network(mcp, session)
     register_debug(mcp, session)
+    register_recorder(mcp, session)
     _register_prompts(mcp)
 
     return mcp, session
@@ -174,16 +209,33 @@ def _register_prompts(mcp: FastMCP) -> None:
     @mcp.prompt(
         name="ziniao_mcp",
         title="ziniao MCP 使用指引",
-        description="获取ziniao MCP 使用说明与常见任务示例，便于 AI 按步骤操控紫鸟店铺。",
+        description="获取 ziniao MCP 使用说明与常见任务示例，便于 AI 操控紫鸟店铺和 Chrome 浏览器。",
     )
     def ziniao_browser_guide() -> list[dict[str, Any]]:
         return [
             {
                 "role": "user",
-                "content": """使用ziniao MCP 操控紫鸟浏览器时：
-- 获取店铺列表：list_stores 查店铺，open_store(store_id) 打开店铺（已运行的会自动复用），之后才能做页面操作。
-- 页面操作：导航用 navigate_page，点击用 click，填写用 fill，按键用 press_key，等待用 wait_for，截图用 take_screenshot。
-- 标签页管理：tab(action=list/switch/new/close)。iframe 操作：switch_frame(action=list/switch/main)。
+                "content": """使用 ziniao MCP 操控浏览器时：
+
+【紫鸟店铺】
+- list_stores 查店铺，open_store(store_id) 打开（已运行的自动复用）。
+- start_client / stop_client 管理紫鸟客户端进程。
+
+【Chrome 浏览器】
+- launch_chrome(name=..., url=...) 启动新 Chrome 实例。
+- connect_chrome(cdp_port=9222) 连接已运行的 Chrome（需带 --remote-debugging-port 启动）。
+- list_chrome / close_chrome 管理 Chrome 会话。
+
+【会话管理】
+- browser_session(action='list') 查看所有活跃会话（紫鸟 + Chrome），确认当前操作的是哪个。
+- browser_session(action='switch', session_id=...) 切换当前操作目标。
+- browser_session(action='info', session_id=...) 查看会话详情。
+
+【通用页面操作】（对紫鸟和 Chrome 通用，作用于当前活跃会话）
+- 导航：navigate_page，点击：click，填写：fill，按键：press_key，等待：wait_for，截图：take_screenshot。
+- 标签页：tab(action=list/switch/new/close)。iframe：switch_frame(action=list/switch/main)。
+- 录制：recorder(action='start'/'stop'/'replay'/'list')。
+
 根据用户目标调用对应工具即可。""",
             },
         ]
