@@ -1,1 +1,1 @@
-"""紫鸟 MCP 工具集"""
+"""Ziniao MCP toolset."""

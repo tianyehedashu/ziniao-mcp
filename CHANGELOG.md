@@ -2,6 +2,14 @@
 
 本文件记录 ziniao-mcp 的版本变更，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 格式。
 
+## [0.1.25] - 2026-03-12
+
+### 变更
+
+- **MCP 工具描述与返回文案英文化**：所有工具（store/chrome/session/input/navigation/emulation/network/debug/recorder）的 docstring、Args、返回消息与错误文案统一为英文，风格参照 chrome-devtools-mcp（短句、祈使/陈述、参数说明简洁）
+- 服务器 `instructions`、argparse 描述、prompt 的 title/description 改为英文
+- 录制生成脚本内的注释与 `--help` 文案改为英文
+
 ## [0.1.24] - 2026-03-11
 
 ### 新增

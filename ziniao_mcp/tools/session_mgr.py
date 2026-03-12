@@ -1,4 +1,4 @@
-"""统一浏览器会话管理工具 (1 tool, 3 actions)"""
+"""Unified browser session management tool (1 tool, 3 actions)."""
 
 import json
 
@@ -14,20 +14,20 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
         action: str = "list",
         session_id: str = "",
     ) -> str:
-        """管理浏览器会话（跨紫鸟店铺和 Chrome 实例）。
+        """Manage browser sessions across Ziniao stores and Chrome instances.
 
-        当同时打开了多个紫鸟店铺或 Chrome 浏览器时，使用此工具查看所有活跃会话、
-        切换当前操作目标、或查看某个会话的详情。
-        所有页面操作（click/fill/navigate 等）都作用于当前活跃会话。
+        Use this tool to list active sessions, switch the current session, or
+        get details for one session. Page tools (click, fill, navigate, and
+        others) always run on the active session.
 
         Actions:
-            list   - 列出所有活跃会话，标记当前活跃的那个
-            switch - 切换当前活跃会话到指定 session_id
-            info   - 查看指定会话的详细信息（标签页列表、URL 等）
+            list: List all active sessions and mark the active one.
+            switch: Switch the active session to the given session_id.
+            info: Get detailed information for the given session_id.
 
         Args:
-            action: 操作类型 ("list" | "switch" | "info")
-            session_id: switch / info 时的目标会话 ID
+            action: The session action ("list" | "switch" | "info").
+            session_id: The target session ID for switch and info.
         """
         if action == "list":
             sessions = session.list_all_sessions()
@@ -40,7 +40,7 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
         if action == "switch":
             if not session_id:
                 return json.dumps(
-                    {"status": "error", "message": "switch 操作需要提供 session_id"},
+                    {"status": "error", "message": "session_id is required for action='switch'."},
                     ensure_ascii=False,
                 )
             try:
@@ -60,7 +60,7 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
         if action == "info":
             if not session_id:
                 return json.dumps(
-                    {"status": "error", "message": "info 操作需要提供 session_id"},
+                    {"status": "error", "message": "session_id is required for action='info'."},
                     ensure_ascii=False,
                 )
             try:
@@ -72,6 +72,6 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
             return json.dumps(info, ensure_ascii=False, indent=2)
 
         return json.dumps(
-            {"status": "error", "message": f"未知 action: {action}，支持 list/switch/info"},
+            {"status": "error", "message": f"Unknown action: {action}. Supported: list, switch, info."},
             ensure_ascii=False,
         )

@@ -1,4 +1,4 @@
-"""导航自动化工具 (4 tools)"""
+"""Navigation automation tools (4 tools)."""
 
 import asyncio
 import json
@@ -12,10 +12,10 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
 
     @mcp.tool()
     async def navigate_page(url: str) -> str:
-        """导航到指定 URL。
+        """Navigate the current page to the provided URL.
 
         Args:
-            url: 目标 URL（如 "https://www.amazon.com"）
+            url: The target URL.
         """
         from nodriver import cdp  # pylint: disable=import-outside-toplevel
 
@@ -37,12 +37,13 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
         page_index: int = -1,
         url: str = "",
     ) -> str:
-        """管理浏览器标签页。
+        """List, switch, create, or close browser tabs.
 
         Args:
-            action: "list" 列出所有标签页 | "switch" 切换到指定标签页 | "new" 新建标签页 | "close" 关闭标签页
-            page_index: 标签页索引（switch/close 时使用，-1 表示当前活动页）
-            url: 新标签页的 URL（action="new" 时使用，为空则打开空白页）
+            action: The tab action ("list" | "switch" | "new" | "close").
+            page_index: The tab index used by switch and close. Use -1 for the
+                active tab.
+            url: The URL for action="new". If empty, opens about:blank.
         """
         store = session.get_active_session()
 
@@ -61,7 +62,7 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
         if action == "switch":
             store.tabs = _filter_tabs(store.browser.tabs)
             if page_index < 0 or page_index >= len(store.tabs):
-                return f"无效索引 {page_index}，当前共 {len(store.tabs)} 个标签页"
+                return f"Invalid tab index {page_index}. Total tabs: {len(store.tabs)}."
             store.active_tab_index = page_index
             store.iframe_context = None
             t = store.tabs[page_index]
@@ -90,7 +91,7 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
             store.tabs = _filter_tabs(store.browser.tabs)
             idx = store.active_tab_index if page_index == -1 else page_index
             if idx < 0 or idx >= len(store.tabs):
-                return f"无效索引 {idx}"
+                return f"Invalid tab index {idx}."
             closed_url = store.tabs[idx].target.url
             await store.tabs[idx].close()
             await asyncio.sleep(0.3)
@@ -103,17 +104,18 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
                 "remaining_pages": len(store.tabs),
             }, ensure_ascii=False)
 
-        raise RuntimeError(f"未知 action: {action}，可选值: list, switch, new, close")
+        raise RuntimeError(f"Unknown action: {action}. Supported: list, switch, new, close.")
 
     @mcp.tool()
     async def switch_frame(action: str = "list", selector: str = "") -> str:
-        """管理 iframe 上下文：列出所有 frame、切换到 iframe、切回主文档。
+        """List frames, switch to an iframe, or switch back to main document.
 
-        切换到 iframe 后，click/fill/hover/evaluate_script 等工具会自动在 iframe 内操作。
+        After switching, page tools such as click, fill, hover, and
+        evaluate_script run inside the selected frame.
 
         Args:
-            action: "list" 列出所有 frame | "switch" 切换到指定 iframe | "main" 切回主文档
-            selector: CSS 选择器（action="switch" 时必填，如 "iframe#login"、"iframe[name='content']"）
+            action: The frame action ("list" | "switch" | "main").
+            selector: The iframe CSS selector used by action="switch".
         """
         from ..iframe import collect_frames, switch_to_frame  # pylint: disable=import-outside-toplevel
 
@@ -126,20 +128,20 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
 
         if action == "switch":
             if not selector:
-                raise RuntimeError("切换 iframe 需要提供 selector 参数")
+                raise RuntimeError("selector is required for action='switch'.")
             ctx = await switch_to_frame(tab, selector)
             store.iframe_context = ctx
             return json.dumps({
                 "frame_id": ctx.frame_id,
                 "url": ctx.url,
-                "message": f"已切换到 iframe: {selector}",
+                "message": f"Switched to iframe: {selector}",
             }, ensure_ascii=False)
 
         if action == "main":
             store.iframe_context = None
-            return json.dumps({"message": "已切回主文档"}, ensure_ascii=False)
+            return json.dumps({"message": "Switched back to main document."}, ensure_ascii=False)
 
-        raise RuntimeError(f"未知 action: {action}，可选值: list, switch, main")
+        raise RuntimeError(f"Unknown action: {action}. Supported: list, switch, main.")
 
     @mcp.tool()
     async def wait_for(
@@ -147,12 +149,13 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
         state: str = "visible",
         timeout: int = 30000,
     ) -> str:
-        """等待条件满足。
+        """Wait for an element state or a short page settle delay.
 
         Args:
-            selector: 等待的元素选择器。为空则等待页面加载完成
-            state: 等待状态：visible、hidden、attached、detached
-            timeout: 超时毫秒数，默认 30000
+            selector: Optional element selector to wait for. If empty, waits
+                for a short settle delay on the current page.
+            state: The wait state (visible, hidden, attached, detached).
+            timeout: Maximum wait time in milliseconds. Default is 30000.
         """
         from ..iframe import find_element  # pylint: disable=import-outside-toplevel
 
@@ -166,8 +169,8 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
                     tab, selector, store, timeout=timeout_sec,
                 )
                 if elem:
-                    return f"元素 {selector} 已达到状态: {state}"
-                raise RuntimeError(f"等待元素 {selector} 超时")
+                    return f"Element {selector} reached state: {state}."
+                raise RuntimeError(f"Timeout waiting for element: {selector}.")
             elif state in ("hidden", "detached"):
                 deadline = asyncio.get_event_loop().time() + timeout_sec
                 while asyncio.get_event_loop().time() < deadline:
@@ -176,11 +179,11 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
                             tab, selector, store, timeout=0.5,
                         )
                         if not elem:
-                            return f"元素 {selector} 已达到状态: {state}"
+                            return f"Element {selector} reached state: {state}."
                     except Exception:  # pylint: disable=broad-exception-caught
-                        return f"元素 {selector} 已达到状态: {state}"
+                        return f"Element {selector} reached state: {state}."
                     await asyncio.sleep(0.5)
-                raise RuntimeError(f"等待元素 {selector} 消失超时")
+                raise RuntimeError(f"Timeout waiting for element to disappear: {selector}.")
         await tab.sleep(min(timeout_sec, 5))
         await tab
-        return "页面已加载完成"
+        return "Wait completed."

@@ -1,4 +1,4 @@
-"""调试工具 (4 tools)"""
+"""Debug tools (4 tools)."""
 
 import json
 
@@ -11,10 +11,12 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
 
     @mcp.tool()
     async def evaluate_script(script: str) -> str:
-        """在当前页面执行 JavaScript 代码并返回结果。
+        """Evaluate JavaScript in the current page and return the result.
+
+        If an iframe is active, the script is evaluated in that frame context.
 
         Args:
-            script: 要执行的 JavaScript 代码（如 "document.title"、"window.location.href"）
+            script: The JavaScript expression or code to evaluate.
         """
         tab = session.get_active_tab()
         store = session.get_active_session()
@@ -29,11 +31,15 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
 
     @mcp.tool()
     async def take_screenshot(selector: str = "", full_page: bool = False) -> str:
-        """截取页面或指定元素的截图，返回 base64 编码的 PNG 图片。
+        """Capture a screenshot of the page or a specific element.
+
+        Returns a base64-encoded PNG data URL.
 
         Args:
-            selector: 可选，元素选择器。为空则截取整个可视区域
-            full_page: 是否截取完整页面（包括滚动区域），仅在无 selector 时生效
+            selector: Optional element selector. If empty, captures the
+                viewport or full page.
+            full_page: Whether to capture the full page when selector is
+                empty.
         """
         from nodriver import cdp  # pylint: disable=import-outside-toplevel
 
@@ -45,10 +51,10 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
 
             elem = await find_element(tab, selector, store, timeout=10)
             if not elem:
-                raise RuntimeError(f"未找到元素: {selector}")
+                raise RuntimeError(f"Element not found: {selector}")
             pos = await elem.get_position()
             if not pos:
-                raise RuntimeError(f"无法获取元素位置: {selector}")
+                raise RuntimeError(f"Failed to get element position: {selector}")
             clip = cdp.page.Viewport(
                 x=pos.x, y=pos.y,
                 width=pos.width, height=pos.height, scale=1,
@@ -64,12 +70,12 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
                 )
             )
         if not data:
-            raise RuntimeError("截图失败，页面可能尚未加载完成")
+            raise RuntimeError("Screenshot failed. The page may not be fully ready.")
         return f"data:image/png;base64,{data}"
 
     @mcp.tool()
     async def take_snapshot() -> str:
-        """获取当前页面的完整 HTML 快照。"""
+        """Get the full HTML snapshot of the current page."""
         tab = session.get_active_tab()
         store = session.get_active_session()
         if store.iframe_context:
@@ -87,14 +93,15 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
         level: str = "",
         limit: int = 50,
     ) -> str:
-        """查看页面控制台消息。从打开店铺起自动捕获。
+        """List captured console messages from the active session.
 
-        提供 message_id 时返回该消息的完整内容；否则列出消息摘要。
+        If message_id is provided, returns full details for that message.
+        Otherwise, returns message summaries.
 
         Args:
-            message_id: 可选，指定消息 ID 查看完整内容（从列表结果中获取）
-            level: 可选，按级别过滤（log、warning、error、info、debug）
-            limit: 列表模式的返回条数上限，默认 50
+            message_id: Optional message ID to get full details.
+            level: Optional level filter (log, warning, error, info, debug).
+            limit: Maximum number of items in list mode. Default is 50.
         """
         store = session.get_active_session()
 
@@ -107,7 +114,7 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
                         "text": m.text,
                         "timestamp": m.timestamp,
                     }, ensure_ascii=False, indent=2)
-            return f"未找到消息 ID: {message_id}"
+            return f"Message ID not found: {message_id}"
 
         messages = store.console_messages
         if level:

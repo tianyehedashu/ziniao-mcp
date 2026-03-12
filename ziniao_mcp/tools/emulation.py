@@ -1,4 +1,4 @@
-"""仿真工具 (1 tool)"""
+"""Emulation tool (1 tool)."""
 
 import json
 
@@ -31,15 +31,18 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
         width: int = 0,
         height: int = 0,
     ) -> str:
-        """调整视口大小或模拟指定设备。
+        """Set viewport size or emulate a preset device.
 
-        设备模式：提供 device_name（如 "iPhone 14"），自动设置视口和 User-Agent。
-        自定义模式：提供 width + height 自定义视口尺寸。
+        Use device mode by setting device_name (for example, iPhone 14), or
+        custom mode by setting width and height.
 
         Args:
-            device_name: 设备名，如 "iPhone 14"、"iPad Pro 11"、"Desktop 1920x1080"
-            width: 自定义视口宽度（像素），仅在 device_name 为空时生效
-            height: 自定义视口高度（像素），仅在 device_name 为空时生效
+            device_name: The preset device name, such as "iPhone 14",
+                "iPad Pro 11", or "Desktop 1920x1080".
+            width: The custom viewport width in pixels (used when device_name
+                is empty).
+            height: The custom viewport height in pixels (used when
+                device_name is empty).
         """
         from nodriver import cdp  # pylint: disable=import-outside-toplevel
 
@@ -49,7 +52,7 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
             if device_name not in DEVICE_PRESETS:
                 available = sorted(DEVICE_PRESETS.keys())
                 return json.dumps({
-                    "error": f"未知设备: {device_name}",
+                    "error": f"Unknown device: {device_name}",
                     "available_devices": available,
                 }, ensure_ascii=False, indent=2)
 
@@ -81,6 +84,6 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
                     mobile=False,
                 )
             )
-            return f"视口已调整为 {width}x{height}"
+            return f"Viewport size set to {width}x{height}."
 
-        raise RuntimeError("请提供 device_name 或 width+height")
+        raise RuntimeError("Provide device_name or width+height.")

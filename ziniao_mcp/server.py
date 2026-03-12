@@ -38,7 +38,7 @@ def _resolve_config() -> dict[str, Any]:
     """解析配置，优先级: 环境变量 > 命令行参数 > config.yaml"""
     _print_package_version_and_exit()
     parser = argparse.ArgumentParser(
-        description="紫鸟与 Chrome 浏览器 MCP 服务器 — 统一操控紫鸟店铺与本地 Chrome"
+        description="Automate Ziniao stores and local Chrome browsers with one MCP server."
     )
     parser.add_argument("-V", "--package-version", action="store_true", help="显示包版本并退出")
     parser.add_argument("--config", default=None, help="配置文件路径")
@@ -191,7 +191,7 @@ def create_server() -> tuple[FastMCP, SessionManager]:
     session = SessionManager(client, stealth_config=stealth_cfg)
     mcp = FastMCP(
         "ziniao-mcp",
-        instructions="紫鸟店铺与 Chrome 浏览器自动化：店铺管理（list_stores/open_store）、Chrome 管理（launch_chrome/connect_chrome）、统一会话（browser_session）、页面操作（navigate/click/fill）、录制回放（recorder）等，对紫鸟与 Chrome 共用同一套工具。",
+        instructions="Automate Ziniao stores and Chrome browsers: store management (list_stores/open_store), Chrome management (launch_chrome/connect_chrome), unified session control (browser_session), page actions (navigate/click/fill), and record/replay (recorder).",
     )
 
     from .tools.chrome import register_tools as register_chrome
@@ -223,8 +223,8 @@ def _register_prompts(mcp: FastMCP) -> None:
 
     @mcp.prompt(
         name="ziniao_mcp",
-        title="ziniao MCP 使用指引",
-        description="获取 ziniao MCP 使用说明与常见任务示例，便于 AI 操控紫鸟店铺和 Chrome 浏览器。",
+        title="Ziniao MCP usage guide",
+        description="Get usage instructions and common task examples for operating Ziniao stores and Chrome browsers.",
     )
     def ziniao_browser_guide() -> list[dict[str, Any]]:
         return [
@@ -257,8 +257,8 @@ def _register_prompts(mcp: FastMCP) -> None:
 
     @mcp.prompt(
         name="ziniao_recorder",
-        title="录制与回放（record / stop record / replay）",
-        description="浏览器操作录制与回放：开始录制、停止并保存、回放已保存录制。适用于需要记录或重复用户操作时使用。",
+        title="Record and replay browser actions",
+        description="Record browser actions, stop and save recordings, and replay saved flows.",
     )
     def ziniao_recorder_guide() -> list[dict[str, Any]]:
         return [

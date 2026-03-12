@@ -1,4 +1,4 @@
-"""Chrome 浏览器管理工具 (4 tools)"""
+"""Chrome browser management tools (4 tools)."""
 
 import json
 
@@ -18,15 +18,19 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
         user_data_dir: str = "",
         headless: bool = False,
     ) -> str:
-        """启动一个新的 Chrome 浏览器实例并通过 CDP 连接。成功后成为当前活动浏览器。
+        """Launch a new Chrome instance and connect via CDP.
+
+        The browser becomes the active session.
 
         Args:
-            name: 会话名称（可选，用于标识和后续切换）
-            url: 启动后打开的 URL（可选）
-            executable_path: Chrome 可执行文件路径（空则自动检测系统 Chrome）
-            cdp_port: CDP 远程调试端口（0 则自动分配空闲端口）
-            user_data_dir: 用户数据目录，用于隔离 profile（空则使用临时目录）
-            headless: 是否以无头模式启动
+            name: Optional session name for identification and switching.
+            url: Optional URL to open after launch.
+            executable_path: Optional Chrome executable path. If empty,
+                auto-detects system Chrome.
+            cdp_port: CDP remote debugging port. If 0, an available port is
+                selected automatically.
+            user_data_dir: Optional user data directory for profile isolation.
+            headless: Whether to run Chrome in headless mode.
         """
         try:
             store_session = await session.launch_chrome(
@@ -51,13 +55,14 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
 
     @mcp.tool()
     async def connect_chrome(cdp_port: int, name: str = "") -> str:
-        """连接到一个已运行的 Chrome 浏览器（通过 CDP 端口）。
-        适用于已手动启动带 --remote-debugging-port 参数的 Chrome。
-        成功后成为当前活动浏览器。
+        """Connect to an already running Chrome instance by CDP port.
+
+        Suitable for Chrome started with --remote-debugging-port. The
+        connected browser becomes the active session.
 
         Args:
-            cdp_port: Chrome 的 CDP 远程调试端口（如 9222）
-            name: 会话名称（可选，用于标识和后续切换）
+            cdp_port: The Chrome CDP remote debugging port, such as 9222.
+            name: Optional session name for identification and switching.
         """
         try:
             store_session = await session.connect_chrome(
@@ -77,7 +82,7 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
 
     @mcp.tool()
     async def list_chrome() -> str:
-        """列出当前所有 Chrome 浏览器会话。"""
+        """Get a list of active Chrome sessions."""
         sessions = session.list_chrome_sessions()
         return json.dumps(
             {"sessions": sessions, "count": len(sessions)},
@@ -86,12 +91,14 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
 
     @mcp.tool()
     async def close_chrome(session_id: str) -> str:
-        """关闭指定的 Chrome 浏览器会话。
-        若为 launch 模式启动的 Chrome，会终止浏览器进程；
-        若为 connect 模式连接的 Chrome，仅断开 CDP 连接。
+        """Close the specified Chrome session.
+
+        For launch mode sessions, this stops the browser process. For connect
+        mode sessions, this only disconnects CDP.
 
         Args:
-            session_id: 会话标识（从 list_chrome 或 session(action='list') 获取）
+            session_id: The session identifier from list_chrome or
+                browser_session(action='list').
         """
         await session.close_chrome(session_id)
         remaining = session.list_chrome_sessions()
