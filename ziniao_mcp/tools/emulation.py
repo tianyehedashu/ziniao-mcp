@@ -47,6 +47,8 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
         from nodriver import cdp  # pylint: disable=import-outside-toplevel
 
         tab = session.get_active_tab()
+        store = session.get_active_session()
+        is_ziniao = store.backend_type == "ziniao"
 
         if device_name:
             if device_name not in DEVICE_PRESETS:
@@ -67,12 +69,15 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
                 )
             )
             ua = device.get("user_agent", "")
-            if ua:
+            if ua and not is_ziniao:
                 await tab.send(cdp.emulation.set_user_agent_override(user_agent=ua))
+            ua_status = ua
+            if is_ziniao and ua:
+                ua_status = "(skipped: Ziniao manages UA to match hardware fingerprint)"
             return json.dumps({
                 "device": device_name,
                 "viewport": vp,
-                "user_agent": ua,
+                "user_agent": ua_status,
             }, ensure_ascii=False)
 
         if width > 0 and height > 0:

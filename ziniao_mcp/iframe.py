@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json as _json
 import logging
+import random
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Optional, Union
 
@@ -113,6 +114,9 @@ class IFrameElement:
             button=cdp.input_.MouseButton.LEFT, buttons=1, click_count=1,
         ))
 
+    async def mouse_click(self) -> None:
+        await self.click()
+
     async def get_position(self) -> _CompatPosition:
         return _CompatPosition(
             left=self._abs_x, top=self._abs_y,
@@ -149,11 +153,14 @@ class IFrameElement:
     async def send_keys(self, text: str) -> None:
         from nodriver import cdp  # pylint: disable=import-outside-toplevel
 
-        for char in text:
+        for i, char in enumerate(text):
             await self._tab.send(
                 cdp.input_.dispatch_key_event("char", text=char)
             )
-            await asyncio.sleep(0.02)
+            base_delay = random.uniform(0.05, 0.15)
+            if i > 0 and random.random() < 0.05:
+                base_delay += random.uniform(0.3, 0.8)
+            await asyncio.sleep(base_delay)
 
     async def send_file(self, *paths: str) -> None:
         from nodriver import cdp  # pylint: disable=import-outside-toplevel

@@ -167,7 +167,7 @@ async def human_click(
     if not box:
         target = element or await tab.select(selector, timeout=5)
         if target:
-            await target.click()
+            await target.mouse_click()
         return
 
     offset_x = random.uniform(box["width"] * 0.2, box["width"] * 0.8)

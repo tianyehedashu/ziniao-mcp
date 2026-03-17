@@ -204,8 +204,10 @@ def _generate_python_script(
     lines.append("")
     lines.append("import argparse")
     lines.append("import asyncio")
+    lines.append("import random")
     lines.append("")
     lines.append("import nodriver")
+    lines.append("from nodriver import cdp")
     lines.append("")
     lines.append("")
     lines.append("async def main(port: int) -> None:")
@@ -237,7 +239,12 @@ def _generate_python_script(
             lines.append(f"    # {step}. Click {sel}")
             lines.append(f"    elem = await tab.select({sel!r}, timeout=10)")
             lines.append("    if elem:")
-            lines.append("        await elem.click()")
+            lines.append("        pos = await elem.get_position()")
+            lines.append("        if pos:")
+            lines.append("            cx, cy = pos.center")
+            lines.append("            await tab.mouse_click(cx, cy)")
+            lines.append("        else:")
+            lines.append("            await elem.mouse_click()")
 
         elif act_type == "fill":
             sel = act["selector"]
@@ -245,8 +252,20 @@ def _generate_python_script(
             lines.append(f"    # {step}. Fill {sel}")
             lines.append(f"    elem = await tab.select({sel!r}, timeout=10)")
             lines.append("    if elem:")
-            lines.append("        await elem.clear_input()")
-            lines.append(f"        await elem.send_keys({val!r})")
+            lines.append("        pos = await elem.get_position()")
+            lines.append("        if pos:")
+            lines.append("            await tab.mouse_click(*pos.center)")
+            lines.append("        else:")
+            lines.append("            await elem.mouse_click()")
+            lines.append("        await asyncio.sleep(random.uniform(0.1, 0.3))")
+            lines.append("        await tab.send(cdp.input_.dispatch_key_event('rawKeyDown', windows_virtual_key_code=65, modifiers=2))")
+            lines.append("        await tab.send(cdp.input_.dispatch_key_event('keyUp', windows_virtual_key_code=65, modifiers=2))")
+            lines.append("        await asyncio.sleep(0.05)")
+            lines.append("        await tab.send(cdp.input_.dispatch_key_event('rawKeyDown', windows_virtual_key_code=8))")
+            lines.append("        await tab.send(cdp.input_.dispatch_key_event('keyUp', windows_virtual_key_code=8))")
+            lines.append(f"        for char in {val!r}:")
+            lines.append("            await tab.send(cdp.input_.dispatch_key_event('char', text=char))")
+            lines.append("            await asyncio.sleep(random.uniform(0.05, 0.15))")
 
         elif act_type == "select":
             sel = act["selector"]
@@ -542,9 +561,18 @@ async def _do_replay(session, name, actions_json, speed) -> str:
         return json.dumps({"status": "empty", "message": "Action list is empty."}, ensure_ascii=False)
 
     from ..iframe import find_element  # pylint: disable=import-outside-toplevel
+    from ..stealth.human_behavior import (  # pylint: disable=import-outside-toplevel
+        human_click as _hclick,
+        human_fill as _hfill,
+    )
 
     tab = session.get_active_tab()
     store = session.get_active_session()
+    is_ziniao = store.backend_type == "ziniao"
+    cfg = None
+    sc = session.stealth_config
+    if sc.enabled and sc.human_behavior:
+        cfg = sc.to_behavior_config()
     speed = max(0.1, speed)
     replayed = 0
 
@@ -558,13 +586,19 @@ async def _do_replay(session, name, actions_json, speed) -> str:
             if act_type == "click":
                 elem = await find_element(tab, act["selector"], store, timeout=10)
                 if elem:
-                    await elem.click()
+                    if cfg or is_ziniao:
+                        await _hclick(tab, act["selector"], cfg=cfg, element=elem)
+                    else:
+                        await elem.click()
 
             elif act_type == "fill":
                 elem = await find_element(tab, act["selector"], store, timeout=10)
                 if elem:
-                    await elem.clear_input()
-                    await elem.send_keys(act.get("value", ""))
+                    if cfg or is_ziniao:
+                        await _hfill(tab, act["selector"], act.get("value", ""), cfg=cfg, element=elem)
+                    else:
+                        await elem.clear_input()
+                        await elem.send_keys(act.get("value", ""))
 
             elif act_type == "select":
                 sel = act["selector"]

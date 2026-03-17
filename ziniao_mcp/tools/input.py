@@ -1,6 +1,8 @@
 """Input automation tools (8 tools)."""
 
+import asyncio
 import json
+import random
 
 from mcp.server.fastmcp import FastMCP
 
@@ -15,6 +17,13 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
         if sc.enabled and sc.human_behavior:
             return sc.to_behavior_config()
         return None
+
+    def _is_ziniao() -> bool:
+        """Check if the active session is a Ziniao store."""
+        try:
+            return session.get_active_session().backend_type == "ziniao"
+        except RuntimeError:
+            return False
 
     @mcp.tool()
     async def click(selector: str) -> str:
@@ -36,6 +45,16 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
             from ..stealth import human_click, random_delay  # pylint: disable=import-outside-toplevel
             await random_delay(cfg=cfg)
             await human_click(tab, selector, cfg=cfg, element=elem)
+        elif _is_ziniao():
+            from ..stealth.human_behavior import _move_mouse_humanlike, _get_box_from_element  # pylint: disable=import-outside-toplevel
+            box = await _get_box_from_element(elem)
+            if box:
+                cx = box["x"] + box["width"] / 2
+                cy = box["y"] + box["height"] / 2
+                await _move_mouse_humanlike(tab, cx, cy)
+                await tab.mouse_click(cx, cy)
+            else:
+                await elem.mouse_click()
         else:
             await elem.click()
         return f"Clicked: {selector}"
@@ -81,6 +100,9 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
                 await human_fill(
                     tab, f["selector"], f["value"], cfg=cfg, element=elem,
                 )
+            elif _is_ziniao():
+                from ..stealth.human_behavior import human_fill as _hfill  # pylint: disable=import-outside-toplevel
+                await _hfill(tab, f["selector"], f["value"], element=elem)
             else:
                 await elem.clear_input()
                 await elem.send_keys(f["value"])
@@ -111,6 +133,12 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
             if selector:
                 elem = await find_element(tab, selector, store, timeout=10)
             await human_type(tab, text, selector, cfg=cfg, element=elem)
+        elif _is_ziniao():
+            from ..stealth.human_behavior import human_type as _htype  # pylint: disable=import-outside-toplevel
+            elem = None
+            if selector:
+                elem = await find_element(tab, selector, store, timeout=10)
+            await _htype(tab, text, selector, element=elem)
         else:
             from nodriver import cdp  # pylint: disable=import-outside-toplevel
             if selector:
@@ -119,6 +147,7 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
                     await elem.click()
             for char in text:
                 await tab.send(cdp.input_.dispatch_key_event("char", text=char))
+                await asyncio.sleep(random.uniform(0.03, 0.1))
         return f"Typed: {text}"
 
     @mcp.tool()
@@ -191,6 +220,9 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
             from ..stealth import human_hover, random_delay  # pylint: disable=import-outside-toplevel
             await random_delay(cfg=cfg)
             await human_hover(tab, selector, cfg=cfg, element=elem)
+        elif _is_ziniao():
+            from ..stealth.human_behavior import human_hover as _hhover  # pylint: disable=import-outside-toplevel
+            await _hhover(tab, selector, element=elem)
         else:
             await elem.mouse_move()
         return f"Hovered: {selector}"
