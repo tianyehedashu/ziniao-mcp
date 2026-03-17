@@ -15,9 +15,10 @@ except (ImportError, PackageNotFoundError):
 
 from mcp.server.fastmcp import FastMCP
 
-from .session import SessionManager
+from .session import SessionManager, _STATE_DIR
 
-_debug_log = Path(__file__).resolve().parent.parent / "mcp_debug.log"
+_debug_log = _STATE_DIR / "mcp_debug.log"
+_STATE_DIR.mkdir(parents=True, exist_ok=True)
 logging.basicConfig(
     filename=str(_debug_log),
     level=logging.DEBUG,
@@ -51,6 +52,7 @@ def _resolve_config() -> dict[str, Any]:
     args, _ = parser.parse_known_args()
 
     yaml_config: dict[str, Any] = {}
+    chrome_yaml: dict[str, Any] = {}
     config_path = args.config
     if not config_path:
         candidates = [
@@ -63,7 +65,7 @@ def _resolve_config() -> dict[str, Any]:
                 break
 
     if config_path and Path(config_path).exists():
-        import yaml
+        import yaml  # pylint: disable=import-outside-toplevel
 
         with open(config_path, "r", encoding="utf-8") as f:
             raw = yaml.safe_load(f) or {}
@@ -79,6 +81,7 @@ def _resolve_config() -> dict[str, Any]:
                 "version": browser_cfg.get("version"),
                 "stealth": raw["ziniao"].get("stealth", {}),
             }
+        chrome_yaml = raw.get("chrome", {})
 
     cli_config = {
         "company": args.company,
@@ -114,13 +117,6 @@ def _resolve_config() -> dict[str, Any]:
 
     config["stealth"] = yaml_config.get("stealth", {})
 
-    chrome_yaml = {}
-    if config_path and Path(config_path).exists():
-        import yaml  # pylint: disable=import-outside-toplevel
-        with open(config_path, "r", encoding="utf-8") as f:
-            raw_cfg = yaml.safe_load(f) or {}
-        chrome_yaml = raw_cfg.get("chrome", {})
-
     chrome_env = {
         "executable_path": os.environ.get("CHROME_EXECUTABLE_PATH"),
         "default_cdp_port": os.environ.get("CHROME_CDP_PORT"),
@@ -151,8 +147,9 @@ def _has_ziniao_config(config: dict[str, Any]) -> bool:
     )
 
 
-def create_server() -> tuple[FastMCP, SessionManager]:
-    config = _resolve_config()
+def create_server(config: dict[str, Any] | None = None) -> tuple[FastMCP, SessionManager]:
+    if config is None:
+        config = _resolve_config()
 
     from .stealth import StealthConfig  # pylint: disable=import-outside-toplevel
 
@@ -284,45 +281,14 @@ def _register_prompts(mcp: FastMCP) -> None:
 
 
 def main() -> None:
-    # 先解析参数，使 --help 在启动任何线程前退出，避免解释器关闭时与 daemon 线程争用 stdin
-    _resolve_config()
+    config = _resolve_config()
 
     _logger.info("=== ziniao-mcp starting ===")
     _logger.info("Python: %s", sys.version)
     _logger.info("Platform: %s", sys.platform)
-    _logger.info("stdin: %s, isatty=%s", sys.stdin, sys.stdin.isatty() if sys.stdin else "N/A")
-    _logger.info("stdout: %s, isatty=%s", sys.stdout, sys.stdout.isatty() if sys.stdout else "N/A")
-    _logger.info("stdin.buffer: %s", getattr(sys.stdin, 'buffer', 'N/A'))
-    _logger.info("stdout.buffer: %s", getattr(sys.stdout, 'buffer', 'N/A'))
-    _logger.info("stdin fileno: %s", sys.stdin.fileno() if sys.stdin else "N/A")
-    _logger.info("stdout fileno: %s", sys.stdout.fileno() if sys.stdout else "N/A")
-    _logger.info("ENV keys: %s", sorted(os.environ.keys()))
-
-    import threading
-    def _stdin_monitor():
-        """Background thread to log raw stdin activity."""
-        try:
-            _logger.info("[stdin-monitor] Starting raw read on stdin.buffer")
-            peek_fn = getattr(sys.stdin.buffer, "peek", None)
-            if callable(peek_fn):
-                data = peek_fn(1)
-            else:
-                data = b""
-            _logger.info("[stdin-monitor] peek returned: %s", repr(data[:100] if data else data))
-        except Exception as e:
-            _logger.info("[stdin-monitor] peek error: %s", e)
-            try:
-                data = sys.stdin.buffer.read(1)
-                _logger.info("[stdin-monitor] read(1) returned: %s", repr(data))
-            except Exception as e2:
-                _logger.info("[stdin-monitor] read(1) error: %s", e2)
-    t = threading.Thread(target=_stdin_monitor, daemon=True)
-    t.start()
-    t.join(timeout=5)
-    _logger.info("[stdin-monitor] Joined (done=%s)", not t.is_alive())
 
     try:
-        mcp, _session = create_server()
+        mcp, _session = create_server(config)
         _logger.info("Server created, starting mcp.run()")
         mcp.run()
     except Exception:

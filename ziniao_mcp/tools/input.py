@@ -3,10 +3,110 @@
 import asyncio
 import json
 import random
+from typing import TYPE_CHECKING, Optional, Union
 
 from mcp.server.fastmcp import FastMCP
 
+from ._keys import parse_key
 from ..session import SessionManager
+
+if TYPE_CHECKING:
+    from nodriver import Tab
+    from nodriver.core.element import Element
+
+    from ..iframe import IFrameElement
+    from ..stealth.human_behavior import BehaviorConfig
+
+
+async def _dispatch_click(
+    tab: "Tab",
+    selector: str,
+    elem: Union["Element", "IFrameElement"],
+    cfg: Optional["BehaviorConfig"],
+    is_ziniao: bool,
+) -> None:
+    """Unified click dispatch: full stealth → ziniao basic humanization → plain."""
+    if cfg:
+        from ..stealth import human_click, random_delay  # pylint: disable=import-outside-toplevel
+        await random_delay(cfg=cfg)
+        await human_click(tab, selector, cfg=cfg, element=elem)
+    elif is_ziniao:
+        from ..stealth.human_behavior import _move_mouse_humanlike, _get_box_from_element  # pylint: disable=import-outside-toplevel
+        box = await _get_box_from_element(elem)
+        if box:
+            cx = box["x"] + box["width"] / 2
+            cy = box["y"] + box["height"] / 2
+            await _move_mouse_humanlike(tab, cx, cy)
+            await tab.mouse_click(cx, cy)
+        else:
+            await elem.mouse_click()
+    else:
+        await elem.click()
+
+
+async def _dispatch_fill(
+    tab: "Tab",
+    selector: str,
+    value: str,
+    elem: Union["Element", "IFrameElement"],
+    cfg: Optional["BehaviorConfig"],
+    is_ziniao: bool,
+) -> None:
+    """Unified fill dispatch: full stealth → ziniao basic humanization → plain."""
+    if cfg:
+        from ..stealth import human_fill, random_delay  # pylint: disable=import-outside-toplevel
+        await random_delay(cfg=cfg)
+        await human_fill(tab, selector, value, cfg=cfg, element=elem)
+    elif is_ziniao:
+        from ..stealth.human_behavior import human_fill as _hfill  # pylint: disable=import-outside-toplevel
+        await _hfill(tab, selector, value, element=elem)
+    else:
+        await elem.clear_input()
+        await elem.send_keys(value)
+
+
+async def _dispatch_type(
+    tab: "Tab",
+    text: str,
+    selector: str,
+    elem: Optional[Union["Element", "IFrameElement"]],
+    cfg: Optional["BehaviorConfig"],
+    is_ziniao: bool,
+) -> None:
+    """Unified type dispatch: full stealth → ziniao basic humanization → plain."""
+    if cfg:
+        from ..stealth import human_type, random_delay  # pylint: disable=import-outside-toplevel
+        await random_delay(cfg=cfg)
+        await human_type(tab, text, selector, cfg=cfg, element=elem)
+    elif is_ziniao:
+        from ..stealth.human_behavior import human_type as _htype  # pylint: disable=import-outside-toplevel
+        await _htype(tab, text, selector, element=elem)
+    else:
+        from nodriver import cdp  # pylint: disable=import-outside-toplevel
+        if elem:
+            await elem.click()
+        for char in text:
+            await tab.send(cdp.input_.dispatch_key_event("char", text=char))
+            await asyncio.sleep(random.uniform(0.03, 0.1))
+
+
+async def _dispatch_hover(
+    tab: "Tab",
+    selector: str,
+    elem: Union["Element", "IFrameElement"],
+    cfg: Optional["BehaviorConfig"],
+    is_ziniao: bool,
+) -> None:
+    """Unified hover dispatch: full stealth → ziniao basic humanization → plain."""
+    if cfg:
+        from ..stealth import human_hover, random_delay  # pylint: disable=import-outside-toplevel
+        await random_delay(cfg=cfg)
+        await human_hover(tab, selector, cfg=cfg, element=elem)
+    elif is_ziniao:
+        from ..stealth.human_behavior import human_hover as _hhover  # pylint: disable=import-outside-toplevel
+        await _hhover(tab, selector, element=elem)
+    else:
+        await elem.mouse_move()
 
 
 def register_tools(mcp: FastMCP, session: SessionManager) -> None:
@@ -36,27 +136,10 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
 
         tab = session.get_active_tab()
         store = session.get_active_session()
-        cfg = _behavior_cfg()
-
         elem = await find_element(tab, selector, store, timeout=10)
         if not elem:
             raise RuntimeError(f"Element not found: {selector}")
-        if cfg:
-            from ..stealth import human_click, random_delay  # pylint: disable=import-outside-toplevel
-            await random_delay(cfg=cfg)
-            await human_click(tab, selector, cfg=cfg, element=elem)
-        elif _is_ziniao():
-            from ..stealth.human_behavior import _move_mouse_humanlike, _get_box_from_element  # pylint: disable=import-outside-toplevel
-            box = await _get_box_from_element(elem)
-            if box:
-                cx = box["x"] + box["width"] / 2
-                cy = box["y"] + box["height"] / 2
-                await _move_mouse_humanlike(tab, cx, cy)
-                await tab.mouse_click(cx, cy)
-            else:
-                await elem.mouse_click()
-        else:
-            await elem.click()
+        await _dispatch_click(tab, selector, elem, _behavior_cfg(), _is_ziniao())
         return f"Clicked: {selector}"
 
     @mcp.tool()
@@ -82,6 +165,7 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
         tab = session.get_active_tab()
         store = session.get_active_session()
         cfg = _behavior_cfg()
+        ziniao = _is_ziniao()
 
         if fields_json:
             fields = json.loads(fields_json)
@@ -94,18 +178,7 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
             elem = await find_element(tab, f["selector"], store, timeout=10)
             if not elem:
                 raise RuntimeError(f"Element not found: {f['selector']}")
-            if cfg:
-                from ..stealth import human_fill, random_delay  # pylint: disable=import-outside-toplevel
-                await random_delay(cfg=cfg)
-                await human_fill(
-                    tab, f["selector"], f["value"], cfg=cfg, element=elem,
-                )
-            elif _is_ziniao():
-                from ..stealth.human_behavior import human_fill as _hfill  # pylint: disable=import-outside-toplevel
-                await _hfill(tab, f["selector"], f["value"], element=elem)
-            else:
-                await elem.clear_input()
-                await elem.send_keys(f["value"])
+            await _dispatch_fill(tab, f["selector"], f["value"], elem, cfg, ziniao)
 
         if len(fields) == 1:
             return f"Filled: {fields[0]['selector']}"
@@ -124,30 +197,10 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
 
         tab = session.get_active_tab()
         store = session.get_active_session()
-        cfg = _behavior_cfg()
-
-        if cfg:
-            from ..stealth import human_type, random_delay  # pylint: disable=import-outside-toplevel
-            await random_delay(cfg=cfg)
-            elem = None
-            if selector:
-                elem = await find_element(tab, selector, store, timeout=10)
-            await human_type(tab, text, selector, cfg=cfg, element=elem)
-        elif _is_ziniao():
-            from ..stealth.human_behavior import human_type as _htype  # pylint: disable=import-outside-toplevel
-            elem = None
-            if selector:
-                elem = await find_element(tab, selector, store, timeout=10)
-            await _htype(tab, text, selector, element=elem)
-        else:
-            from nodriver import cdp  # pylint: disable=import-outside-toplevel
-            if selector:
-                elem = await find_element(tab, selector, store, timeout=10)
-                if elem:
-                    await elem.click()
-            for char in text:
-                await tab.send(cdp.input_.dispatch_key_event("char", text=char))
-                await asyncio.sleep(random.uniform(0.03, 0.1))
+        elem = None
+        if selector:
+            elem = await find_element(tab, selector, store, timeout=10)
+        await _dispatch_type(tab, text, selector, elem, _behavior_cfg(), _is_ziniao())
         return f"Typed: {text}"
 
     @mcp.tool()
@@ -166,30 +219,7 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
             from ..stealth import random_delay  # pylint: disable=import-outside-toplevel
             await random_delay(50, 200, cfg=cfg)
 
-        key_map = {
-            "Enter": 13, "Tab": 9, "Escape": 27, "Backspace": 8,
-            "Delete": 46, "ArrowUp": 38, "ArrowDown": 40,
-            "ArrowLeft": 37, "ArrowRight": 39, "Space": 32,
-            "Home": 36, "End": 35, "PageUp": 33, "PageDown": 34,
-        }
-
-        modifiers = 0
-        actual_key = key
-        if "+" in key:
-            parts = key.split("+")
-            for mod in parts[:-1]:
-                mod_lower = mod.strip().lower()
-                if mod_lower in ("control", "ctrl"):
-                    modifiers |= 2
-                elif mod_lower == "alt":
-                    modifiers |= 1
-                elif mod_lower in ("meta", "command"):
-                    modifiers |= 4
-                elif mod_lower == "shift":
-                    modifiers |= 8
-            actual_key = parts[-1].strip()
-
-        vk = key_map.get(actual_key, ord(actual_key.upper()) if len(actual_key) == 1 else 0)
+        actual_key, vk, modifiers = parse_key(key)
         await tab.send(cdp.input_.dispatch_key_event(
             "rawKeyDown", windows_virtual_key_code=vk, modifiers=modifiers,
             key=actual_key,
@@ -211,20 +241,10 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
 
         tab = session.get_active_tab()
         store = session.get_active_session()
-        cfg = _behavior_cfg()
-
         elem = await find_element(tab, selector, store, timeout=10)
         if not elem:
             raise RuntimeError(f"Element not found: {selector}")
-        if cfg:
-            from ..stealth import human_hover, random_delay  # pylint: disable=import-outside-toplevel
-            await random_delay(cfg=cfg)
-            await human_hover(tab, selector, cfg=cfg, element=elem)
-        elif _is_ziniao():
-            from ..stealth.human_behavior import human_hover as _hhover  # pylint: disable=import-outside-toplevel
-            await _hhover(tab, selector, element=elem)
-        else:
-            await elem.mouse_move()
+        await _dispatch_hover(tab, selector, elem, _behavior_cfg(), _is_ziniao())
         return f"Hovered: {selector}"
 
     @mcp.tool()

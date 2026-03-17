@@ -67,7 +67,7 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
             store.iframe_context = None
             t = store.tabs[page_index]
             await t.bring_to_front()
-            await session._setup_tab_listeners(store, t)
+            await session.setup_tab_listeners(store, t)
             return json.dumps({
                 "index": page_index,
                 "url": t.target.url,
@@ -80,7 +80,7 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
             store.tabs = _filter_tabs(store.browser.tabs)
             store.active_tab_index = len(store.tabs) - 1
             store.iframe_context = None
-            await session._setup_tab_listeners(store, new_tab)
+            await session.setup_tab_listeners(store, new_tab)
             return json.dumps({
                 "index": store.active_tab_index,
                 "url": new_tab.target.url,

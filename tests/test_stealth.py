@@ -334,7 +334,7 @@ class TestHumanClick:
         cfg = BehaviorConfig(mouse_movement=False, delay_min_ms=1, delay_max_ms=2)
         await human_click(tab, "#btn", cfg=cfg)
         elem = await tab.select("#btn", timeout=5)
-        elem.click.assert_awaited()
+        elem.mouse_click.assert_awaited()
 
 
 # ------------------------------------------------------------------ #

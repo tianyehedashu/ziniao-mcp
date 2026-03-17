@@ -246,10 +246,10 @@ class ZiniaoClient:
             _logger.error("启动客户端失败: %s", e)
             raise
 
-    def kill_process(self, skip_confirm: bool = False) -> bool:
+    def kill_process(self, skip_confirm: bool = True) -> bool:
         """
         终止紫鸟客户端已启动的进程。
-        :param skip_confirm: 若为 True 则跳过确认
+        :param skip_confirm: 若为 True 则跳过确认（默认 True，适用于 MCP 服务器场景）
         :return: 是否已执行终止
         """
         if not skip_confirm:

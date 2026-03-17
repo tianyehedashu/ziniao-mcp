@@ -306,29 +306,9 @@ def _generate_python_script(
 
 def _append_press_key_code(lines: list[str], key: str) -> None:
     """Append nodriver CDP code for a press_key action."""
-    key_map = {
-        "Enter": 13, "Tab": 9, "Escape": 27, "Backspace": 8,
-        "Delete": 46, "ArrowUp": 38, "ArrowDown": 40,
-        "ArrowLeft": 37, "ArrowRight": 39,
-    }
+    from ._keys import parse_key as _parse  # pylint: disable=import-outside-toplevel
 
-    modifiers = 0
-    actual_key = key
-    if "+" in key:
-        parts = key.split("+")
-        for mod in parts[:-1]:
-            m = mod.strip().lower()
-            if m in ("control", "ctrl"):
-                modifiers |= 2
-            elif m == "alt":
-                modifiers |= 1
-            elif m in ("meta", "command"):
-                modifiers |= 4
-            elif m == "shift":
-                modifiers |= 8
-        actual_key = parts[-1].strip()
-
-    vk = key_map.get(actual_key, ord(actual_key.upper()) if len(actual_key) == 1 else 0)
+    actual_key, vk, modifiers = _parse(key)
 
     lines.append("    from nodriver import cdp")
     lines.append("    await tab.send(cdp.input_.dispatch_key_event(")
@@ -610,28 +590,9 @@ async def _do_replay(session, name, actions_json, speed) -> str:
 
             elif act_type == "press_key":
                 from nodriver import cdp  # pylint: disable=import-outside-toplevel
+                from ._keys import parse_key as _parse  # pylint: disable=import-outside-toplevel
                 key = act.get("key", "Enter")
-                key_map = {
-                    "Enter": 13, "Tab": 9, "Escape": 27, "Backspace": 8,
-                    "Delete": 46, "ArrowUp": 38, "ArrowDown": 40,
-                    "ArrowLeft": 37, "ArrowRight": 39,
-                }
-                modifiers = 0
-                actual_key = key
-                if "+" in key:
-                    parts = key.split("+")
-                    for mod in parts[:-1]:
-                        m = mod.strip().lower()
-                        if m in ("control", "ctrl"):
-                            modifiers |= 2
-                        elif m == "alt":
-                            modifiers |= 1
-                        elif m in ("meta", "command"):
-                            modifiers |= 4
-                        elif m == "shift":
-                            modifiers |= 8
-                    actual_key = parts[-1].strip()
-                vk = key_map.get(actual_key, ord(actual_key.upper()) if len(actual_key) == 1 else 0)
+                actual_key, vk, modifiers = _parse(key)
                 await tab.send(cdp.input_.dispatch_key_event(
                     "rawKeyDown", windows_virtual_key_code=vk, modifiers=modifiers, key=actual_key,
                 ))

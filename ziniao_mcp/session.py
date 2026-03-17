@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import collections
 import json
 import logging
 import os
@@ -41,6 +42,9 @@ _ZINIAO_NOT_CONFIGURED = (
 _STATE_DIR = Path.home() / ".ziniao"
 _STATE_FILE = _STATE_DIR / "sessions.json"
 _DEFAULT_CHROME_USER_DATA_DIR = _STATE_DIR / "chrome-profile"
+
+_MAX_CONSOLE_MESSAGES = 1000
+_MAX_NETWORK_REQUESTS = 1000
 
 if TYPE_CHECKING:
     import nodriver
@@ -86,8 +90,12 @@ class StoreSession:
     active_tab_index: int = 0
     launcher_page: str = ""
     open_result: dict = field(default_factory=dict)
-    console_messages: list[ConsoleMessage] = field(default_factory=list)
-    network_requests: list[NetworkRequest] = field(default_factory=list)
+    console_messages: collections.deque[ConsoleMessage] = field(
+        default_factory=lambda: collections.deque(maxlen=_MAX_CONSOLE_MESSAGES)
+    )
+    network_requests: collections.deque[NetworkRequest] = field(
+        default_factory=lambda: collections.deque(maxlen=_MAX_NETWORK_REQUESTS)
+    )
     dialog_action: str = "dismiss"
     dialog_text: str = ""
     iframe_context: Optional["IFrameContext"] = None
@@ -122,7 +130,7 @@ def _acquire_lock():
     _STATE_DIR.mkdir(parents=True, exist_ok=True)
     fd = os.open(str(_LOCK_FILE), os.O_CREAT | os.O_RDWR)
     if os.name == "nt":
-        msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+        msvcrt.locking(fd, msvcrt.LK_LOCK, 1)
     elif fcntl is not None:
         fcntl.flock(fd, fcntl.LOCK_EX)
     return fd
@@ -399,7 +407,10 @@ class SessionManager:
             else:
                 dead_keys.append(key)
         if dead_keys:
-            _update_state_file(lambda s: [s.pop(k, None) for k in dead_keys])
+            def _remove_dead(s: dict) -> None:
+                for k in dead_keys:
+                    s.pop(k, None)
+            _update_state_file(_remove_dead)
         return alive
 
     async def _is_client_running(self) -> bool:
@@ -614,7 +625,7 @@ class SessionManager:
         )
 
         for tab in session.tabs:
-            await self._setup_tab_listeners(session, tab)
+            await self.setup_tab_listeners(session, tab)
 
         if launcher_page:
             try:
@@ -661,7 +672,7 @@ class SessionManager:
                         open_result=info,
                     )
                     for tab in session.tabs:
-                        await self._setup_tab_listeners(session, tab)
+                        await self.setup_tab_listeners(session, tab)
 
                     self._stores[store_id] = session
                     self._active_store_id = store_id
@@ -801,7 +812,7 @@ class SessionManager:
         )
 
         for tab in session.tabs:
-            await self._setup_tab_listeners(session, tab)
+            await self.setup_tab_listeners(session, tab)
 
         self._stores[session_id] = session
         self._active_store_id = session_id
@@ -845,7 +856,7 @@ class SessionManager:
         )
 
         for tab in session.tabs:
-            await self._setup_tab_listeners(session, tab)
+            await self.setup_tab_listeners(session, tab)
 
         self._stores[session_id] = session
         self._active_store_id = session_id
@@ -928,7 +939,7 @@ class SessionManager:
             "is_active": session.store_id == self._active_store_id,
         }
 
-    async def _setup_tab_listeners(self, store: StoreSession, tab: "Tab") -> None:
+    async def setup_tab_listeners(self, store: StoreSession, tab: "Tab") -> None:
         """为 tab 绑定 console/network/dialog 等事件监听。"""
         if not _is_regular_tab(tab):
             return
