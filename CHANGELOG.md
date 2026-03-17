@@ -2,6 +2,20 @@
 
 本文件记录 ziniao-mcp 的版本变更，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 格式。
 
+## [0.1.26] - 2026-03-12
+
+### 新增
+
+- **CDP 连接等待**：`open_store` 前轮询 CDP 端口最多 30 秒（`_wait_cdp_ready`），再尝试连接，减少“端口未就绪”失败
+- **CDP 连接错误文案**：`_format_cdp_connection_error` 统一输出检查清单（先手动打开店铺、开启远程调试、防火墙），并对 WinError 1225 / ConnectionRefused 给出“端口未监听”提示
+- **tabs 为空时**：`open_store` 连接成功后若无普通网页标签，自动尝试 `about:blank` 新建标签；返回中 `tabs: 0` 时附带 `hint` 引导使用 `tab new` 或先在紫鸟内打开页面
+
+### 变更
+
+- MCP `instructions` 与紫鸟 prompt 补充 CDP 连不上时的排查步骤
+- `open_store` 工具 docstring 增加 Prerequisites（手动打开店铺、开启 CDP、防火墙）
+- 测试中 `detect_ziniao_port` 的 patch 路径改为 `ziniao_webdriver.detect_ziniao_port`；新增 `_format_cdp_connection_error`、`_wait_cdp_ready` 单测
+
 ## [0.1.25] - 2026-03-12
 
 ### 变更

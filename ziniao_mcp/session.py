@@ -207,6 +207,31 @@ async def _is_cdp_alive(port: int, timeout: float = 2.0) -> bool:
         return False
 
 
+async def _wait_cdp_ready(port: int, timeout_sec: float = 30.0, interval: float = 2.0) -> bool:
+    """轮询直到 CDP 端口可用或超时。返回是否就绪。"""
+    deadline = time.monotonic() + timeout_sec
+    while time.monotonic() < deadline:
+        if await _is_cdp_alive(port, timeout=min(2.0, interval)):
+            return True
+        await asyncio.sleep(interval)
+    return False
+
+
+def _format_cdp_connection_error(port: int, exc: Exception) -> str:
+    """生成 CDP 连接失败时的友好说明（含 WinError 1225 等）。"""
+    msg = (
+        f"无法连接到 CDP 端口 {port}。"
+        "请按以下顺序检查："
+        " 1) 在紫鸟客户端内先手动打开该店铺，确认浏览器窗口已出现；"
+        " 2) 在紫鸟设置中确认已开启「远程调试」或「CDP」，并确认端口为 " + str(port) + "；"
+        " 3) 本机防火墙/安全软件是否拦截了 127.0.0.1:" + str(port) + "。"
+    )
+    err = str(exc).strip()
+    if "1225" in err or "拒绝" in err or "refused" in err.lower():
+        msg += " （当前错误通常表示端口未监听或被拒绝连接。）"
+    return msg
+
+
 _INTERNAL_URL_PREFIXES = ("chrome-extension://", "devtools://", "chrome://")
 
 
@@ -551,22 +576,29 @@ class SessionManager:
         if not cdp_port:
             raise RuntimeError("未获取到 CDP 调试端口")
 
-        retries = 3
-        browser = None
-        for attempt in range(retries):
-            try:
-                browser = await _connect_cdp(cdp_port)
-                break
-            except Exception as exc:
-                if attempt < retries - 1:
-                    await asyncio.sleep(2)
-                else:
-                    raise RuntimeError(
-                        f"无法连接到 CDP 端口 {cdp_port}，请检查店铺是否已正常打开"
-                    ) from exc
+        if not await _wait_cdp_ready(cdp_port, timeout_sec=30.0, interval=2.0):
+            raise RuntimeError(
+                _format_cdp_connection_error(
+                    cdp_port,
+                    OSError(f"CDP 端口 {cdp_port} 在 30 秒内未就绪"),
+                )
+            )
+
+        try:
+            browser = await _connect_cdp(cdp_port)
+        except Exception as exc:
+            raise RuntimeError(_format_cdp_connection_error(cdp_port, exc)) from exc
 
         await self._apply_stealth_to_browser(browser)
         tabs = _filter_tabs(browser.tabs)
+
+        if not tabs:
+            try:
+                await browser.get("about:blank", new_tab=True)
+                await asyncio.sleep(0.5)
+                tabs = _filter_tabs(browser.tabs)
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                _logger.warning("自动创建新标签页失败（tabs 为空）: %s", exc)
 
         store_name = result.get("browserName", store_id)
         launcher_page = result.get("launcherPage", "")

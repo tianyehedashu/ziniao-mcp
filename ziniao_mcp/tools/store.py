@@ -83,6 +83,15 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
         availability and proxy status before opening. If already running, it
         reuses the existing CDP connection.
 
+        Prerequisites (if you see CDP connection errors or tabs: 0):
+        1) In Ziniao client, manually open the store first and wait for the
+           browser window to appear.
+        2) In Ziniao settings, enable "Remote debugging" / "CDP" and note the
+           port (e.g. 9222). Ensure firewall does not block 127.0.0.1:port.
+        3) Then call list_stores (confirm is_open: true for that store), then
+           open_store(store_id), then tab list. If no tabs, use tab new with
+           the target URL.
+
         Args:
             store_id: The store identifier (browserId or browserOauth from
                 list_stores).
@@ -91,15 +100,21 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
             store_session = await session.open_store(store_id)
         except RuntimeError as e:
             return json.dumps({"status": "error", "message": str(e)}, ensure_ascii=False)
+        tab_count = len(store_session.tabs)
         result = {
             "status": "success",
             "store_id": store_session.store_id,
             "store_name": store_session.store_name,
             "cdp_port": store_session.cdp_port,
-            "tabs": len(store_session.tabs),
+            "tabs": tab_count,
         }
         if store_session.launcher_page:
             result["launcher_page"] = store_session.launcher_page
+        if tab_count == 0:
+            result["hint"] = (
+                "当前无普通网页标签。请使用 tab new 打开目标链接，"
+                "或先在紫鸟内打开一次目标页面后再操作。"
+            )
         return json.dumps(result, ensure_ascii=False)
 
     @mcp.tool()

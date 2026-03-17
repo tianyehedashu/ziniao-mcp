@@ -191,7 +191,13 @@ def create_server() -> tuple[FastMCP, SessionManager]:
     session = SessionManager(client, stealth_config=stealth_cfg)
     mcp = FastMCP(
         "ziniao-mcp",
-        instructions="Automate Ziniao stores and Chrome browsers: store management (list_stores/open_store), Chrome management (launch_chrome/connect_chrome), unified session control (browser_session), page actions (navigate/click/fill), and record/replay (recorder).",
+        instructions=(
+            "Automate Ziniao stores and Chrome browsers: store management (list_stores/open_store), "
+            "Chrome management (launch_chrome/connect_chrome), unified session control (browser_session), "
+            "page actions (navigate/click/fill), and record/replay (recorder). "
+            "If CDP fails (e.g. connection refused): ensure the store is opened in Ziniao client first, "
+            "remote debugging/CDP is enabled in Ziniao settings, and firewall allows 127.0.0.1:port."
+        ),
     )
 
     from .tools.chrome import register_tools as register_chrome
@@ -234,6 +240,7 @@ def _register_prompts(mcp: FastMCP) -> None:
 
 【紫鸟店铺】
 - list_stores 查店铺，open_store(store_id) 打开（已运行的自动复用）。
+- 若出现 CDP 连不上或 tabs: 0：先在紫鸟里手动打开该店铺、确认已开启远程调试/CDP，再 list_stores → open_store → tab list；无标签时用 tab new 打开目标页。
 - start_client / stop_client 管理紫鸟客户端进程。
 
 【Chrome 浏览器】

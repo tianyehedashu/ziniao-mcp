@@ -5,7 +5,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from ziniao_webdriver.client import ZiniaoClient
-from ziniao_mcp.session import SessionManager
+from ziniao_mcp.session import (
+    SessionManager,
+    _format_cdp_connection_error,
+    _wait_cdp_ready,
+)
 
 
 @pytest.fixture()
@@ -27,6 +31,42 @@ def mock_client():
 @pytest.fixture()
 def session(mock_client):
     return SessionManager(mock_client)
+
+
+# ------------------------------------------------------------------ #
+#  CDP 辅助: _format_cdp_connection_error, _wait_cdp_ready
+# ------------------------------------------------------------------ #
+
+class TestCdpHelpers:
+
+    def test_format_cdp_connection_error_includes_port_and_checklist(self):
+        msg = _format_cdp_connection_error(9222, OSError("dummy"))
+        assert "9222" in msg
+        assert "手动打开" in msg or "远程调试" in msg
+
+    def test_format_cdp_connection_error_adds_refused_hint_for_1225(self):
+        msg = _format_cdp_connection_error(9222, OSError("[WinError 1225] 远程计算机拒绝网络连接"))
+        assert "1225" in msg or "拒绝" in msg
+        assert "端口未监听" in msg or "被拒绝" in msg
+
+    def test_format_cdp_connection_error_adds_refused_hint_for_refused(self):
+        msg = _format_cdp_connection_error(9222, ConnectionRefusedError("refused"))
+        assert "端口未监听" in msg or "被拒绝" in msg
+
+    @pytest.mark.asyncio
+    @patch("ziniao_mcp.session._is_cdp_alive")
+    async def test_wait_cdp_ready_returns_true_when_alive_immediately(self, mock_alive):
+        mock_alive.return_value = True
+        got = await _wait_cdp_ready(9222, timeout_sec=5.0, interval=1.0)
+        assert got is True
+        mock_alive.assert_called()
+
+    @pytest.mark.asyncio
+    @patch("ziniao_mcp.session._is_cdp_alive")
+    async def test_wait_cdp_ready_returns_false_on_timeout(self, mock_alive):
+        mock_alive.return_value = False
+        got = await _wait_cdp_ready(9222, timeout_sec=0.5, interval=0.2)
+        assert got is False
 
 
 # ------------------------------------------------------------------ #
@@ -72,7 +112,7 @@ class TestEnsureClientRunning:
         mock_client.kill_process.assert_not_called()
 
     @pytest.mark.asyncio
-    @patch("ziniao_mcp.session.detect_ziniao_port", return_value=None)
+    @patch("ziniao_webdriver.detect_ziniao_port", return_value=None)
     async def test_full_startup_when_not_running(self, _mock_detect, session, mock_client):
         mock_client.heartbeat.return_value = False
         await session._ensure_client_running()
@@ -96,7 +136,7 @@ class TestStartClient:
         mock_client.start_browser.assert_not_called()
 
     @pytest.mark.asyncio
-    @patch("ziniao_mcp.session.detect_ziniao_port", return_value=None)
+    @patch("ziniao_webdriver.detect_ziniao_port", return_value=None)
     async def test_starts_when_not_running(self, _mock_detect, session, mock_client):
         mock_client.heartbeat.side_effect = [False, True]
         result = await session.start_client()
@@ -107,14 +147,14 @@ class TestStartClient:
         assert session._client_started is True
 
     @pytest.mark.asyncio
-    @patch("ziniao_mcp.session.detect_ziniao_port", return_value=None)
+    @patch("ziniao_webdriver.detect_ziniao_port", return_value=None)
     async def test_warns_when_still_unreachable_after_start(self, _mock_detect, session, mock_client):
         mock_client.heartbeat.return_value = False
         result = await session.start_client()
         assert "无法连接" in result
 
     @pytest.mark.asyncio
-    @patch("ziniao_mcp.session.detect_ziniao_port", return_value=9480)
+    @patch("ziniao_webdriver.detect_ziniao_port", return_value=9480)
     async def test_auto_switches_port_when_mismatch(self, _mock_detect, session, mock_client):
         """配置端口无响应，但客户端在其他端口运行时自动切换。"""
         mock_client.heartbeat.side_effect = [False, True]
@@ -131,7 +171,7 @@ class TestStartClient:
 class TestEnsureClientRunningPortDetection:
 
     @pytest.mark.asyncio
-    @patch("ziniao_mcp.session.detect_ziniao_port", return_value=9480)
+    @patch("ziniao_webdriver.detect_ziniao_port", return_value=9480)
     async def test_switches_to_detected_port(self, _mock_detect, session, mock_client):
         """heartbeat 失败后应检测实际端口并切换。"""
         mock_client.heartbeat.side_effect = [False, True]
@@ -141,7 +181,7 @@ class TestEnsureClientRunningPortDetection:
         mock_client.start_browser.assert_not_called()
 
     @pytest.mark.asyncio
-    @patch("ziniao_mcp.session.detect_ziniao_port", return_value=None)
+    @patch("ziniao_webdriver.detect_ziniao_port", return_value=None)
     async def test_starts_browser_when_no_detection(self, _mock_detect, session, mock_client):
         """检测不到端口时应正常启动客户端。"""
         mock_client.heartbeat.return_value = False
@@ -166,7 +206,7 @@ class TestListStores:
         assert result == stores
 
     @pytest.mark.asyncio
-    @patch("ziniao_mcp.session.detect_ziniao_port", return_value=None)
+    @patch("ziniao_webdriver.detect_ziniao_port", return_value=None)
     async def test_ensures_client_running_first(self, _mock_detect, session, mock_client):
         mock_client.heartbeat.return_value = False
         mock_client.get_browser_list.return_value = []
