@@ -820,9 +820,9 @@ class SessionManager:
                 await browser.get(target, new_tab=True)
                 await asyncio.sleep(0.5)
                 tabs = _filter_tabs(browser.tabs)
+                url = ""
             except Exception as exc:  # pylint: disable=broad-exception-caught
                 _logger.warning("自动创建新标签页失败（tabs 为空）: %s", exc)
-            url = ""
 
         session = StoreSession(
             store_id=session_id,

@@ -2,6 +2,12 @@
 
 本文件记录 ziniao-mcp 的版本变更，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 格式。
 
+## [0.1.30] - 2026-03-18
+
+### 修复
+
+- **connect_chrome 空标签页**：仅在成功创建新标签页后清空目标 URL，避免异常时仍尝试导航导致逻辑错误
+
 ## [0.1.26] - 2026-03-12
 
 ### 新增
