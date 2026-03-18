@@ -254,14 +254,20 @@ def _filter_tabs(tabs: list) -> list:
     return [t for t in tabs if _is_regular_tab(t)]
 
 
-async def _connect_cdp(port: int) -> "Browser":
+async def _connect_cdp(port: int, timeout: float = 30.0) -> "Browser":
     """通过 nodriver 连接到已有的 CDP 端口。"""
     import nodriver  # pylint: disable=import-outside-toplevel
 
-    browser = await nodriver.Browser.create(
-        host="127.0.0.1",
-        port=port,
-    )
+    try:
+        browser = await asyncio.wait_for(
+            nodriver.Browser.create(host="127.0.0.1", port=port),
+            timeout=timeout,
+        )
+    except asyncio.TimeoutError:
+        raise RuntimeError(
+            f"CDP 连接超时（{timeout:.0f}s）。端口 {port} 的 Chrome 可能标签页过多，"
+            "请关闭部分标签页后重试。"
+        ) from None
     return browser
 
 
@@ -662,6 +668,14 @@ class SessionManager:
                     await self._apply_stealth_to_browser(browser)
                     tabs = _filter_tabs(browser.tabs)
 
+                    if not tabs:
+                        try:
+                            await browser.get("about:blank", new_tab=True)
+                            await asyncio.sleep(0.5)
+                            tabs = _filter_tabs(browser.tabs)
+                        except Exception as _exc:  # pylint: disable=broad-exception-caught
+                            _logger.warning("自动创建新标签页失败（tabs 为空）: %s", _exc)
+
                     session = StoreSession(
                         store_id=store_id,
                         store_name=info.get("store_name", store_id),
@@ -800,6 +814,16 @@ class SessionManager:
         await self._apply_stealth_to_browser(browser)
         tabs = _filter_tabs(browser.tabs)
 
+        if not tabs:
+            target = url or "about:blank"
+            try:
+                await browser.get(target, new_tab=True)
+                await asyncio.sleep(0.5)
+                tabs = _filter_tabs(browser.tabs)
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                _logger.warning("自动创建新标签页失败（tabs 为空）: %s", exc)
+            url = ""
+
         session = StoreSession(
             store_id=session_id,
             store_name=name or f"Chrome ({cdp_port})",
@@ -811,11 +835,22 @@ class SessionManager:
             chrome_process=proc,
         )
 
-        for tab in session.tabs:
-            await self.setup_tab_listeners(session, tab)
+        if session.tabs:
+            active_tab = session.tabs[session.active_tab_index]
+            await self.setup_tab_listeners(session, active_tab)
 
         self._stores[session_id] = session
         self._active_store_id = session_id
+
+        if url and session.tabs:
+            try:
+                from nodriver import cdp as _cdp  # pylint: disable=import-outside-toplevel
+                active_tab = session.tabs[session.active_tab_index]
+                await active_tab.send(_cdp.page.navigate(url=url))
+                await active_tab
+                await active_tab.sleep(0.5)
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                _logger.warning("导航到目标 URL 失败 (%s): %s", url, exc)
 
         await self._sync_viewport_to_window(session)
 
@@ -842,8 +877,15 @@ class SessionManager:
             )
 
         browser = await _connect_cdp(cdp_port)
-        await self._apply_stealth_to_browser(browser)
         tabs = _filter_tabs(browser.tabs)
+
+        if not tabs:
+            try:
+                await browser.get("about:blank", new_tab=True)
+                await asyncio.sleep(0.5)
+                tabs = _filter_tabs(browser.tabs)
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                _logger.warning("自动创建新标签页失败（tabs 为空）: %s", exc)
 
         session = StoreSession(
             store_id=session_id,
@@ -855,8 +897,9 @@ class SessionManager:
             backend_type="chrome",
         )
 
-        for tab in session.tabs:
-            await self.setup_tab_listeners(session, tab)
+        if session.tabs:
+            active_tab = session.tabs[session.active_tab_index]
+            await self.setup_tab_listeners(session, active_tab)
 
         self._stores[session_id] = session
         self._active_store_id = session_id
@@ -1000,7 +1043,7 @@ class SessionManager:
             accept = store.dialog_action == "accept"
             prompt_text = store.dialog_text if store.dialog_text else None
             await tab.send(
-                cdp.page.handle_javascript_dialog(
+                cdp.page.handle_java_script_dialog(
                     accept=accept,
                     prompt_text=prompt_text,
                 )
