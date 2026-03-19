@@ -48,7 +48,7 @@ async def find_nth(tab: Any, selector: str, index: int, action: str = "click") -
 
 
 async def find_text(tab: Any, text: str, action: str = "click", tag: str = "") -> dict:
-    tag_filter = f" and local-name()='{tag}'" if tag else ""
+    tag_filter = f" and local-name()={_json.dumps(tag)}" if tag else ""
     xpath = f"//*[contains(text(), {_json.dumps(text)}){tag_filter}]"
     js = f"""(() => {{
         const result = document.evaluate({_json.dumps(xpath)}, document, null,
@@ -67,8 +67,11 @@ async def find_text(tab: Any, text: str, action: str = "click", tag: str = "") -
 
 
 async def find_role(tab: Any, role: str, action: str = "click", name: str = "") -> dict:
-    name_filter = f'[aria-label*="{name}"]' if name else ""
-    selector = f'[role="{role}"]{name_filter}'
+    css_role = role.replace("\\", "\\\\").replace('"', '\\"')
+    selector = f'[role="{css_role}"]'
+    if name:
+        css_name = name.replace("\\", "\\\\").replace('"', '\\"')
+        selector += f'[aria-label*="{css_name}"]'
     js = f"""(() => {{
         const el = document.querySelector({_json.dumps(selector)});
         if (!el) return null;

@@ -868,11 +868,17 @@ async def _dblclick(sm: Any, args: dict) -> dict:
         return {"error": f"Failed to get position: {selector}"}
     from nodriver import cdp  # pylint: disable=import-outside-toplevel
     cx, cy = pos.center
-    for event_type in ("mousePressed", "mouseReleased", "mousePressed", "mouseReleased"):
-        await tab.send(cdp.input_.dispatch_mouse_event(
-            type_=event_type, x=cx, y=cy, button=cdp.input_.MouseButton("left"),
-            click_count=2 if "Pressed" in event_type else 1,
-        ))
+    await tab.send(cdp.input_.dispatch_mouse_event(
+        type_="mouseMoved", x=cx, y=cy,
+    ))
+    await tab.send(cdp.input_.dispatch_mouse_event(
+        type_="mousePressed", x=cx, y=cy, button=cdp.input_.MouseButton("left"),
+        click_count=2,
+    ))
+    await tab.send(cdp.input_.dispatch_mouse_event(
+        type_="mouseReleased", x=cx, y=cy, button=cdp.input_.MouseButton("left"),
+        click_count=2,
+    ))
     return {"ok": True, "double_clicked": selector}
 
 

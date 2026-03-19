@@ -39,6 +39,7 @@ def batch_run(
         raise typer.Exit(1)
 
     results = []
+    executed = 0
     for i, cmd in enumerate(commands):
         if not isinstance(cmd, dict) or "command" not in cmd:
             err = {"error": f"Item {i}: must be an object with 'command' key"}
@@ -47,6 +48,7 @@ def batch_run(
                 break
             continue
 
+        executed += 1
         result = run_command(cmd["command"], cmd.get("args", {}))
         results.append(result)
 
@@ -54,7 +56,7 @@ def batch_run(
             break
 
     if get_json_mode():
-        print(json.dumps({"results": results, "total": len(commands), "executed": len(results)},
+        print(json.dumps({"results": results, "total": len(commands), "executed": executed},
                          ensure_ascii=False, indent=2))
     else:
         for i, r in enumerate(results):
