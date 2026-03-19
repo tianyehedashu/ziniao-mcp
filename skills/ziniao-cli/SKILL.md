@@ -6,7 +6,7 @@ allowed-tools: Bash(ziniao:*)
 
 # Ziniao CLI — Browser Automation from Terminal
 
-The `ziniao` CLI talks to a background daemon that manages browser sessions (Ziniao stores and Chrome instances) via CDP. Install with `pip install ziniao-mcp`, then run any `ziniao` command; the daemon starts automatically. Ziniao sessions use built-in **stealth and anti-detection** (JS masking + human-like input); Chrome sessions use the same stack when launched via `ziniao launch`.
+The `ziniao` CLI talks to a background daemon that manages browser sessions (Ziniao stores and Chrome instances) via CDP. Install with `pip install ziniao-mcp` (or `uv tool install ziniao-mcp`). The package provides a single `ziniao` command for both CLI and MCP server. Run any `ziniao` command; the daemon starts automatically. To start the MCP server, use `ziniao serve`. If your shell reports **"ziniao" is not recognized**, see [Install & PATH](#install--path) below. Ziniao sessions use built-in **stealth and anti-detection** (JS masking + human-like input); Chrome sessions use the same stack when launched via `ziniao launch`.
 
 ## Core Workflow
 
@@ -201,6 +201,11 @@ ziniao rec list
 ziniao emulate --device "iPhone 14"
 ziniao emulate --width 1920 --height 1080
 
+# MCP server
+ziniao serve                           # Start MCP server (replaces ziniao-mcp)
+ziniao serve --config config.yaml     # With config file
+ziniao serve --company x --username y  # With credentials
+
 # Lifecycle
 ziniao quit                            # Stop daemon + cleanup
 ```
@@ -338,6 +343,27 @@ ziniao rec stop --name login-flow
 ziniao rec replay login-flow --speed 2.0
 ziniao rec list
 ```
+
+## Install & PATH
+
+If **`ziniao` is not recognized** after install:
+
+1. **Add Python Scripts to PATH**  
+   After `pip install ziniao-mcp`, pip prints the Scripts path (e.g. `...\Python313\Scripts`). Add it to your user PATH so the installed scripts run.
+
+2. **Run via module** (when the package provides it):
+   ```bash
+   python -m ziniao_mcp.cli --help
+   ```
+
+3. **Wrapper script** (works with current PyPI): create `ziniao.cmd` in a directory on your PATH:
+   ```batch
+   @echo off
+   python -c "import sys; sys.argv = ['ziniao'] + sys.argv[1:]; from ziniao_mcp.cli import main; main()" %*
+   ```
+   Then run `ziniao --help` as usual.
+
+4. **From source / submodule**: in the ziniao-mcp repo run `uv run ziniao --help` or `pip install -e .` and use the `ziniao` script from that environment’s Scripts.
 
 ## Troubleshooting
 

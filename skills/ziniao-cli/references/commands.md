@@ -139,6 +139,7 @@ Full command reference. For workflow and patterns see [SKILL.md](../SKILL.md).
 | `ziniao rec list` | List recordings |
 | `ziniao emulate --device "iPhone 14"` | Device emulation |
 | `ziniao emulate --width W --height H` | Viewport |
+| `ziniao serve [--config ...] [--company ...] [--username ...]` | Start MCP server |
 | `ziniao quit` | Stop daemon |
 
 ## Global flags
