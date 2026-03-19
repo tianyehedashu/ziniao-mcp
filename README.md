@@ -1,4 +1,4 @@
-# ziniao-mcp
+# ziniao
 
 紫鸟与 Chrome 浏览器 AI 自动化 — 让 AI Agent（Cursor、Claude 等）操控紫鸟店铺与本地 Chrome，统一会话、统一工具。
 
@@ -18,7 +18,15 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-**2. 配置 MCP**
+**2. 安装 ziniao**
+
+```bash
+uv tool install ziniao
+```
+
+若终端无法识别 `ziniao`，请将 `uv tool dir` 输出的目录加入 PATH（见下方「命令行全局使用」）。
+
+**3. 配置 MCP**
 
 打开 `Cursor Settings → MCP → New MCP Server`，根据你的使用场景选择配置：
 
@@ -28,8 +36,8 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 {
   "mcpServers": {
     "ziniao": {
-      "command": "uvx",
-      "args": ["ziniao-mcp"]
+      "command": "ziniao",
+      "args": ["serve"]
     }
   }
 }
@@ -43,8 +51,8 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 {
   "mcpServers": {
     "ziniao": {
-      "command": "uvx",
-      "args": ["ziniao-mcp"],
+      "command": "ziniao",
+      "args": ["serve"],
       "env": {
         "ZINIAO_COMPANY": "你的企业名",
         "ZINIAO_USERNAME": "你的用户名",
@@ -80,11 +88,29 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 打开第一个亚马逊店铺，截图看看当前页面
 ```
 
-> **版本**：查看 `uvx ziniao-mcp -V`；刷新 `uvx --refresh ziniao-mcp --help`，再重启 Cursor MCP。
+> **版本**：`ziniao --help`；更新：`uv tool install --upgrade ziniao` 后重启 Cursor MCP。
 >
 > **紫鸟前提**：使用紫鸟店铺功能需安装 [紫鸟客户端](https://www.ziniao.com/) 并**开启 WebDriver 权限**（[开通说明](https://open.ziniao.com/docSupport?docId=99)）。不使用紫鸟功能时无需安装。
 >
 > 更多安装方式与故障排查见 [安装与使用](docs/installation.md)。
+
+### 命令行全局使用（ziniao）
+
+若希望在任意目录直接使用 `ziniao` 命令（而不通过 Cursor MCP），推荐用 **uv 工具安装**，一次配置、全局可用：
+
+```bash
+# 从 PyPI 安装（推荐）
+uv tool install ziniao
+
+# 或从源码安装（克隆后在该目录执行）
+uv tool install .
+```
+
+安装后会在 uv 工具目录生成 `ziniao` 可执行文件。若终端提示「无法将 ziniao 项识别为…」，请将 uv 工具目录加入 PATH：
+
+- 查看工具目录：`uv tool dir`（Windows 常见为 `%APPDATA%\uv\tools` 或 `%USERPROFILE%\.local\bin`）
+- 将该目录加入 [用户环境变量 Path](https://learn.microsoft.com/zh-cn/windows/win32/procthread/environment-variables)  
+新开终端后即可直接运行 `ziniao --help`、`ziniao serve` 等。
 
 ## 特性
 

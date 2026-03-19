@@ -1,7 +1,7 @@
 [project]
-name = "ziniao-mcp"
-version = "0.1.33"
-description = "紫鸟与 Chrome 浏览器 MCP 服务器 — 让 AI Agent 操控紫鸟店铺与本地 Chrome"
+name = "ziniao"
+version = "0.2.1"
+description = "紫鸟与 Chrome 浏览器 AI 自动化 — 让 AI Agent 操控紫鸟店铺与本地 Chrome"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "AGPL-3.0"}

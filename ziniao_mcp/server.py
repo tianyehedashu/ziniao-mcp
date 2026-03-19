@@ -9,12 +9,9 @@ from typing import Any
 
 try:
     from importlib.metadata import PackageNotFoundError, version
-    _PACKAGE_VERSION = version("ziniao-mcp")
+    _PACKAGE_VERSION = version("ziniao")
 except (ImportError, PackageNotFoundError):
-    try:
-        _PACKAGE_VERSION = version("ziniao")
-    except Exception:
-        _PACKAGE_VERSION = "0.0.0.dev"
+    _PACKAGE_VERSION = "0.0.0.dev"
 
 from mcp.server.fastmcp import FastMCP
 

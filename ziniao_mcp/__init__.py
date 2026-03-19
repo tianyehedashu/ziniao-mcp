@@ -10,9 +10,6 @@ except ImportError:
     __version__ = "0.0.0.dev"
 else:
     try:
-        __version__ = version("ziniao-mcp")
+        __version__ = version("ziniao")
     except PackageNotFoundError:
-        try:
-            __version__ = version("ziniao")
-        except PackageNotFoundError:
-            __version__ = "0.0.0.dev"
+        __version__ = "0.0.0.dev"

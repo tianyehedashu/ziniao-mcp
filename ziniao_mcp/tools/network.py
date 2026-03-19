@@ -41,7 +41,7 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
                         "request_headers": req.request_headers,
                         "response_headers": req.response_headers,
                     }, ensure_ascii=False, indent=2)
-            return f"Request ID not found: {request_id}"
+            return json.dumps({"error": f"Request ID not found: {request_id}"}, ensure_ascii=False)
 
         requests = store.network_requests
         if url_pattern:
