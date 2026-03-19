@@ -18,6 +18,7 @@ def snapshot(
     selector: Optional[str] = typer.Option(None, "--selector", "-s", help="Limit to a specific element."),
     interactive: bool = typer.Option(False, "--interactive", help="Only show interactive elements (buttons, inputs, links)."),
     compact: bool = typer.Option(False, "--compact", help="Remove scripts/styles/SVG for compact output."),
+    out_file: Optional[str] = typer.Option(None, "--out-file", "-o", help="Write output to file (UTF-8), avoids console encoding issues on Windows."),
 ) -> None:
     """Get the HTML snapshot of the current page."""
     if selector or interactive or compact:
@@ -28,7 +29,18 @@ def snapshot(
         })
     else:
         result = run_command("snapshot", {"full_page": full_page})
-    print_result(result, json_mode=get_json_mode())
+    if out_file:
+        import json as _json  # pylint: disable=import-outside-toplevel
+        with open(out_file, "w", encoding="utf-8") as f:
+            if get_json_mode():
+                f.write(_json.dumps(result, ensure_ascii=False, indent=2))
+            elif "html" in result:
+                f.write(result["html"])
+            else:
+                f.write(_json.dumps(result, ensure_ascii=False, indent=2))
+        typer.echo(f"Snapshot written to {out_file}")
+    else:
+        print_result(result, json_mode=get_json_mode())
 
 
 @app.command("screenshot")
@@ -135,6 +147,13 @@ def storage_cmd(
     print_result(result, json_mode=get_json_mode())
 
 
+@app.command("url")
+def url_cmd() -> None:
+    """Get the current page URL."""
+    result = run_command("get_url", {})
+    print_result(result, json_mode=get_json_mode())
+
+
 @app.command("clipboard")
 def clipboard_cmd(
     action: str = typer.Argument("read", help="Action: read or write."),
@@ -147,9 +166,16 @@ def clipboard_cmd(
 
 def register_top_level(parent: typer.Typer) -> None:
     @parent.command("snapshot")
-    def _snapshot() -> None:
-        """Get page HTML."""
-        snapshot()
+    def _snapshot(
+        out_file: Optional[str] = typer.Option(None, "--out-file", "-o", help="Write to file (UTF-8)."),
+    ) -> None:
+        """Get page HTML. Use -o file to avoid Windows console encoding issues."""
+        snapshot(out_file=out_file)
+
+    @parent.command("url")
+    def _url() -> None:
+        """Get current page URL."""
+        url_cmd()
 
     @parent.command("screenshot")
     def _screenshot(

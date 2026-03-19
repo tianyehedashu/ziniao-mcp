@@ -22,12 +22,19 @@ def launch(
     headless: bool = typer.Option(False, "--headless", help="Run in headless mode."),
 ) -> None:
     """Launch a new Chrome instance."""
+    # Coerce to JSON-serializable types (avoid Typer OptionInfo leaking when invoked via shortcut)
+    name = name if isinstance(name, str) else ""
+    url = url if isinstance(url, str) else ""
+    executable_path = executable_path if isinstance(executable_path, str) else ""
+    cdp_port = cdp_port if isinstance(cdp_port, int) else 0
+    user_data_dir = user_data_dir if isinstance(user_data_dir, str) else ""
+    headless = headless if isinstance(headless, bool) else False
     result = run_command("launch_chrome", {
-        "name": name or "",
-        "url": url or "",
-        "executable_path": executable_path or "",
+        "name": name,
+        "url": url,
+        "executable_path": executable_path,
         "cdp_port": cdp_port,
-        "user_data_dir": user_data_dir or "",
+        "user_data_dir": user_data_dir,
         "headless": headless,
     })
     print_result(result, json_mode=get_json_mode())

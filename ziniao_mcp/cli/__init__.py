@@ -137,6 +137,15 @@ _register_commands()
 
 def main() -> None:
     """CLI entry point."""
+    # On Windows, force UTF-8 for stdout/stderr so eval/snapshot output and Rich don't hit GBK encoding errors
+    if sys.platform == "win32":
+        try:
+            if hasattr(sys.stdout, "reconfigure"):
+                sys.stdout.reconfigure(encoding="utf-8")
+            if hasattr(sys.stderr, "reconfigure"):
+                sys.stderr.reconfigure(encoding="utf-8")
+        except Exception:  # pylint: disable=broad-exception-caught
+            pass
     try:
         app()
     except KeyboardInterrupt:

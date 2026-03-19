@@ -290,6 +290,42 @@ async def find_element_in_frame(
     )
 
 
+_VISIBLE_MARKER = "data-ziniao-visible"
+
+
+async def _select_first_visible_in_main_doc(tab: "Tab", selector: str, timeout: float) -> Optional[Union["Element", IFrameElement]]:
+    """主文档中优先选择第一个可见且可交互的元素，避免 querySelector 命中 type=hidden 等不可见节点。"""
+    sel_escaped = _json.dumps(selector)
+    js_mark_first_visible = (
+        f"(function(sel) {{"
+        f"  const els = document.querySelectorAll(sel);"
+        f"  for (const el of els) {{"
+        f"    if (el.offsetParent === null) continue;"
+        f"    const r = el.getBoundingClientRect();"
+        f"    if (r.width <= 0 || r.height <= 0) continue;"
+        f"    const s = window.getComputedStyle(el);"
+        f"    if (s.visibility === 'hidden' || s.display === 'none' || parseFloat(s.opacity) === 0) continue;"
+        f"    if (el.type === 'hidden') continue;"
+        f"    el.setAttribute({_json.dumps(_VISIBLE_MARKER)}, '1');"
+        f"    return true;"
+        f"  }}"
+        f"  return false;"
+        f"}})({sel_escaped})"
+    )
+    try:
+        marked = await tab.evaluate(js_mark_first_visible, return_by_value=True)
+        if marked is True:
+            elem = await tab.select(f"[{_VISIBLE_MARKER}=\"1\"]", timeout=timeout)
+            await tab.evaluate(
+                f"document.querySelector('[{_VISIBLE_MARKER}=\"1\"]')?.removeAttribute({_json.dumps(_VISIBLE_MARKER)})",
+                return_by_value=True,
+            )
+            return elem
+    except Exception:  # pylint: disable=broad-exception-caught
+        _logger.debug("_select_first_visible_in_main_doc failed, falling back to tab.select")
+    return None
+
+
 async def find_element(
     tab: "Tab",
     selector: str,
@@ -299,12 +335,17 @@ async def find_element(
 ) -> Optional[Union["Element", IFrameElement]]:
     """统一元素查找：自动根据 iframe 上下文选择查找路径。
 
+    主文档下优先返回第一个可见、可交互的元素（避免命中 type=hidden 等），
+    再回退到 tab.select(selector)。
     返回 nodriver Element 或 IFrameElement，二者接口兼容。
     """
     if store.iframe_context:
         return await find_element_in_frame(
             tab, selector, store.iframe_context, timeout=timeout,
         )
+    elem = await _select_first_visible_in_main_doc(tab, selector, timeout)
+    if elem is not None:
+        return elem
     return await tab.select(selector, timeout=timeout)
 
 

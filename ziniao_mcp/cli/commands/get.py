@@ -41,10 +41,19 @@ def get_attr(
     print_result(result, json_mode=get_json_mode())
 
 
+def _unwrap_remote_value(val: object) -> object:
+    """If daemon returned a CDP RemoteObject dict, extract the string value."""
+    if isinstance(val, dict) and "value" in val:
+        return val["value"]
+    return val
+
+
 @app.command("title")
 def get_title() -> None:
     """Get the current page title."""
     result = run_command("get_title", {})
+    if "title" in result and isinstance(result.get("title"), dict):
+        result = {**result, "title": _unwrap_remote_value(result["title"])}
     print_result(result, json_mode=get_json_mode())
 
 

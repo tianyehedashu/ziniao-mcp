@@ -113,6 +113,19 @@ def ensure_daemon(timeout: float = 15.0) -> int:
     )
 
 
+def _json_safe(value: Any) -> Any:
+    """Convert value to JSON-serializable form; unwrap Typer OptionInfo."""
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if hasattr(value, "default"):
+        return _json_safe(getattr(value, "default"))
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    return value
+
+
 def send_command(
     command: str,
     args: dict[str, Any] | None = None,
@@ -121,7 +134,7 @@ def send_command(
 ) -> dict[str, Any]:
     """Send a JSON-line command to the daemon and return the response."""
     port = ensure_daemon()
-    request = {"command": command, "args": args or {}}
+    request = {"command": command, "args": _json_safe(args or {})}
     if target_session:
         request["target_session"] = target_session
 

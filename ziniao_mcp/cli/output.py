@@ -89,7 +89,10 @@ def _print_rich(data: dict) -> None:
         return
 
     if "title" in data and data.get("ok") and "selector" not in data:
-        console.print(data["title"])
+        title_val = data["title"]
+        if isinstance(title_val, dict) and "value" in title_val:
+            title_val = title_val["value"]
+        console.print(title_val)
         return
 
     if "url" in data and data.get("ok") and "selector" not in data and "clicked" not in data:

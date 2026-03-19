@@ -13,20 +13,29 @@ app = typer.Typer(no_args_is_help=True)
 
 
 @app.command("go")
-def navigate(url: str = typer.Argument(..., help="URL to navigate to.")) -> None:
+def go_cmd(url: str = typer.Argument(..., help="URL to navigate to.")) -> None:
     """Navigate the active tab to a URL."""
     result = run_command("navigate", {"url": url})
     print_result(result, json_mode=get_json_mode())
 
 
+@app.command("navigate")
+def nav_navigate(url: str = typer.Argument(..., help="URL to navigate to.")) -> None:
+    """Navigate to a URL (alias for 'nav go')."""
+    go_cmd(url)
+
+
 @app.command("tab")
 def tab_cmd(
     action: str = typer.Argument("list", help="Tab action: list, switch, new, close."),
+    url_or_index: Optional[str] = typer.Argument(None, help="URL for 'new' tab, or omit for list."),
     page_index: int = typer.Option(-1, "--index", "-i", help="Tab index for switch/close."),
-    url: Optional[str] = typer.Option(None, "--url", help="URL for new tab."),
+    url: Optional[str] = typer.Option(None, "--url", help="URL for new tab (alternative to positional)."),
 ) -> None:
-    """Manage browser tabs."""
-    result = run_command("tab", {"action": action, "page_index": page_index, "url": url or ""})
+    """Manage browser tabs. Use: tab list | tab new [URL] | tab new --url URL."""
+    # Allow both 'tab new https://...' and 'tab new --url https://...'
+    resolved_url = url or (url_or_index if action == "new" and url_or_index else None) or ""
+    result = run_command("tab", {"action": action, "page_index": page_index, "url": resolved_url})
     print_result(result, json_mode=get_json_mode())
 
 
@@ -78,16 +87,17 @@ def register_top_level(parent: typer.Typer) -> None:
     @parent.command("navigate")
     def _navigate(url: str = typer.Argument(...)) -> None:
         """Navigate to a URL."""
-        navigate(url)
+        go_cmd(url)
 
     @parent.command("tab")
     def _tab(
         action: str = typer.Argument("list"),
+        url_or_index: Optional[str] = typer.Argument(None),
         page_index: int = typer.Option(-1, "-i"),
         url: Optional[str] = typer.Option(None, "--url"),
     ) -> None:
-        """Manage tabs."""
-        tab_cmd(action, page_index, url)
+        """Manage tabs. Example: tab new https://example.com"""
+        tab_cmd(action, url_or_index, page_index, url)
 
     @parent.command("wait")
     def _wait(

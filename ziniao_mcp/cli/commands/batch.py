@@ -20,10 +20,23 @@ def batch_run(
     """Execute a JSON array of commands from stdin.
 
     Each element should be: {"command": "...", "args": {...}}
+    Stdin must be UTF-8 (e.g. on Windows use: Get-Content -Encoding utf8 file.json | ziniao batch run).
 
     Example: echo '[{"command":"navigate","args":{"url":"https://example.com"}}]' | ziniao batch run
     """
-    raw = sys.stdin.read().strip()
+    try:
+        raw = sys.stdin.buffer.read().decode("utf-8-sig").strip()
+    except (AttributeError, OSError, UnicodeDecodeError):
+        if hasattr(sys.stdin, "reconfigure"):
+            try:
+                sys.stdin.reconfigure(encoding="utf-8")
+            except (AttributeError, OSError):
+                pass
+        raw = sys.stdin.read().strip()
+        if raw.startswith("\ufeff"):
+            raw = raw[1:]
+    if raw.startswith("\ufeff"):
+        raw = raw[1:]
     if not raw:
         typer.echo("Error: no input from stdin", err=True)
         raise typer.Exit(1)
