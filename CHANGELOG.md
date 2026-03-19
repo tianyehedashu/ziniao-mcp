@@ -2,6 +2,24 @@
 
 本文件记录 ziniao-mcp 的版本变更，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 格式。
 
+## [0.2.3] - 2026-03-19
+
+### 修复
+
+- **Unix daemon 启动**：非 Windows 下启动 daemon 时补充 `stdin=subprocess.DEVNULL`，与 Windows 一致，避免继承父进程 stdin 导致终端断开后 daemon 异常
+
+## [0.1.31] - 2026-03-19
+
+### 修复
+
+- **back / forward 崩溃**：CDP `getNavigationHistory` 返回 tuple 时报 `'tuple' object has no attribute 'current_index'`。新增 `_parse_navigation_history` 与 `_entry_id` 兼容 dict/tuple/object 三种返回格式
+
+### 文档
+
+- **README 新增 CLI 命令行工具章节**：完整列出 16 个命令组（store / chrome / session / nav / act / info / get / find / is / scroll / mouse / network / rec / batch / sys / serve）共 90 个子命令的用法、参数和常用示例
+- **docs/installation.md** 补充 CLI 快速示例，引导用户从终端直接操控浏览器
+- **CLI_TEST_REPORT.md** 更新全量 --help 测试结果（90 通过、0 失败），back/forward 标记为已修复
+
 ## [0.1.30] - 2026-03-18
 
 ### 修复

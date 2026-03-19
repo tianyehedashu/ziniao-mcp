@@ -91,6 +91,28 @@ uv tool install ziniao
 
 按上述步骤安装后，`ziniao` 已可在终端直接使用（如 `ziniao --help`、`ziniao serve`）。若无法识别，请将 `uv tool dir` 输出的目录加入用户 PATH 后新开终端。
 
+ziniao 的命令行不仅是 MCP Server 入口，还提供完整的浏览器操控能力。首次执行命令时会自动启动后台 daemon，后续命令复用同一会话。
+
+```bash
+# 启动 Chrome 并打开网页
+ziniao launch --url https://www.baidu.com
+
+# 页面交互
+ziniao click "button.submit"
+ziniao fill "input[name=q]" "搜索内容"
+ziniao press Enter
+
+# 获取页面信息
+ziniao title
+ziniao --json url
+ziniao screenshot page.png
+
+# 查看所有命令
+ziniao --help
+```
+
+完整 CLI 命令参考见 [README - CLI 命令行工具](../README.md#cli-命令行工具)。
+
 ### 方式二：作为 Cursor Plugin 安装（完整 AI 增强）
 
 Plugin 模式会同时加载 MCP 工具 + Rules + Skills + Agents + Commands，提供完整 AI 增强体验。需要 git 和 [uv](https://docs.astral.sh/uv/)。

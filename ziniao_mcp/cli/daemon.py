@@ -88,7 +88,10 @@ class DaemonServer:
                 },
                 version=config.get("version") or "v6",
             )
-        self._session_manager = SessionManager(client, stealth_config=stealth_cfg)
+        self._session_manager = SessionManager(
+            client, stealth_config=stealth_cfg,
+            chrome_config=config.get("chrome") or {},
+        )
         _logger.info("SessionManager initialized")
 
     async def handle_client(
@@ -192,6 +195,8 @@ async def _async_main() -> None:
 
 def main() -> None:
     _STATE_DIR.mkdir(parents=True, exist_ok=True)
+    from ..dotenv_loader import load_dotenv  # pylint: disable=import-outside-toplevel
+    load_dotenv()
     try:
         asyncio.run(_async_main())
     except KeyboardInterrupt:

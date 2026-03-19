@@ -83,10 +83,15 @@ def ensure_daemon(timeout: float = 15.0) -> int:
     env["ZINIAO_DAEMON"] = "1"
 
     if os.name == "nt":
+        exe = sys.executable
+        pythonw = Path(exe).with_name("pythonw.exe")
+        if pythonw.is_file():
+            exe = str(pythonw)
         creation_flags = subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS
         subprocess.Popen(
-            [sys.executable, "-m", daemon_module],
+            [exe, "-m", daemon_module],
             env=env,
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             creationflags=creation_flags,
@@ -95,6 +100,7 @@ def ensure_daemon(timeout: float = 15.0) -> int:
         subprocess.Popen(
             [sys.executable, "-m", daemon_module],
             env=env,
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             start_new_session=True,
@@ -126,13 +132,28 @@ def _json_safe(value: Any) -> Any:
     return value
 
 
+_SLOW_COMMANDS = frozenset({
+    "click", "fill", "type_text", "hover", "drag", "dblclick",
+    "screenshot", "snapshot", "snapshot_enhanced",
+    "navigate", "wait", "recorder",
+    "launch_chrome", "open_store",
+})
+
+
 def send_command(
     command: str,
     args: dict[str, Any] | None = None,
     target_session: str | None = None,
-    timeout: float = 60.0,
+    timeout: float = 0,
 ) -> dict[str, Any]:
-    """Send a JSON-line command to the daemon and return the response."""
+    """Send a JSON-line command to the daemon and return the response.
+
+    *timeout* = 0 means auto: 120s for slow commands (click/type/screenshot/…),
+    60s for everything else.  The user can override via ``--timeout``.
+    """
+    if timeout <= 0:
+        timeout = 120.0 if command in _SLOW_COMMANDS else 60.0
+
     port = ensure_daemon()
     request = {"command": command, "args": _json_safe(args or {})}
     if target_session:
@@ -140,12 +161,17 @@ def send_command(
 
     payload = json.dumps(request, ensure_ascii=False) + "\n"
 
-    with socket.create_connection(("127.0.0.1", port), timeout=timeout) as sock:
+    deadline = time.monotonic() + timeout
+    with socket.create_connection(("127.0.0.1", port), timeout=min(timeout, 10)) as sock:
         sock.sendall(payload.encode("utf-8"))
         sock.shutdown(socket.SHUT_WR)
 
         chunks: list[bytes] = []
         while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("timed out")
+            sock.settimeout(remaining)
             chunk = sock.recv(65536)
             if not chunk:
                 break

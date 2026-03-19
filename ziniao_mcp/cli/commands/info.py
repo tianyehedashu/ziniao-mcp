@@ -22,8 +22,6 @@ def snapshot(
 ) -> None:
     """Get the HTML snapshot of the current page."""
     if selector or interactive or compact:
-        if full_page:
-            typer.echo("Warning: --full-page is ignored when --selector, --interactive, or --compact is set.", err=True)
         result = run_command("snapshot_enhanced", {
             "selector": selector or "", "interactive": interactive, "compact": compact,
         })

@@ -36,7 +36,10 @@ def _print_package_version_and_exit() -> None:
 
 
 def _resolve_config() -> dict[str, Any]:
-    """解析配置，优先级: 环境变量 > 命令行参数 > config.yaml"""
+    """解析配置，优先级: 环境变量 > 命令行参数 > .env > config.yaml > ~/.ziniao/config.yaml"""
+    from .dotenv_loader import load_dotenv  # pylint: disable=import-outside-toplevel
+    load_dotenv()
+
     _print_package_version_and_exit()
     parser = argparse.ArgumentParser(
         description="Automate Ziniao stores and local Chrome browsers with one MCP server."
@@ -58,6 +61,7 @@ def _resolve_config() -> dict[str, Any]:
         candidates = [
             Path("config/config.yaml"),
             Path(__file__).resolve().parent.parent / "config" / "config.yaml",
+            Path.home() / ".ziniao" / "config.yaml",
         ]
         for p in candidates:
             if p.exists():
@@ -118,9 +122,9 @@ def _resolve_config() -> dict[str, Any]:
     config["stealth"] = yaml_config.get("stealth", {})
 
     chrome_env = {
-        "executable_path": os.environ.get("CHROME_EXECUTABLE_PATH"),
+        "executable_path": os.environ.get("CHROME_PATH") or os.environ.get("CHROME_EXECUTABLE_PATH"),
         "default_cdp_port": os.environ.get("CHROME_CDP_PORT"),
-        "user_data_dir": os.environ.get("CHROME_USER_DATA_DIR"),
+        "user_data_dir": os.environ.get("CHROME_USER_DATA") or os.environ.get("CHROME_USER_DATA_DIR"),
     }
     _port_raw = chrome_env["default_cdp_port"] or chrome_yaml.get("default_cdp_port", 0)
     try:
@@ -185,7 +189,10 @@ def create_server(config: dict[str, Any] | None = None) -> tuple[FastMCP, Sessio
     else:
         _logger.info("未配置紫鸟信息，仅启用 Chrome 浏览器功能")
 
-    session = SessionManager(client, stealth_config=stealth_cfg)
+    session = SessionManager(
+        client, stealth_config=stealth_cfg,
+        chrome_config=config.get("chrome") or {},
+    )
     mcp = FastMCP(
         "ziniao",
         instructions=(

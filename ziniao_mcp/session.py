@@ -291,14 +291,67 @@ async def _connect_cdp(port: int, timeout: float = 30.0) -> "Browser":
     return browser
 
 
+def _chrome_from_registry() -> str | None:
+    """Try to read Chrome install path from Windows registry."""
+    if os.name != "nt":
+        return None
+    try:
+        import winreg  # pylint: disable=import-outside-toplevel
+        for root in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+            for sub in (
+                r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe",
+                r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe",
+            ):
+                try:
+                    with winreg.OpenKey(root, sub) as key:
+                        val, _ = winreg.QueryValueEx(key, "")
+                        if val and os.path.isfile(val):
+                            return str(val)
+                except OSError:
+                    continue
+    except Exception:
+        pass
+    return None
+
+
+def _chrome_path_from_env() -> str | None:
+    """Read Chrome executable from environment (CHROME_PATH or CHROME_EXECUTABLE_PATH)."""
+    for var in ("CHROME_PATH", "CHROME_EXECUTABLE_PATH"):
+        val = os.environ.get(var)
+        if val and os.path.isfile(val):
+            return val
+    return None
+
+
+def _chrome_user_data_from_env() -> str | None:
+    """Read Chrome user-data-dir from environment (CHROME_USER_DATA or CHROME_USER_DATA_DIR)."""
+    for var in ("CHROME_USER_DATA", "CHROME_USER_DATA_DIR"):
+        val = os.environ.get(var)
+        if val:
+            return val
+    return None
+
+
 def _find_chrome_executable() -> str:
-    """自动检测系统中 Chrome / Chromium 可执行文件路径。"""
+    """自动检测系统中 Chrome / Chromium 可执行文件路径。
+
+    优先级: CHROME_PATH 环境变量 > 注册表 > 常见路径 > PATH 搜索
+    """
+    env_path = _chrome_path_from_env()
+    if env_path:
+        return env_path
+
     if os.name == "nt":
         candidates = [
             os.path.expandvars(r"%ProgramFiles%\Google\Chrome\Application\chrome.exe"),
             os.path.expandvars(r"%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe"),
             os.path.expandvars(r"%LocalAppData%\Google\Chrome\Application\chrome.exe"),
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
         ]
+        reg_path = _chrome_from_registry()
+        if reg_path:
+            candidates.insert(0, reg_path)
     elif os.uname().sysname == "Darwin" if hasattr(os, "uname") else False:
         candidates = [
             "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
@@ -321,7 +374,7 @@ def _find_chrome_executable() -> str:
             return found
 
     raise RuntimeError(
-        "未找到 Chrome 浏览器。请通过 executable_path 参数指定路径，"
+        "未找到 Chrome 浏览器。请设置环境变量 CHROME_PATH 指定路径，"
         "或安装 Google Chrome。"
     )
 
@@ -340,11 +393,13 @@ class SessionManager:
         self,
         client: Optional["ZiniaoClient"] = None,
         stealth_config: Optional["StealthConfig"] = None,
+        chrome_config: Optional[dict[str, Any]] = None,
     ):
         from .stealth import StealthConfig  # pylint: disable=import-outside-toplevel
 
         self.client = client
         self.stealth_config = stealth_config or StealthConfig()
+        self._chrome_config = chrome_config or {}
         self._stores: dict[str, StoreSession] = {}
         self._active_store_id: Optional[str] = None
         self._client_started = False
@@ -776,6 +831,63 @@ class SessionManager:
 
     # ── Chrome 浏览器管理 ──────────────────────────────────────────────
 
+    def _resolve_chrome_defaults(
+        self,
+        executable_path: str,
+        user_data_dir: str,
+        cdp_port: int,
+        headless: bool,
+    ) -> tuple[str, str, int, bool]:
+        """Apply fallback chain: caller arg > env var > chrome_config > built-in default."""
+        cc = self._chrome_config
+
+        if not executable_path:
+            executable_path = cc.get("executable_path") or ""
+        if not executable_path:
+            executable_path = _find_chrome_executable()
+
+        if not user_data_dir:
+            user_data_dir = _chrome_user_data_from_env() or cc.get("user_data_dir") or ""
+        if not user_data_dir:
+            _DEFAULT_CHROME_USER_DATA_DIR.mkdir(parents=True, exist_ok=True)
+            user_data_dir = str(_DEFAULT_CHROME_USER_DATA_DIR)
+
+        if cdp_port <= 0:
+            cdp_port = int(cc.get("default_cdp_port") or 0)
+        if cdp_port <= 0:
+            cdp_port = _find_free_port()
+
+        if not headless:
+            headless = bool(cc.get("headless"))
+
+        return executable_path, user_data_dir, cdp_port, headless
+
+    async def _try_connect_existing_chrome(self, user_data_dir: str) -> int | None:
+        """Try to find the CDP port of a Chrome already using this profile.
+
+        Checks DevToolsActivePort file first, then probes common CDP ports.
+        """
+        debug_port_file = Path(user_data_dir) / "DevToolsActivePort"
+        if debug_port_file.exists():
+            try:
+                port = int(debug_port_file.read_text().strip().splitlines()[0])
+                if await _is_cdp_alive(port):
+                    return port
+            except (ValueError, OSError, IndexError):
+                pass
+
+        probe_ports: list[int] = []
+        cfg_port = int(self._chrome_config.get("default_cdp_port") or 0)
+        if cfg_port > 0:
+            probe_ports.append(cfg_port)
+        probe_ports.extend([9222, 9333, 9515])
+
+        for port in probe_ports:
+            if await _is_cdp_alive(port):
+                return port
+
+        return None
+
     async def launch_chrome(
         self,
         name: str = "",
@@ -785,40 +897,68 @@ class SessionManager:
         headless: bool = False,
         url: str = "",
     ) -> StoreSession:
-        """独立启动一个 Chrome 实例并通过 CDP 连接。"""
-        if not executable_path:
-            executable_path = _find_chrome_executable()
+        """独立启动一个 Chrome 实例并通过 CDP 连接。
 
-        if cdp_port <= 0:
-            cdp_port = _find_free_port()
+        参数优先级: 函数参数 > 环境变量 (CHROME_PATH / CHROME_USER_DATA) > config > 默认值。
+        若 profile 已被占用，自动尝试连接已有实例。
+        """
+        executable_path, user_data_dir, cdp_port, headless = self._resolve_chrome_defaults(
+            executable_path, user_data_dir, cdp_port, headless,
+        )
 
         session_id = name or f"chrome-{cdp_port}"
         if session_id in self._stores:
             self._active_store_id = session_id
             return self._stores[session_id]
 
-        if not user_data_dir:
-            user_data_dir = str(_DEFAULT_CHROME_USER_DATA_DIR)
-            _DEFAULT_CHROME_USER_DATA_DIR.mkdir(parents=True, exist_ok=True)
-
         args = [
             executable_path,
             f"--remote-debugging-port={cdp_port}",
             f"--user-data-dir={user_data_dir}",
+            "--no-first-run",
+            "--no-default-browser-check",
         ]
         if headless:
             args.append("--headless=new")
         if url:
             args.append(url)
 
-        proc = subprocess.Popen(
-            args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        popen_kwargs: dict[str, Any] = dict(
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
+        if os.name == "nt":
+            popen_kwargs["creationflags"] = (
+                subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS
+            )
+        proc = subprocess.Popen(args, **popen_kwargs)
 
+        connected_port: int | None = None
+        owns_process = True
         for _attempt in range(15):
             if await _is_cdp_alive(cdp_port):
+                connected_port = cdp_port
                 break
             if proc.poll() is not None:
+                if proc.returncode == 0:
+                    existing_port = await self._try_connect_existing_chrome(user_data_dir)
+                    if existing_port:
+                        _logger.info(
+                            "Profile locked, auto-connecting to existing Chrome on port %d "
+                            "(close will NOT terminate this Chrome)",
+                            existing_port,
+                        )
+                        connected_port = existing_port
+                        owns_process = False
+                        session_id = name or f"chrome-{existing_port}"
+                        if session_id in self._stores:
+                            self._active_store_id = session_id
+                            return self._stores[session_id]
+                        break
+                    raise RuntimeError(
+                        f"Chrome 进程已退出 (exit code 0)。"
+                        f"该 user_data_dir 已被另一个 Chrome 实例占用: {user_data_dir}。"
+                        f"请关闭已有 Chrome 或设置 CHROME_USER_DATA 指定其他 profile 目录。"
+                    )
                 raise RuntimeError(
                     f"Chrome 进程已退出 (exit code {proc.returncode})。"
                     f"请检查路径是否正确: {executable_path}"
@@ -830,7 +970,7 @@ class SessionManager:
                 f"Chrome CDP 端口 {cdp_port} 在 15 秒内未就绪"
             )
 
-        browser = await _connect_cdp(cdp_port)
+        browser = await _connect_cdp(connected_port)
         await self._apply_stealth_to_browser(browser)
         tabs = _filter_tabs(browser.tabs)
 
@@ -846,13 +986,13 @@ class SessionManager:
 
         session = StoreSession(
             store_id=session_id,
-            store_name=name or f"Chrome ({cdp_port})",
-            cdp_port=cdp_port,
+            store_name=name or f"Chrome ({connected_port})",
+            cdp_port=connected_port,
             browser=browser,
             tabs=tabs,
             active_tab_index=0,
             backend_type="chrome",
-            chrome_process=proc,
+            chrome_process=proc if owns_process else None,
         )
 
         if session.tabs:

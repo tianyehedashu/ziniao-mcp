@@ -26,7 +26,8 @@ app = typer.Typer(
 _GLOBAL_STORE: Optional[str] = None
 _GLOBAL_SESSION: Optional[str] = None
 _GLOBAL_JSON: bool = False
-_GLOBAL_TIMEOUT: float = 60.0
+_GLOBAL_TIMEOUT: float = 0  # 0 = auto (send_command picks per-command default)
+_GLOBAL_TIMEOUT_EXPLICIT: bool = False
 
 
 def _target_session() -> Optional[str]:
@@ -39,7 +40,8 @@ def get_json_mode() -> bool:
 
 def run_command(command: str, args: dict | None = None) -> dict:
     """Send *command* to the daemon and return the parsed response dict."""
-    return send_command(command, args or {}, _target_session(), _GLOBAL_TIMEOUT)
+    timeout = _GLOBAL_TIMEOUT if _GLOBAL_TIMEOUT_EXPLICIT else 0
+    return send_command(command, args or {}, _target_session(), timeout)
 
 
 @app.callback()
@@ -54,10 +56,10 @@ def _main_callback(
         False, "--json", help="Output raw JSON instead of formatted text.",
     ),
     timeout: float = typer.Option(
-        60.0, "--timeout", help="Command timeout in seconds.",
+        0, "--timeout", help="Command timeout in seconds (0 = auto: 120s for slow commands, 60s for others).",
     ),
 ) -> None:
-    global _GLOBAL_STORE, _GLOBAL_SESSION, _GLOBAL_JSON, _GLOBAL_TIMEOUT  # noqa: PLW0603
+    global _GLOBAL_STORE, _GLOBAL_SESSION, _GLOBAL_JSON, _GLOBAL_TIMEOUT, _GLOBAL_TIMEOUT_EXPLICIT  # noqa: PLW0603
     if store and session:
         typer.echo("Error: --store and --session are mutually exclusive.", err=True)
         raise typer.Exit(1)
@@ -65,6 +67,7 @@ def _main_callback(
     _GLOBAL_SESSION = session
     _GLOBAL_JSON = json_output
     _GLOBAL_TIMEOUT = timeout
+    _GLOBAL_TIMEOUT_EXPLICIT = timeout > 0
 
 
 # ---------------------------------------------------------------------------
@@ -76,6 +79,7 @@ def _register_commands() -> None:
         batch,
         check,
         chrome,
+        config_cmd,
         find,
         get,
         info,
@@ -91,6 +95,7 @@ def _register_commands() -> None:
     )
     app.add_typer(store.app, name="store", help="Manage Ziniao stores.")
     app.add_typer(chrome.app, name="chrome", help="Manage Chrome browser instances.")
+    app.add_typer(config_cmd.app, name="config", help="Configuration management (init/show/set/path/env).")
     app.add_typer(session.app, name="session", help="Manage browser sessions (Ziniao + Chrome).")
     app.add_typer(navigate.app, name="nav", help="Navigation commands.")
     app.add_typer(interact.app, name="act", help="Page interaction commands.")

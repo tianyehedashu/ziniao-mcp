@@ -796,13 +796,44 @@ async def _is_checked(sm: Any, args: dict) -> dict:
 # Navigation: back / forward / reload
 # ---------------------------------------------------------------------------
 
+def _parse_navigation_history(history: Any) -> tuple[list, int]:
+    """Normalize CDP getNavigationHistory result (dict, tuple or object) to (entries, current_index)."""
+    if hasattr(history, "current_index"):
+        return (list(history.entries), int(history.current_index))
+    if hasattr(history, "currentIndex"):
+        return (list(history.entries), int(history.currentIndex))
+    if isinstance(history, dict):
+        entries = history.get("entries") or []
+        idx = int(history.get("currentIndex", history.get("current_index", 0)))
+        return (entries, idx)
+    if isinstance(history, (tuple, list)) and len(history) >= 2:
+        a, b = history[0], history[1]
+        if isinstance(a, int) and isinstance(b, (list, tuple)):
+            return (list(b), a)
+        if isinstance(b, int) and isinstance(a, (list, tuple)):
+            return (list(a), b)
+    return ([], 0)
+
+
+def _entry_id(entry: Any) -> int:
+    """Get history entry id from object or dict."""
+    if hasattr(entry, "id_"):
+        return int(entry.id_)
+    if hasattr(entry, "id"):
+        return int(entry.id)
+    if isinstance(entry, dict):
+        return int(entry.get("id", entry.get("id_", 0)))
+    return 0
+
+
 async def _back(sm: Any, args: dict) -> dict:
     from nodriver import cdp  # pylint: disable=import-outside-toplevel
     tab = sm.get_active_tab()
-    history = await tab.send(cdp.page.get_navigation_history())
-    if history.current_index > 0:
-        entry = history.entries[history.current_index - 1]
-        await tab.send(cdp.page.navigate_to_history_entry(entry_id=entry.id_))
+    raw = await tab.send(cdp.page.get_navigation_history())
+    entries, current_index = _parse_navigation_history(raw)
+    if current_index > 0:
+        entry = entries[current_index - 1]
+        await tab.send(cdp.page.navigate_to_history_entry(entry_id=_entry_id(entry)))
         await tab.sleep(0.5)
     return {"ok": True, "url": tab.target.url}
 
@@ -810,10 +841,11 @@ async def _back(sm: Any, args: dict) -> dict:
 async def _forward(sm: Any, args: dict) -> dict:
     from nodriver import cdp  # pylint: disable=import-outside-toplevel
     tab = sm.get_active_tab()
-    history = await tab.send(cdp.page.get_navigation_history())
-    if history.current_index < len(history.entries) - 1:
-        entry = history.entries[history.current_index + 1]
-        await tab.send(cdp.page.navigate_to_history_entry(entry_id=entry.id_))
+    raw = await tab.send(cdp.page.get_navigation_history())
+    entries, current_index = _parse_navigation_history(raw)
+    if current_index < len(entries) - 1:
+        entry = entries[current_index + 1]
+        await tab.send(cdp.page.navigate_to_history_entry(entry_id=_entry_id(entry)))
         await tab.sleep(0.5)
     return {"ok": True, "url": tab.target.url}
 

@@ -8,6 +8,65 @@ allowed-tools: Bash(ziniao:*)
 
 The `ziniao` CLI talks to a background daemon that manages browser sessions (Ziniao stores and Chrome instances) via CDP. Install with `uv tool install ziniao`, then use the single `ziniao` command for everything: CLI automation (`ziniao click`, `ziniao fill`, ...) and MCP server (`ziniao serve`). The daemon starts automatically on first CLI command. If your shell reports **"ziniao" is not recognized**, see [Install & PATH](#install--path) below. Ziniao sessions use built-in **stealth and anti-detection** (JS masking + human-like input); Chrome sessions use the same stack when launched via `ziniao launch`.
 
+## Quick Setup
+
+Three scenarios — pick the one that fits:
+
+**Scenario 1: Chrome only (zero config)** — just works, no setup needed:
+
+```bash
+ziniao launch --url https://example.com
+```
+
+**Scenario 2: Chrome + state reuse** — run the wizard or set manually:
+
+```bash
+ziniao config init              # interactive wizard
+# OR set directly:
+ziniao config set chrome.user_data_dir "C:\Users\<you>\.ziniao\chrome-profile"
+```
+
+This generates `~/.ziniao/config.yaml`:
+
+```yaml
+chrome:
+  executable_path: "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
+  user_data_dir: "C:\\Users\\<you>\\.ziniao\\chrome-profile"
+  default_cdp_port: 0
+  headless: false
+```
+
+**Scenario 3: Ziniao + Chrome (full feature)** — run `ziniao config init` and answer the Ziniao questions, or write `~/.ziniao/config.yaml` manually:
+
+```yaml
+ziniao:
+  browser:
+    version: v6
+    client_path: D:\ziniao\ziniao.exe
+  user_info:
+    company: your-company
+    username: your-user
+    password: your-pass
+
+chrome:
+  executable_path: ""
+  user_data_dir: ""
+```
+
+The wizard also generates `~/.ziniao/.env` (auto-loaded by CLI and daemon):
+
+```
+ZINIAO_COMPANY=your-company
+ZINIAO_USERNAME=your-user
+ZINIAO_PASSWORD=your-pass
+ZINIAO_CLIENT_PATH=D:\ziniao\ziniao.exe
+CHROME_PATH=C:\Program Files\Google\Chrome\Application\chrome.exe
+```
+
+**Config priority**: env var > CLI args > `~/.ziniao/.env` > project `config/config.yaml` > `~/.ziniao/config.yaml`
+
+To export config as MCP-compatible env block: `ziniao config env --shell mcp`
+
 ## Core Workflow
 
 Every browser automation follows this pattern:
@@ -44,9 +103,22 @@ ziniao fill "#email" "user@test.com" && ziniao fill "#pass" "secret" && ziniao c
 | Backend | How to connect | Typical use |
 |--------|----------------|-------------|
 | **Ziniao store** | `ziniao open-store <store_id>` | Multi-store seller workflows, anti-detection, existing Ziniao client |
-| **Chrome** | `ziniao launch` or `ziniao connect <port>` | Local Chrome, debugging, headless runs |
+| **Chrome (launch)** | `ziniao launch` | Launch a new Chrome, ziniao owns the process (close = terminate) |
+| **Chrome (connect)** | `ziniao connect <port>` | Connect to existing Chrome, ziniao does NOT own the process (close = disconnect only) |
 
 Use `ziniao session list` to see all sessions (stores + Chrome). Use `--store <id>` or `--session <id>` to target a session without switching the active one.
+
+### Chrome Environment Variables
+
+Configure Chrome path and profile via environment variables (in MCP `env` or shell):
+
+| Variable | Description |
+|----------|-------------|
+| `CHROME_PATH` | Chrome executable path. Auto-detected if not set (registry > common paths > PATH) |
+| `CHROME_USER_DATA` | User data directory (profile). Set to reuse login state, cookies, extensions across sessions |
+| `CHROME_CDP_PORT` | Default CDP port. Auto-assigned if not set |
+
+Setting `CHROME_USER_DATA` is the key to **state reuse** — cookies, localStorage, and extensions persist across launches. If the profile is already locked by a running Chrome, `launch` auto-detects the existing instance's CDP port and connects to it (behaves like `connect`, will NOT terminate the Chrome on close).
 
 ## Store Login & Multi-Store Workflows
 
@@ -87,12 +159,12 @@ ziniao list-stores --opened-only      # Only opened stores
 ziniao open-store <id>                # Open store + connect CDP
 ziniao close-store <id>               # Close store
 
-# Chrome management
-ziniao launch [--name n] [--url u]   # Launch Chrome
+# Chrome management (configure CHROME_PATH / CHROME_USER_DATA env vars for path & state reuse)
+ziniao launch [--name n] [--url u]   # Launch Chrome (auto-connects if profile locked)
 ziniao launch --headless             # Headless Chrome
 ziniao connect <port> [--name n]      # Connect to running Chrome (CDP port)
 ziniao chrome list                   # List Chrome sessions
-ziniao chrome close <id>              # Close Chrome session
+ziniao chrome close <id>              # Close: terminate if launched, disconnect if connected
 
 # Session control
 ziniao session list                   # All sessions (stores + Chrome)
@@ -201,6 +273,13 @@ ziniao rec list
 ziniao emulate --device "iPhone 14"
 ziniao emulate --width 1920 --height 1080
 
+# Configuration
+ziniao config init [--force]           # Interactive wizard → ~/.ziniao/config.yaml + .env
+ziniao config show                     # Show effective config with source labels
+ziniao config set <key> <value>        # Set value (dotted key: chrome.executable_path)
+ziniao config path                     # Show config file paths
+ziniao config env [--shell ps|bash|json|mcp]  # Export env var statements
+
 # MCP server
 ziniao serve                           # Start MCP server
 ziniao serve --config config.yaml     # With config file
@@ -229,7 +308,7 @@ ziniao is visible ".next" --json | jq -e '.visible'
 | `--store <id>` | Target a Ziniao store (no session switch) |
 | `--session <id>` | Target any session — store or Chrome (no switch) |
 | `--json` | Output raw JSON |
-| `--timeout <sec>` | Command timeout (default 60) |
+| `--timeout <sec>` | Command timeout (0 = auto: 120s for slow commands like click/type/screenshot, 60s for others) |
 
 `--store` and `--session` are mutually exclusive.
 
@@ -262,10 +341,10 @@ Selectors are evaluated at command execution time. After navigation or dynamic D
 
 ## Timeouts and Slow Pages
 
-Default command timeout is 60 seconds. Override with `--timeout`:
+Timeout is **auto by default**: 120s for slow commands (click, type, fill, hover, screenshot, navigate, wait, launch, open-store), 60s for everything else. Override with `--timeout`:
 
 ```bash
-ziniao wait ".slow-widget" --timeout 120
+ziniao wait ".slow-widget" --timeout 180
 ziniao navigate "https://slow.example.com" --timeout 90
 ```
 
@@ -360,6 +439,8 @@ If **`ziniao` is not recognized** after install, the uv tool directory is not on
 
 | Problem | Solution |
 |--------|----------|
+| First time setup | `ziniao config init` (interactive wizard) |
+| Config not taking effect | Check priority: env > CLI args > .env > project yaml > global yaml. Use `ziniao config show` to see sources |
 | Daemon won't start | Check `~/.ziniao/daemon.log` |
 | Connection refused | `ziniao quit` then retry (clears stale PID) |
 | Store not found | `ziniao list-stores` to check IDs |
