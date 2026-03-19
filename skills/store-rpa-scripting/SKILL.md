@@ -1,6 +1,7 @@
 ---
 name: store-rpa-scripting
 description: 通过紫鸟 MCP 工具探索店铺页面结构，梳理操作步骤，然后生成可独立运行的 Python RPA 脚本（基于 nodriver + CDP）。当用户提到 RPA、自动化脚本、批量操作、定时任务、店铺运营脚本、自动化流程时触发。
+allowed-tools: Bash(ziniao:*), Bash(python:*), ziniao-*
 ---
 
 # 店铺运营 RPA 脚本生成

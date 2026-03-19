@@ -1,6 +1,7 @@
 ---
 name: nodriver
 description: Automate browsers using nodriver (async CDP library, successor of undetected-chromedriver). Supports launching, connecting to existing browsers, element finding, clicking, typing, screenshots, cookie management, CDP low-level commands, and event handling. Use when asked to automate a browser, scrape pages, interact with web elements, use CDP protocol, or write nodriver/browser automation code.
+allowed-tools: Bash(python:*), Bash(pip:*)
 ---
 
 # nodriver — Browser Automation

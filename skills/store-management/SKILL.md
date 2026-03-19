@@ -1,6 +1,7 @@
 ---
 name: store-management
 description: 管理紫鸟多店铺的生命周期，包括打开、连接、切换和关闭店铺。当需要管理多个店铺、恢复已打开的店铺会话、或进行批量店铺操作时使用此技能。
+allowed-tools: Bash(ziniao:*), ziniao-*
 ---
 
 ## 店铺生命周期
@@ -79,6 +80,30 @@ connect_store("target_store_id")  → 目标店铺成为活动店铺
 2. 通过 HTTP GET `/json/version` 验证端口连通性
 3. 端口存活 → nodriver `Browser.create()` 恢复 CDP 连接
 4. 端口失效 → 清理状态记录 → fallback 到 `open_store` 重新打开
+
+## CLI 等效命令
+
+上述所有操作也可通过 `ziniao` CLI 完成，适合脚本和终端环境：
+
+| MCP 工具 | CLI 命令 |
+|----------|----------|
+| `list_stores` | `ziniao list-stores` |
+| `open_store(id)` | `ziniao open-store <id>` |
+| `close_store(id)` | `ziniao close-store <id>` |
+| `connect_store(id)` | `ziniao open-store <id>` (自动恢复) |
+| `start_client` | `ziniao store start-client` |
+| `stop_client` | `ziniao store stop-client` |
+| `browser_session(list)` | `ziniao session list` |
+| `browser_session(switch)` | `ziniao session switch <id>` |
+
+### 多店铺批量示例（CLI）
+
+```bash
+# 对所有已打开店铺截图
+ziniao list-stores --opened-only --json | jq -r '.stores[].store_id' | while read id; do
+    ziniao --store "$id" screenshot "${id}.png"
+done
+```
 
 ## 常见问题
 

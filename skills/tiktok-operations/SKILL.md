@@ -1,6 +1,7 @@
 ---
 name: tiktok-operations
 description: 通过紫鸟浏览器自动化执行 TikTok Shop 跨境卖家后台操作。当用户需要管理 TikTok Shop 商品、查看订单、设置营销活动、分析店铺数据、或执行其他 TikTok Shop Seller Center 操作时使用此技能。
+allowed-tools: Bash(ziniao:*), ziniao-*
 ---
 
 ## TikTok Shop Seller Center 导航

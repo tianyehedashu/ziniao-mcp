@@ -1,6 +1,7 @@
 ---
 name: amazon-operations
 description: 通过紫鸟浏览器自动化执行亚马逊卖家后台操作。当用户需要管理亚马逊 Listing、查看订单、分析广告数据、或执行其他亚马逊 Seller Central 操作时使用此技能。
+allowed-tools: Bash(ziniao:*), ziniao-*
 ---
 
 ## 亚马逊 Seller Central 导航

@@ -1,6 +1,7 @@
-"""Network tool (1 tool)."""
+"""Network tools: request monitoring, route interception, and HAR recording."""
 
 import json
+from typing import Optional
 
 from mcp.server.fastmcp import FastMCP
 
@@ -54,4 +55,98 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
                 "status": req.status,
                 "resource_type": req.resource_type,
             })
+        return json.dumps(result, ensure_ascii=False, indent=2)
+
+    @mcp.tool()
+    async def network_route(
+        url_pattern: str,
+        abort: bool = False,
+        response_body: str = "",
+        response_status: int = 200,
+        response_content_type: str = "text/plain",
+    ) -> str:
+        """Add a request interception route using CDP Fetch domain.
+
+        Matching requests will be either blocked (abort=True) or served
+        with a mock response.  Supports glob-like URL patterns:
+        "*" matches all, "prefix*suffix" for glob, or substring match.
+
+        Args:
+            url_pattern: URL pattern to intercept (e.g. "*.png", "*api/data*").
+            abort: If True, block the matching requests entirely.
+            response_body: Mock response body (used when abort is False).
+            response_status: Mock response HTTP status code.
+            response_content_type: Mock response Content-Type header.
+        """
+        from ..core.network import add_route  # pylint: disable=import-outside-toplevel
+
+        tab = session.get_active_tab()
+        store = session.get_active_session()
+        result = await add_route(
+            tab, store,
+            url_pattern=url_pattern,
+            abort=abort,
+            response_status=response_status,
+            response_body=response_body,
+            response_content_type=response_content_type,
+        )
+        return json.dumps(result, ensure_ascii=False, indent=2)
+
+    @mcp.tool()
+    async def network_unroute(
+        url_pattern: str = "",
+    ) -> str:
+        """Remove request interception route(s).
+
+        If url_pattern is provided, removes only matching routes.
+        If empty, removes all routes and disables Fetch interception.
+
+        Args:
+            url_pattern: URL pattern to remove (empty = remove all).
+        """
+        from ..core.network import remove_route  # pylint: disable=import-outside-toplevel
+
+        tab = session.get_active_tab()
+        store = session.get_active_session()
+        result = await remove_route(tab, store, url_pattern=url_pattern)
+        return json.dumps(result, ensure_ascii=False, indent=2)
+
+    @mcp.tool()
+    async def network_routes() -> str:
+        """List all active request interception routes."""
+        from ..core.network import list_routes  # pylint: disable=import-outside-toplevel
+
+        store = session.get_active_session()
+        result = list_routes(store)
+        return json.dumps(result, ensure_ascii=False, indent=2)
+
+    @mcp.tool()
+    async def har_start() -> str:
+        """Start recording network activity in HAR (HTTP Archive) format.
+
+        All subsequent network requests will be captured until har_stop
+        is called.  The HAR data includes request/response headers,
+        status codes, timing, and resource types.
+        """
+        from ..core.network import har_start as _har_start  # pylint: disable=import-outside-toplevel
+
+        store = session.get_active_session()
+        result = _har_start(store)
+        return json.dumps(result, ensure_ascii=False, indent=2)
+
+    @mcp.tool()
+    async def har_stop(
+        path: str = "",
+    ) -> str:
+        """Stop HAR recording and export to file.
+
+        If path is empty, saves to ~/.ziniao/har/har-<timestamp>.har.
+
+        Args:
+            path: Optional output file path for the HAR file.
+        """
+        from ..core.network import har_stop as _har_stop  # pylint: disable=import-outside-toplevel
+
+        store = session.get_active_session()
+        result = _har_stop(store, path=path)
         return json.dumps(result, ensure_ascii=False, indent=2)

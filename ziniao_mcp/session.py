@@ -76,6 +76,21 @@ class NetworkRequest:
     request_headers: dict = field(default_factory=dict)
     response_headers: dict = field(default_factory=dict)
     timestamp: float = 0.0
+    finished_timestamp: float = 0.0
+    encoded_data_length: int = 0
+    cdp_request_id: str = ""
+
+
+@dataclass
+class RouteEntry:
+    """请求拦截路由规则。"""
+
+    url_pattern: str
+    abort: bool = False
+    response_status: int = 200
+    response_body: str = ""
+    response_content_type: str = "text/plain"
+    response_headers: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -104,8 +119,13 @@ class StoreSession:
     _msg_counter: int = 0
     _req_counter: int = 0
     _listened_tab_ids: set = field(default_factory=set)
+    _fetch_tab_ids: set = field(default_factory=set)
     backend_type: str = "ziniao"
     chrome_process: Any = None
+    routes: list[RouteEntry] = field(default_factory=list)
+    fetch_enabled: bool = False
+    har_recording: bool = False
+    har_start_time: float = 0.0
 
     @property
     def pages(self) -> list["Tab"]:
@@ -1026,17 +1046,27 @@ class SessionManager:
                     resource_type=event.type_.value if event.type_ else "",
                     request_headers=dict(event.request.headers) if event.request.headers else {},
                     timestamp=time.time(),
+                    cdp_request_id=str(event.request_id),
                 )
             )
 
         def on_response(event: cdp.network.ResponseReceived):
+            rid = str(event.request_id)
             for req in reversed(store.network_requests):
-                if req.url == event.response.url and req.status is None:
+                if req.cdp_request_id == rid:
                     req.status = event.response.status
                     req.status_text = event.response.status_text
                     req.response_headers = (
                         dict(event.response.headers) if event.response.headers else {}
                     )
+                    break
+
+        def on_loading_finished(event: cdp.network.LoadingFinished):
+            rid = str(event.request_id)
+            for req in reversed(store.network_requests):
+                if req.cdp_request_id == rid:
+                    req.finished_timestamp = time.time()
+                    req.encoded_data_length = int(event.encoded_data_length) if event.encoded_data_length else 0
                     break
 
         async def on_dialog(event: cdp.page.JavascriptDialogOpening):
@@ -1052,6 +1082,7 @@ class SessionManager:
         tab.add_handler(cdp.runtime.ConsoleAPICalled, on_console)
         tab.add_handler(cdp.network.RequestWillBeSent, on_request)
         tab.add_handler(cdp.network.ResponseReceived, on_response)
+        tab.add_handler(cdp.network.LoadingFinished, on_loading_finished)
         tab.add_handler(cdp.page.JavascriptDialogOpening, on_dialog)
 
     async def cleanup(self) -> None:
