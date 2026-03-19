@@ -116,18 +116,18 @@ def _register_commands() -> None:
     scroll.register_top_level(app)
 
     # ---------------------------------------------------------------------------
-    # ziniao serve — start MCP server (replaces standalone ziniao-mcp command)
+    # ziniao serve — start MCP server
     # ---------------------------------------------------------------------------
 
     @app.command("serve", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
     def serve(ctx: typer.Context) -> None:
-        """Start the MCP server (same as the old ziniao-mcp command).
+        """Start the MCP server.
 
         All MCP server flags are forwarded as-is, e.g.:
             ziniao serve --config config.yaml --company myco
         """
         import sys as _sys  # pylint: disable=import-outside-toplevel
-        _sys.argv = ["ziniao-mcp"] + ctx.args
+        _sys.argv = ["ziniao", "serve"] + ctx.args
         from ..server import main as _serve_main  # pylint: disable=import-outside-toplevel
         _serve_main()
 

@@ -1,6 +1,6 @@
 [project]
 name = "ziniao-mcp"
-version = "0.1.31"
+version = "0.1.32"
 description = "紫鸟与 Chrome 浏览器 MCP 服务器 — 让 AI Agent 操控紫鸟店铺与本地 Chrome"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -26,7 +26,6 @@ dependencies = [
 ]
 
 [project.scripts]
-ziniao-mcp = "ziniao_mcp.server:main"
 ziniao = "ziniao_mcp.cli:main"
 
 [build-system]

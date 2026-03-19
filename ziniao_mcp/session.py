@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 
     from .iframe import IFrameContext
 
-_logger = logging.getLogger("ziniao-mcp-debug")
+_logger = logging.getLogger("ziniao-debug")
 
 _ZINIAO_NOT_CONFIGURED = (
     "紫鸟客户端未配置。如需使用紫鸟店铺功能，请设置环境变量 "

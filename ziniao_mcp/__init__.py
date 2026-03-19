@@ -12,4 +12,7 @@ else:
     try:
         __version__ = version("ziniao-mcp")
     except PackageNotFoundError:
-        __version__ = "0.0.0.dev"
+        try:
+            __version__ = version("ziniao")
+        except PackageNotFoundError:
+            __version__ = "0.0.0.dev"

@@ -204,7 +204,7 @@ def har_stop(store: "StoreSession", path: str = "") -> dict:
     har = {
         "log": {
             "version": "1.2",
-            "creator": {"name": "ziniao-mcp", "version": "1.0"},
+            "creator": {"name": "ziniao", "version": "1.0"},
             "entries": entries,
         }
     }

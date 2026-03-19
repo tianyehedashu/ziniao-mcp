@@ -11,7 +11,10 @@ try:
     from importlib.metadata import PackageNotFoundError, version
     _PACKAGE_VERSION = version("ziniao-mcp")
 except (ImportError, PackageNotFoundError):
-    _PACKAGE_VERSION = "0.0.0.dev"
+    try:
+        _PACKAGE_VERSION = version("ziniao")
+    except Exception:
+        _PACKAGE_VERSION = "0.0.0.dev"
 
 from mcp.server.fastmcp import FastMCP
 
@@ -25,13 +28,13 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     encoding="utf-8",
 )
-_logger = logging.getLogger("ziniao-mcp-debug")
+_logger = logging.getLogger("ziniao-debug")
 
 
 def _print_package_version_and_exit() -> None:
     """若传入 -V/--package-version 则打印包版本并退出。"""
     if "-V" in sys.argv or "--package-version" in sys.argv:
-        print(f"ziniao-mcp {_PACKAGE_VERSION}")
+        print(f"ziniao {_PACKAGE_VERSION}")
         sys.exit(0)
 
 
@@ -187,7 +190,7 @@ def create_server(config: dict[str, Any] | None = None) -> tuple[FastMCP, Sessio
 
     session = SessionManager(client, stealth_config=stealth_cfg)
     mcp = FastMCP(
-        "ziniao-mcp",
+        "ziniao",
         instructions=(
             "Automate Ziniao stores and Chrome browsers: store management (list_stores/open_store), "
             "Chrome management (launch_chrome/connect_chrome), unified session control (browser_session), "
@@ -283,7 +286,7 @@ def _register_prompts(mcp: FastMCP) -> None:
 def main() -> None:
     config = _resolve_config()
 
-    _logger.info("=== ziniao-mcp starting ===")
+    _logger.info("=== ziniao serve starting ===")
     _logger.info("Python: %s", sys.version)
     _logger.info("Platform: %s", sys.platform)
 
