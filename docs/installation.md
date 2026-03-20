@@ -85,7 +85,7 @@ uv tool install ziniao
 **4. 版本与更新**
 
 - 查看版本：`ziniao --help`
-- 更新到最新版：`uv tool install --upgrade ziniao`，然后重启 Cursor MCP
+- 更新 CLI（需 PATH 中有 `uv`）：`ziniao update`（PyPI），或 `ziniao update --git`（GitHub `main`）；亦可 `ziniao update --dry-run` 仅打印 `uv` 命令。完成后执行 `ziniao quit`、新开终端，并**重启 Cursor MCP**。
 
 **5. 命令行全局使用**
 

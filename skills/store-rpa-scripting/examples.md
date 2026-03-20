@@ -89,7 +89,7 @@ wait_for(".success-message", timeout=15000)
 """
 RPA: 批量修改商品价格
 用途: 从 CSV 读取 SKU 和新价格，在亚马逊后台逐个修改
-依赖: pip install nodriver ziniao-mcp
+依赖: pip install nodriver ziniao
 输入: prices.csv (列: sku, new_price)
 """
 
@@ -202,7 +202,7 @@ if __name__ == "__main__":
 ## 2. 环境准备
 
 ### 2.1 依赖安装
-pip install nodriver ziniao-mcp
+pip install nodriver ziniao
 
 ### 2.2 紫鸟客户端
 - 客户端路径: `D:\ziniao\ziniao.exe`
@@ -308,7 +308,7 @@ python rpa_batch_price.py
 """
 RPA: 提取订单数据
 用途: 从店铺后台提取订单列表，保存为 JSON
-依赖: pip install nodriver ziniao-mcp
+依赖: pip install nodriver ziniao
 """
 
 import asyncio
@@ -385,7 +385,7 @@ if __name__ == "__main__":
 """
 RPA: 页面状态监控
 用途: 定时检查页面指标，变化时记录日志
-依赖: pip install nodriver ziniao-mcp
+依赖: pip install nodriver ziniao
 """
 
 import asyncio

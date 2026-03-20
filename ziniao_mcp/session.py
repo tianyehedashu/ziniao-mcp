@@ -842,6 +842,8 @@ class SessionManager:
         cc = self._chrome_config
 
         if not executable_path:
+            executable_path = _chrome_path_from_env() or ""
+        if not executable_path:
             executable_path = cc.get("executable_path") or ""
         if not executable_path:
             executable_path = _find_chrome_executable()

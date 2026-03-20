@@ -22,11 +22,11 @@ uv sync
 ### 验证安装
 
 ```bash
-# 查看帮助
-uv run ziniao-mcp --help
+# 查看帮助（MCP 入口）
+uv run ziniao serve --help
 
 # 启动 MCP 服务器（需要配置好紫鸟账号信息）
-uv run ziniao-mcp --company "xxx" --username "xxx" --password "xxx" --client-path "D:\ziniao\ziniao.exe"
+uv run ziniao serve --company "xxx" --username "xxx" --password "xxx" --client-path "D:\ziniao\ziniao.exe"
 ```
 
 ## 项目结构
@@ -53,7 +53,7 @@ ziniao/
 │   └── config.yaml          # 默认配置（含敏感信息，不提交）
 ├── docs/                    # 文档
 ├── pyproject.toml           # 项目元数据与依赖
-├── uv.lock                  # 依赖锁文件
+├── uv.lock                  # 可选依赖锁（当前 .gitignore 默认忽略）
 └── .gitignore
 ```
 
@@ -136,12 +136,12 @@ register_cookie(mcp, session)
 
 ### 日志
 
-MCP 服务器的调试日志写入项目根目录的 `mcp_debug.log`：
+MCP 服务器的调试日志写入 `~/.ziniao/mcp_debug.log`（DEBUG 级别，可能含 URL 等敏感信息，勿随意外发）：
 
 ```bash
 # 实时查看日志
-Get-Content mcp_debug.log -Wait    # PowerShell
-tail -f mcp_debug.log              # Unix
+Get-Content $env:USERPROFILE\.ziniao\mcp_debug.log -Wait    # PowerShell
+tail -f ~/.ziniao/mcp_debug.log                             # Unix
 ```
 
 ### 测试脚本
@@ -195,7 +195,7 @@ ziniao-browser 有两个发布渠道：**Cursor Plugin Marketplace** 和 **PyPI*
 uv sync
 
 # 2. 确认 MCP Server 可启动
-uv run ziniao-mcp --help
+uv run ziniao serve --help
 
 # 3. 确认 Plugin manifest 有效
 python -c "import json; json.load(open('.cursor-plugin/plugin.json'))"
@@ -262,7 +262,7 @@ git push origin main
 
 ### 发布到 PyPI
 
-PyPI 发布让用户可以通过 `uvx ziniao-mcp` 或 `pip install ziniao-mcp` 直接使用 MCP Server（不含 Plugin 组件）。
+PyPI 包名为 **`ziniao`**。用户可通过 `uvx ziniao serve` 或 `pip install ziniao` 后执行 `ziniao serve` / `ziniao-mcp` 使用 MCP Server（不含 Plugin 组件）。`ziniao-mcp` 为控制台别名，与 `python -m ziniao_mcp` 等价。
 
 #### 前提：注册 PyPI 账号并配置 API Token
 
@@ -308,8 +308,8 @@ uv build
 
 ```
 dist/
-├── ziniao_mcp-0.2.0-py3-none-any.whl
-└── ziniao_mcp-0.2.0.tar.gz
+├── ziniao-0.2.0-py3-none-any.whl
+└── ziniao-0.2.0.tar.gz
 ```
 
 **步骤 3：发布**
@@ -325,12 +325,13 @@ uv publish --publish-url https://test.pypi.org/legacy/
 **步骤 4：验证**
 
 ```bash
-# 通过 uvx 免安装运行
-uvx ziniao-mcp --help
+# 通过 uvx 免安装运行 MCP
+uvx ziniao serve --help
 
 # 或通过 pip 安装
-pip install ziniao-mcp
-ziniao-mcp --help
+pip install ziniao
+ziniao serve --help
+# 或（兼容入口）ziniao-mcp --help
 ```
 
 #### 通过 GitHub Actions 自动发布
@@ -369,7 +370,7 @@ ziniao-mcp --help
   "mcpServers": {
     "ziniao": {
       "command": "uvx",
-      "args": ["ziniao-mcp"],
+      "args": ["ziniao", "serve"],
       "env": {
         "ZINIAO_COMPANY": "我的公司",
         "ZINIAO_USERNAME": "admin",
@@ -396,7 +397,7 @@ import base64, json
 
 config = {
     "command": "uvx",
-    "args": ["ziniao-mcp"],
+    "args": ["ziniao", "serve"],
     "env": {
         "ZINIAO_COMPANY": "${ZINIAO_COMPANY}",
         "ZINIAO_USERNAME": "${ZINIAO_USERNAME}",

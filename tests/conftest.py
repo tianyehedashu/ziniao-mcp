@@ -1,4 +1,4 @@
-"""Shared fixtures for ziniao-mcp tests."""
+"""Shared fixtures for ziniao (PyPI) / ziniao-mcp (repo) tests."""
 
 import os
 from pathlib import Path

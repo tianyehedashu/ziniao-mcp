@@ -1,6 +1,6 @@
 # Windows 下安装 uv
 
-[uv](https://docs.astral.sh/uv/) 是 Python 包与项目管理工具，提供 `uvx` 命令可免安装直接运行 PyPI 上的包（如 `uvx ziniao-mcp`）。以下为在 **Windows** 上的安装方式。
+[uv](https://docs.astral.sh/uv/) 是 Python 包与项目管理工具，提供 `uvx` 命令可免安装直接运行 PyPI 上的包（如 `uvx ziniao serve` 启动本项目的 MCP 服务）。以下为在 **Windows** 上的安装方式。
 
 ## 方式一：PowerShell 一键安装（推荐）
 
@@ -43,7 +43,7 @@ pip install uv
 - 使用 **uv**：`uv --version`、`uv sync`、`uv run ...` 等
 - 使用 **uvx**：无需先安装包即可运行，例如：
   ```powershell
-  uvx ziniao-mcp --help
+  uvx ziniao serve --help
   ```
   uv 会自动拉取 Python 与依赖并在隔离环境中执行。
 

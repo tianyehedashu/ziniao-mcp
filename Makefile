@@ -7,7 +7,7 @@
 help:
 	@echo "常用任务："
 	@echo "  make install         - 安装依赖"
-	@echo "  make run             - 启动 MCP 服务器 (ziniao-mcp)"
+	@echo "  make run             - 启动 MCP 服务器 (uv run ziniao serve)"
 	@echo "  make test            - 运行单元/常规测试（不含集成）"
 	@echo "  make test-all        - 运行全部测试（含集成，需 .env）"
 	@echo "  make test-integration - 仅运行集成测试（需配置 .env）"
@@ -19,7 +19,7 @@ install:
 	uv sync
 
 run:
-	uv run ziniao-mcp
+	uv run ziniao serve
 
 test:
 	uv run pytest tests/ -v --ignore=tests/integration_test.py

@@ -425,9 +425,13 @@ ziniao rec list
 
 ## Install & PATH
 
+PyPI package name is **`ziniao`** (GitHub repo is **`ziniao-mcp`**). The **`ziniao-mcp`** executable (if present) is an MCP-only alias for `python -m ziniao_mcp`, equivalent to `ziniao serve`.
+
 ```bash
 uv tool install ziniao
 ```
+
+**Upgrade** (requires `uv` on PATH): `ziniao update` (PyPI), `ziniao update --git` (GitHub main), or `ziniao update --dry-run` to print the `uv` command for running in a second terminal. After upgrading, run `ziniao quit` and reopen the terminal; restart Cursor MCP if you use it.
 
 If **`ziniao` is not recognized** after install, the uv tool directory is not on PATH:
 

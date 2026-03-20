@@ -1,6 +1,26 @@
 # Changelog
 
-本文件记录 ziniao-mcp 的版本变更，遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 格式。
+本文件记录本仓库（GitHub：`ziniao-mcp`）的版本变更；**PyPI 分发包名为 `ziniao`**。遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 格式。
+
+## [Unreleased]
+
+## [0.2.4] - 2026-03-20
+
+### 新增
+
+- **`ziniao update`**：通过本机 `uv tool install` 自升级 CLI（`--git` 从 GitHub `main`，`--dry-run` 仅打印命令）
+- **控制台别名 `ziniao-mcp`**：与 `python -m ziniao_mcp` 等价，便于兼容旧文档与 MCP 配置
+
+### 修复
+
+- **`launch_chrome` 路径优先级**：未显式传入可执行路径时，先读 `CHROME_PATH` / `CHROME_EXECUTABLE_PATH`，再读配置文件，与文档一致
+
+### 文档与工程
+
+- 统一 PyPI 安装说明为包名 **`ziniao`**（`uvx ziniao serve`、`pip install ziniao`）；`Makefile` 的 `run` 改为 `uv run ziniao serve`
+- **`.gitignore`**：忽略本地 `.chrome-test-profile/`
+- **CI**：新增 `.github/workflows/ci.yml`（`pytest`，不含集成测试）
+- **`pyproject.toml` 许可证元数据**：与仓库 `LICENSE`（MIT）对齐
 
 ## [0.2.3] - 2026-03-19
 

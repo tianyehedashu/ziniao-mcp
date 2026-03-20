@@ -1,10 +1,10 @@
 [project]
 name = "ziniao"
-version = "0.2.3"
+version = "0.2.4"
 description = "紫鸟与 Chrome 浏览器 AI 自动化 — 让 AI Agent 操控紫鸟店铺与本地 Chrome"
 readme = "README.md"
 requires-python = ">=3.10"
-license = {text = "AGPL-3.0"}
+license = {text = "MIT"}
 keywords = ["ziniao", "mcp", "browser", "chrome", "cdp", "e-commerce", "cross-border"]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -27,6 +27,8 @@ dependencies = [
 
 [project.scripts]
 ziniao = "ziniao_mcp.cli:main"
+# 兼容旧文档与 MCP 配置；等价于 `ziniao serve` / `python -m ziniao_mcp`
+ziniao-mcp = "ziniao_mcp.server:main"
 
 [build-system]
 requires = ["hatchling"]

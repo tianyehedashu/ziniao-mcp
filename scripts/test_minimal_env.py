@@ -25,7 +25,7 @@ INIT_REQUEST = json.dumps({
 _UV = os.environ.get("UV_PATH", "uv")
 cmd = [
     _UV,
-    "run", "--directory", _PROJECT_ROOT, "ziniao-mcp",
+    "run", "--directory", _PROJECT_ROOT, "ziniao", "serve",
 ]
 
 # Minimal env: only what Cursor would pass (env from mcp.json + bare minimum)

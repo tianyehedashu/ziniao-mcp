@@ -175,7 +175,7 @@ take_snapshot()                            → 确认页面状态已更新
 """
 RPA: [任务名称]
 用途: [简要描述]
-依赖: pip install nodriver ziniao-mcp
+依赖: pip install nodriver ziniao
 """
 
 import asyncio

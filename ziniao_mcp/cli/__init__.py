@@ -92,6 +92,7 @@ def _register_commands() -> None:
         scroll,
         session,
         store,
+        update_cmd,
     )
     app.add_typer(store.app, name="store", help="Manage Ziniao stores.")
     app.add_typer(chrome.app, name="chrome", help="Manage Chrome browser instances.")
@@ -119,6 +120,11 @@ def _register_commands() -> None:
     lifecycle.register_top_level(app)
     get.register_top_level(app)
     scroll.register_top_level(app)
+
+    # ---------------------------------------------------------------------------
+    # ziniao update — upgrade CLI via uv (not via daemon)
+    # ---------------------------------------------------------------------------
+    update_cmd.register(app)
 
     # ---------------------------------------------------------------------------
     # ziniao serve — start MCP server

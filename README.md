@@ -4,6 +4,8 @@
 
 **GitHub**：[https://github.com/tianyehedashu/ziniao-mcp](https://github.com/tianyehedashu/ziniao-mcp)
 
+**PyPI 包名**：[`ziniao`](https://pypi.org/project/ziniao/)（与仓库名 `ziniao-mcp` 不同；控制台命令为 `ziniao`，另提供 `ziniao-mcp` 作为 `python -m ziniao_mcp` 的兼容入口）。
+
 ## 快速使用
 
 只需两步即可在 Cursor 中使用全部 MCP 工具。紫鸟配置**可选**——不配置紫鸟也能使用全部 Chrome 浏览器功能。
@@ -113,7 +115,7 @@ uv tool install ziniao
 打开第一个亚马逊店铺，截图看看当前页面
 ```
 
-> **版本**：`ziniao --help`；更新：`uv tool install --upgrade ziniao` 后重启 Cursor MCP。
+> **版本**：`ziniao --help`。升级 CLI：优先 `ziniao update`（从 PyPI 升级，等价于本机执行 `uv tool install ziniao --upgrade --force --reinstall`）；若要从 **GitHub `main`** 安装最新源码，使用 `ziniao update --git`。升级后请 **`ziniao quit`** 并新开终端，使用 MCP 时**重启 Cursor MCP**。若未安装 uv 或 Windows 下替换失败，可在**另一个终端**执行 `uv` 命令（失败时 `ziniao update` 会打印可复制命令）。
 >
 > **紫鸟前提**：使用紫鸟店铺功能需安装 [紫鸟客户端](https://www.ziniao.com/) 并**开启 WebDriver 权限**（[开通说明](https://open.ziniao.com/docSupport?docId=99)）。不使用紫鸟功能时无需安装。
 >
@@ -129,6 +131,14 @@ uv tool install ziniao
 
 # 或从源码安装（克隆后在该目录执行）
 uv tool install .
+```
+
+已安装后升级（需本机 PATH 中有 `uv`）：
+
+```bash
+ziniao update              # PyPI 最新版（内部调用 uv tool install）
+ziniao update --git        # GitHub 仓库 main 最新提交
+ziniao update --dry-run    # 仅打印将执行的 uv 命令（可在另一终端手动执行）
 ```
 
 安装后会在 uv 工具目录生成 `ziniao` 可执行文件。若终端提示「无法将 ziniao 项识别为…」，请将 uv 工具目录加入 PATH：
@@ -377,6 +387,12 @@ ziniao config show                       # 显示当前生效配置及来源
 ziniao config set <key> <value>          # 修改配置（dotted key: chrome.path）
 ziniao config path                       # 显示配置文件路径
 ziniao config env [--shell powershell|bash|json|mcp]  # 输出环境变量导出语句
+```
+
+#### 升级 `update`
+
+```bash
+ziniao update [--git] [--dry-run]        # 用 uv 升级 CLI（PyPI 或 GitHub）
 ```
 
 #### MCP 服务 `serve`
@@ -702,4 +718,6 @@ ziniao-mcp/
 
 ## 许可证
 
-[MIT](LICENSE)
+以仓库根目录 [LICENSE](LICENSE) 为准（当前为 **MIT**）。`pyproject.toml` 中的 `license` 字段与之一致，便于 PyPI 元数据展示。
+
+调试时请注意：`~/.ziniao/mcp_debug.log` 在 DEBUG 级别下可能包含 URL 等敏感信息，勿随意分享。

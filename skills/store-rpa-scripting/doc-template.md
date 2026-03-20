@@ -17,7 +17,7 @@ Phase 4 生成的过程文档应遵循以下模板。文件命名与脚本对应
 
 ### 2.1 依赖安装
 ```bash
-pip install nodriver ziniao-mcp
+pip install nodriver ziniao
 ```
 
 ### 2.2 紫鸟客户端

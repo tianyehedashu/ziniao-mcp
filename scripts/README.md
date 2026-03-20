@@ -6,7 +6,7 @@
 
 ### debug_mcp.py
 
-MCP 通信调试代理：在 Cursor 与 `ziniao-mcp` 之间做管道转发，并把所有 stdin/stdout 写入 `scripts/mcp_debug.log`，便于排查 Cursor-MCP 协议交互问题。
+MCP 通信调试代理：在 Cursor 与 `ziniao serve`（或兼容入口 `ziniao-mcp`）之间做管道转发，并把所有 stdin/stdout 写入 `scripts/mcp_debug.log`，便于排查 Cursor-MCP 协议交互问题。
 
 **使用方式**
 
@@ -27,7 +27,7 @@ MCP 通信调试代理：在 Cursor 与 `ziniao-mcp` 之间做管道转发，并
 
 ### test_spawn.py
 
-模拟 Cursor 通过 subprocess 启动 MCP 服务器的流程：用管道启动 `ziniao-mcp`，发送一次 `initialize` JSON-RPC 请求，并打印 stdout 响应，用于验证进程与协议是否正常。
+模拟 Cursor 通过 subprocess 启动 MCP 服务器的流程：用管道启动 `ziniao serve`，发送一次 `initialize` JSON-RPC 请求，并打印 stdout 响应，用于验证进程与协议是否正常。
 
 **使用方式**
 
@@ -54,7 +54,7 @@ python scripts/test_spawn.py
 
 ### test_minimal_env.py
 
-在「最小环境」下测试 MCP 服务启动（模拟 Cursor 仅传入 mcp.json 中配置的环境变量）：仅设置 `ZINIAO_*` 与 `SYSTEMROOT`，用管道启动 `ziniao-mcp`，发送 `initialize` 请求并打印响应，用于验证在类 Cursor 环境下是否能正常跑通。
+在「最小环境」下测试 MCP 服务启动（模拟 Cursor 仅传入 mcp.json 中配置的环境变量）：仅设置 `ZINIAO_*` 与 `SYSTEMROOT`，用管道启动 `ziniao serve`，发送 `initialize` 请求并打印响应，用于验证在类 Cursor 环境下是否能正常跑通。
 
 **使用方式**
 
