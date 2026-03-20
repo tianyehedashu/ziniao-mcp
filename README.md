@@ -115,7 +115,7 @@ uv tool install ziniao
 打开第一个亚马逊店铺，截图看看当前页面
 ```
 
-> **版本**：`ziniao --help`。升级 CLI：优先 `ziniao update`（从 PyPI 升级，等价于本机执行 `uv tool install ziniao --upgrade --force --reinstall`）；若要从 **GitHub `main`** 安装最新源码，使用 `ziniao update --git`。升级后请 **`ziniao quit`** 并新开终端，使用 MCP 时**重启 Cursor MCP**。若未安装 uv 或 Windows 下替换失败，可在**另一个终端**执行 `uv` 命令（失败时 `ziniao update` 会打印可复制命令）。
+> **版本**：`ziniao --help`。升级 CLI：优先 `ziniao update`（从 PyPI 升级；**Windows** 下默认会**新开控制台、延迟约 2 秒后执行 uv**，并让当前进程立即退出，从而避免 **`ziniao.exe` 自占用**导致的错误 32；需要在本终端同步执行并得到退出码时用 `ziniao update --sync`）。若要从 **GitHub `main`** 安装，使用 `ziniao update --git`。升级后请 **`ziniao quit`** 并新开终端，使用 MCP 时**重启 Cursor MCP**。若仍有**其它进程**占用 `ziniao.exe`（多开终端、Cursor MCP 等），请先关闭后再试；失败时 `ziniao update` 会打印可复制的 `uv` 命令。
 >
 > **紫鸟前提**：使用紫鸟店铺功能需安装 [紫鸟客户端](https://www.ziniao.com/) 并**开启 WebDriver 权限**（[开通说明](https://open.ziniao.com/docSupport?docId=99)）。不使用紫鸟功能时无需安装。
 >
@@ -136,7 +136,8 @@ uv tool install .
 已安装后升级（需本机 PATH 中有 `uv`）：
 
 ```bash
-ziniao update              # PyPI 最新版（内部调用 uv tool install）
+ziniao update              # PyPI 最新版（Windows 默认新窗口延迟安装并退出本进程）
+ziniao update --sync       # 在当前进程同步执行 uv（脚本/CI；Win 上可能遇 exe 占用）
 ziniao update --git        # GitHub 仓库 main 最新提交
 ziniao update --dry-run    # 仅打印将执行的 uv 命令（可在另一终端手动执行）
 ```
@@ -392,7 +393,7 @@ ziniao config env [--shell powershell|bash|json|mcp]  # 输出环境变量导出
 #### 升级 `update`
 
 ```bash
-ziniao update [--git] [--dry-run]        # 用 uv 升级 CLI（PyPI 或 GitHub）
+ziniao update [--git] [--sync] [--dry-run]  # 用 uv 升级 CLI（Windows 默认新窗口避免 exe 自占用）
 ```
 
 #### MCP 服务 `serve`

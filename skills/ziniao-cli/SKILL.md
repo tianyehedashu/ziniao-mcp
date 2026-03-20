@@ -431,7 +431,7 @@ PyPI package name is **`ziniao`** (GitHub repo is **`ziniao-mcp`**). The **`zini
 uv tool install ziniao
 ```
 
-**Upgrade** (requires `uv` on PATH): `ziniao update` (PyPI), `ziniao update --git` (GitHub main), or `ziniao update --dry-run` to print the `uv` command for running in a second terminal. After upgrading, run `ziniao quit` and reopen the terminal; restart Cursor MCP if you use it.
+**Upgrade** (requires `uv` on PATH): `ziniao update` (PyPI), `ziniao update --git` (GitHub main), `ziniao update --dry-run` to print the `uv` command. On **Windows**, `ziniao update` by default spawns a **new console**, waits ~2s, then runs `uv` so the current process can exit and release **`ziniao.exe`** (avoids common self-lock / error 32). Use `ziniao update --sync` for in-process install (scripts/CI). After upgrading, run `ziniao quit` and reopen the terminal; restart Cursor MCP if you use it.
 
 If **`ziniao` is not recognized** after install, the uv tool directory is not on PATH:
 

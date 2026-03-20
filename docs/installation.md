@@ -85,7 +85,7 @@ uv tool install ziniao
 **4. 版本与更新**
 
 - 查看版本：`ziniao --help`
-- 更新 CLI（需 PATH 中有 `uv`）：`ziniao update`（PyPI），或 `ziniao update --git`（GitHub `main`）；亦可 `ziniao update --dry-run` 仅打印 `uv` 命令。完成后执行 `ziniao quit`、新开终端，并**重启 Cursor MCP**。
+- 更新 CLI（需 PATH 中有 `uv`）：`ziniao update`（PyPI），或 `ziniao update --git`（GitHub `main`）。**Windows** 上默认会新开控制台、约 2 秒后执行 `uv` 并让当前进程退出，避免 **`ziniao.exe` 自占用**（错误 32）；若需在本终端同步执行并得到退出码，使用 `ziniao update --sync`。亦可 `ziniao update --dry-run` 仅打印命令。完成后执行 `ziniao quit`、新开终端，并**重启 Cursor MCP**。
 
 **5. 命令行全局使用**
 
