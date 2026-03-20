@@ -1,6 +1,9 @@
 ---
 name: ziniao-cli
 description: Command-line interface for automating Ziniao stores and Chrome browsers via CDP. Use when the user needs to manage multi-store sessions, automate page interactions (click, fill, type), take screenshots, record HAR, intercept network requests, or chain browser operations from the terminal. Triggers include "open a store", "switch session", "screenshot", "click a button", "fill a form", "run ziniao commands", "browser automation", "multi-store batch", or any CLI-based Ziniao/Chrome automation task.
+compatibility: Requires uv (recommended) or a project venv; `ziniao` on PATH via `uv tool install ziniao`. Optional Ziniao desktop client for store automation.
+metadata:
+  agentskills-spec: https://agentskills.io/specification
 allowed-tools: Bash(ziniao:*)
 ---
 
@@ -63,9 +66,21 @@ ZINIAO_CLIENT_PATH=D:\ziniao\ziniao.exe
 CHROME_PATH=C:\Program Files\Google\Chrome\Application\chrome.exe
 ```
 
-**Config priority**: env var > CLI args > `~/.ziniao/.env` > project `config/config.yaml` > `~/.ziniao/config.yaml`
+**Config priority (daemon / `ziniao serve` / MCP)**: environment variables (including `~/.ziniao/.env` once loaded) → `serve` CLI flags → first existing YAML among `./config/config.yaml`, packaged `config/config.yaml`, `~/.ziniao/config.yaml`. **`ziniao config show`** uses a slightly different display order — see [references/configuration.md](references/configuration.md).
 
 To export config as MCP-compatible env block: `ziniao config env --shell mcp`
+
+## Configuration files & templates
+
+Per the [Agent Skills layout](https://agentskills.io/specification), copy-ready templates live under **`assets/`** (static files); deeper precedence and MCP notes are in **`references/`**.
+
+| File | Purpose |
+|------|---------|
+| [assets/config.example.yaml](assets/config.example.yaml) | Full `ziniao` + `chrome` YAML (including `stealth` under `ziniao`) |
+| [assets/env.example](assets/env.example) | `ZINIAO_*` / `CHROME_*` names for `~/.ziniao/.env` or MCP `env` |
+| [references/configuration.md](references/configuration.md) | Paths, precedence (CLI vs daemon), MCP, security |
+
+**Quick use:** copy `config.example.yaml` to `~/.ziniao/config.yaml` or `<repo>/config/config.yaml`, fill in values; put secrets in `env.example`-style variables or MCP `env` instead of committing them.
 
 ## Core Workflow
 
@@ -456,3 +471,4 @@ If **`ziniao` is not recognized** after install, the uv tool directory is not on
 | Reference | When to Use |
 |-----------|-------------|
 | [references/commands.md](references/commands.md) | Full command reference with all options |
+| [references/configuration.md](references/configuration.md) | YAML/env paths, precedence, MCP, templates in `assets/` |

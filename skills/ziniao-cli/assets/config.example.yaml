@@ -1,0 +1,34 @@
+# Copy to one of:
+#   - ~/.ziniao/config.yaml
+#   - <repo>/config/config.yaml
+#
+# Daemon/MCP: the first existing file among ./config/config.yaml, packaged config/config.yaml, ~/.ziniao/config.yaml
+# is loaded (see references/configuration.md). Env vars still override YAML per field.
+#
+# Replace placeholders. Do not commit real credentials; prefer ~/.ziniao/.env or MCP `env` for secrets.
+
+ziniao:
+  browser:
+    version: v6
+    # Windows v6: ziniao.exe | v5: starter.exe | mac/linux: see project config comments
+    client_path: "D:\\path\\to\\ziniao.exe"
+    socket_port: 16851
+
+  user_info:
+    company: "your-company-name"
+    username: "your-username"
+    password: "your-password"
+
+  stealth:
+    enabled: true
+    js_patches: true
+    human_behavior: true
+    delay_range: [200, 800]
+    typing_speed: [50, 150]
+    mouse_movement: true
+
+chrome:
+  executable_path: ""
+  user_data_dir: ""
+  default_cdp_port: 0
+  headless: false
