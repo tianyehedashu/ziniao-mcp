@@ -6,11 +6,37 @@ import json
 import sys
 from typing import Any
 
+# Set by CLI callback: when True, --json prints the daemon dict as-is (legacy scripts).
+_CLI_JSON_LEGACY: bool = False
+
+
+def set_cli_json_legacy(enabled: bool) -> None:
+    """Whether ``--json`` / ``--json-legacy`` should skip the success/data/error envelope."""
+    global _CLI_JSON_LEGACY  # noqa: PLW0603
+    _CLI_JSON_LEGACY = enabled
+
+
+def cli_json_uses_legacy() -> bool:
+    return _CLI_JSON_LEGACY
+
+
+def daemon_to_envelope(raw: dict[str, Any]) -> dict[str, Any]:
+    """Wrap a daemon response like agent-browser: ``{success, data, error}``."""
+    if "error" in raw:
+        return {"success": False, "data": None, "error": str(raw["error"])}
+    return {"success": True, "data": raw, "error": None}
+
+
+def dumps_cli_json(data: dict[str, Any], *, indent: int = 2) -> str:
+    """Serialize for stdout/file when JSON mode is on (envelope unless legacy)."""
+    out = data if _CLI_JSON_LEGACY else daemon_to_envelope(data)
+    return json.dumps(out, ensure_ascii=False, indent=indent)
+
 
 def print_result(data: dict[str, Any], *, json_mode: bool = False) -> None:
     """Print a daemon response dict in the appropriate format."""
     if json_mode:
-        print(json.dumps(data, ensure_ascii=False, indent=2))
+        print(dumps_cli_json(data))
         return
 
     if "error" in data:

@@ -71,14 +71,27 @@ def register_top_level(parent: typer.Typer) -> None:
 
     @parent.command("launch")
     def _launch(
-        name: Optional[str] = typer.Option(None, "--name"),
-        url: Optional[str] = typer.Option(None, "--url"),
-        headless: bool = typer.Option(False, "--headless"),
+        name: Optional[str] = typer.Option(None, "--name", help="Session name."),
+        url: Optional[str] = typer.Option(None, "--url", help="URL to open after launch."),
+        executable_path: Optional[str] = typer.Option(None, "--executable-path", help="Chrome executable path."),
+        cdp_port: int = typer.Option(0, "--port", help="CDP port (0 for auto)."),
+        user_data_dir: Optional[str] = typer.Option(None, "--user-data-dir", help="Chrome user data directory."),
+        headless: bool = typer.Option(False, "--headless", help="Run headless."),
     ) -> None:
-        """Launch a new Chrome instance."""
-        launch(name=name, url=url, headless=headless)
+        """Launch a new Chrome instance. Same options as ``ziniao chrome launch``."""
+        launch(
+            name=name,
+            url=url,
+            executable_path=executable_path,
+            cdp_port=cdp_port,
+            user_data_dir=user_data_dir,
+            headless=headless,
+        )
 
     @parent.command("connect")
-    def _connect(cdp_port: int = typer.Argument(...), name: Optional[str] = typer.Option(None, "--name")) -> None:
-        """Connect to a Chrome instance by CDP port."""
+    def _connect(
+        cdp_port: int = typer.Argument(..., help="CDP port to connect to."),
+        name: Optional[str] = typer.Option(None, "--name", help="Session name."),
+    ) -> None:
+        """Connect to Chrome by CDP port. Same as ``ziniao chrome connect``."""
         connect(cdp_port, name)

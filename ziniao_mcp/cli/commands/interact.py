@@ -15,7 +15,12 @@ app = typer.Typer(no_args_is_help=True)
 
 @app.command()
 def click(selector: str = typer.Argument(..., help="CSS selector to click.")) -> None:
-    """Click an element."""
+    """Click an element.
+
+    Examples:
+        ziniao act click "#submit"
+        ziniao click "button.primary"
+    """
     result = run_command("click", {"selector": selector})
     print_result(result, json_mode=get_json_mode())
 
@@ -139,31 +144,95 @@ def keyup(key: str = typer.Argument(..., help="Key name to release.")) -> None:
 
 def register_top_level(parent: typer.Typer) -> None:
     @parent.command("click")
-    def _click(selector: str = typer.Argument(...)) -> None:
-        """Click an element."""
+    def _click(selector: str = typer.Argument(..., help="CSS selector to click.")) -> None:
+        """Click an element. Same as ``ziniao act click``."""
         click(selector)
 
     @parent.command("fill")
-    def _fill(selector: str = typer.Argument(""), value: str = typer.Argument("")) -> None:
-        """Fill an input."""
-        fill(selector, value)
+    def _fill(
+        selector: str = typer.Argument("", help="Input CSS selector."),
+        value: str = typer.Argument("", help="Value to fill."),
+        fields_json: Optional[str] = typer.Option(None, "--fields-json", help="JSON array of {selector, value}."),
+    ) -> None:
+        """Fill input(s). Same as ``ziniao act fill``."""
+        fill(selector, value, fields_json)
 
     @parent.command("type")
-    def _type(text: str = typer.Argument(...), selector: Optional[str] = typer.Option(None, "-s")) -> None:
-        """Type text."""
+    def _type(
+        text: str = typer.Argument(..., help="Text to type."),
+        selector: Optional[str] = typer.Option(None, "--selector", "-s", help="Target element selector."),
+    ) -> None:
+        """Type text character by character. Same as ``ziniao act type``."""
         type_text(text, selector)
 
     @parent.command("press")
-    def _press(key: str = typer.Argument(...)) -> None:
-        """Press a key."""
+    def _press(key: str = typer.Argument(..., help="Key name (e.g. Enter, Tab).")) -> None:
+        """Press a keyboard key. Same as ``ziniao act press``."""
         press(key)
 
     @parent.command("hover")
-    def _hover(selector: str = typer.Argument(...)) -> None:
-        """Hover element."""
+    def _hover(selector: str = typer.Argument(..., help="CSS selector to hover.")) -> None:
+        """Hover an element. Same as ``ziniao act hover``."""
         hover(selector)
 
     @parent.command("dblclick")
-    def _dblclick(selector: str = typer.Argument(...)) -> None:
-        """Double-click element."""
+    def _dblclick(selector: str = typer.Argument(..., help="CSS selector to double-click.")) -> None:
+        """Double-click an element. Same as ``ziniao act dblclick``."""
         dblclick(selector)
+
+    @parent.command("drag")
+    def _drag(
+        source: str = typer.Argument(..., help="Source element CSS selector."),
+        target: str = typer.Argument(..., help="Target element CSS selector."),
+    ) -> None:
+        """Drag from source to target. Same as ``ziniao act drag``."""
+        drag(source, target)
+
+    @parent.command("upload")
+    def _upload(
+        selector: str = typer.Argument(..., help="File input CSS selector."),
+        files: List[str] = typer.Argument(..., help="File paths to upload."),
+    ) -> None:
+        """Upload files. Same as ``ziniao act upload``."""
+        upload(selector, files)
+
+    @parent.command("dialog")
+    def _dialog(
+        action: str = typer.Argument("accept", help="accept or dismiss."),
+        text: Optional[str] = typer.Option(None, "--text", help="Prompt text for prompt dialogs."),
+    ) -> None:
+        """Set dialog handling. Same as ``ziniao act dialog``."""
+        dialog(action, text)
+
+    @parent.command("focus")
+    def _focus(selector: str = typer.Argument(..., help="CSS selector to focus.")) -> None:
+        """Focus an element. Same as ``ziniao act focus``."""
+        focus(selector)
+
+    @parent.command("select")
+    def _select(
+        selector: str = typer.Argument(..., help="<select> CSS selector."),
+        value: str = typer.Argument(..., help="Option value to select."),
+    ) -> None:
+        """Select a dropdown option. Same as ``ziniao act select``."""
+        select_option(selector, value)
+
+    @parent.command("check")
+    def _check(selector: str = typer.Argument(..., help="Checkbox/radio CSS selector.")) -> None:
+        """Check a checkbox or radio. Same as ``ziniao act check``."""
+        check(selector)
+
+    @parent.command("uncheck")
+    def _uncheck(selector: str = typer.Argument(..., help="Checkbox CSS selector.")) -> None:
+        """Uncheck a checkbox. Same as ``ziniao act uncheck``."""
+        uncheck(selector)
+
+    @parent.command("keydown")
+    def _keydown(key: str = typer.Argument(..., help="Key to press down (e.g. Shift).")) -> None:
+        """Press a key down. Same as ``ziniao act keydown``."""
+        keydown(key)
+
+    @parent.command("keyup")
+    def _keyup(key: str = typer.Argument(..., help="Key to release.")) -> None:
+        """Release a held key. Same as ``ziniao act keyup``."""
+        keyup(key)

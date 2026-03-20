@@ -11,10 +11,23 @@ from typing import Optional
 import typer
 
 from .connection import send_command
+from .output import set_cli_json_legacy
+
+_CLI_EPILOG = """
+Global options (before any subcommand):
+  --store SESSION     Target one Ziniao store for this invocation only (mutually exclusive with --session).
+  --session SESSION   Target one session (store or Chrome) for this invocation only.
+  --json              Print JSON with a fixed envelope: {"success", "data", "error"} (like agent-browser).
+  --json-legacy       Print the raw daemon JSON dict (for older scripts).
+  --timeout SECONDS   Override auto timeout (0 = auto: 120s for slow commands e.g. snapshot/screenshot/navigate, 60s else).
+
+Use ``ziniao GROUP COMMAND --help`` for full flags (e.g. ``ziniao nav wait --help``). Top-level shortcuts mirror those groups.
+""".strip()
 
 app = typer.Typer(
     name="ziniao",
     help="CLI for automating Ziniao stores and Chrome browsers via a background daemon.",
+    epilog=_CLI_EPILOG,
     no_args_is_help=True,
     pretty_exceptions_enable=False,
 )
@@ -26,6 +39,7 @@ app = typer.Typer(
 _GLOBAL_STORE: Optional[str] = None
 _GLOBAL_SESSION: Optional[str] = None
 _GLOBAL_JSON: bool = False
+_GLOBAL_JSON_LEGACY: bool = False
 _GLOBAL_TIMEOUT: float = 0  # 0 = auto (send_command picks per-command default)
 _GLOBAL_TIMEOUT_EXPLICIT: bool = False
 
@@ -36,6 +50,10 @@ def _target_session() -> Optional[str]:
 
 def get_json_mode() -> bool:
     return _GLOBAL_JSON
+
+
+def get_json_legacy_mode() -> bool:
+    return _GLOBAL_JSON_LEGACY
 
 
 def run_command(command: str, args: dict | None = None) -> dict:
@@ -53,19 +71,32 @@ def _main_callback(
         None, "--session", help="Target a specific session (store or Chrome) without switching the active session.",
     ),
     json_output: bool = typer.Option(
-        False, "--json", help="Output raw JSON instead of formatted text.",
+        False,
+        "--json",
+        help='JSON output with envelope {"success","data","error"} (agent-browser style).',
+    ),
+    json_legacy: bool = typer.Option(
+        False,
+        "--json-legacy",
+        help="JSON output as raw daemon dict (no envelope); implies JSON mode.",
     ),
     timeout: float = typer.Option(
         0, "--timeout", help="Command timeout in seconds (0 = auto: 120s for slow commands, 60s for others).",
     ),
 ) -> None:
-    global _GLOBAL_STORE, _GLOBAL_SESSION, _GLOBAL_JSON, _GLOBAL_TIMEOUT, _GLOBAL_TIMEOUT_EXPLICIT  # noqa: PLW0603
+    global _GLOBAL_STORE, _GLOBAL_SESSION, _GLOBAL_JSON, _GLOBAL_JSON_LEGACY  # noqa: PLW0603
+    global _GLOBAL_TIMEOUT, _GLOBAL_TIMEOUT_EXPLICIT  # noqa: PLW0603
     if store and session:
         typer.echo("Error: --store and --session are mutually exclusive.", err=True)
         raise typer.Exit(1)
+    if json_output and json_legacy:
+        typer.echo("Error: use either --json or --json-legacy, not both.", err=True)
+        raise typer.Exit(1)
     _GLOBAL_STORE = store
     _GLOBAL_SESSION = session
-    _GLOBAL_JSON = json_output
+    _GLOBAL_JSON = json_output or json_legacy
+    _GLOBAL_JSON_LEGACY = json_legacy
+    set_cli_json_legacy(json_legacy)
     _GLOBAL_TIMEOUT = timeout
     _GLOBAL_TIMEOUT_EXPLICIT = timeout > 0
 

@@ -111,7 +111,7 @@ ziniao navigate "https://example.com" && ziniao wait ".loaded" && ziniao screens
 ziniao fill "#email" "user@test.com" && ziniao fill "#pass" "secret" && ziniao click "#login"
 ```
 
-**When to chain:** Use `&&` when you don't need to read the output of an intermediate command (e.g. navigate + wait + screenshot). Run commands separately when you need to parse output first (e.g. `ziniao get count ".item" --json` then loop with `ziniao find nth $i ".item" click`).
+**When to chain:** Use `&&` when you don't need to read the output of an intermediate command (e.g. navigate + wait + screenshot). Run commands separately when you need to parse output first (e.g. `ziniao get count ".item" --json` then loop with `ziniao find nth $i ".item" click`). With `--json`, parse fields under **`.data`** (see [JSON Output Mode](#json-output-mode)); use `--json-legacy` only if you need the old flat daemon dict.
 
 ## Ziniao Stores vs Chrome Sessions
 
@@ -160,7 +160,7 @@ done
 **Batch with JSON (e.g. PowerShell):**
 
 ```bash
-ziniao session list --json | jq -r '.sessions[].session_id' | while read id; do
+ziniao session list --json | jq -r '.data.sessions[].session_id' | while read id; do
     ziniao --session "$id" screenshot "${id}-shot.png"
 done
 ```
@@ -306,15 +306,19 @@ ziniao quit                            # Stop daemon + cleanup
 
 ## JSON Output Mode
 
-Use `--json` for machine-readable output and scripting:
+Use **`--json`** for machine-readable output. The top-level shape matches **agent-browser** CLI: `{"success": bool, "data": object|null, "error": string|null}`. On success, the daemon payload is under **`data`**.
 
 ```bash
 ziniao session list --json
-# {"active":"store_A","sessions":[...],"count":2}
+# {"success":true,"data":{"active":"store_A","sessions":[...],"count":2},"error":null}
 
-ACTIVE=$(ziniao session list --json | jq -r '.active')
-ziniao is visible ".next" --json | jq -e '.visible'
+ACTIVE=$(ziniao session list --json | jq -r '.data.active')
+ziniao is visible ".next" --json | jq -e '.data.visible'
 ```
+
+Use **`--json-legacy`** when you need the previous behavior (raw daemon dict, no envelope). **`--json` and `--json-legacy` are mutually exclusive.**
+
+Full notes: [docs/cli-json.md](../../docs/cli-json.md).
 
 ## Global Flags
 
@@ -322,7 +326,8 @@ ziniao is visible ".next" --json | jq -e '.visible'
 |------|-------------|
 | `--store <id>` | Target a Ziniao store (no session switch) |
 | `--session <id>` | Target any session — store or Chrome (no switch) |
-| `--json` | Output raw JSON |
+| `--json` | JSON with `success` / `data` / `error` envelope (agent-browser style) |
+| `--json-legacy` | Raw daemon JSON dict (implies JSON mode); for older scripts |
 | `--timeout <sec>` | Command timeout (0 = auto: 120s for slow commands like click/type/screenshot, 60s for others) |
 
 `--store` and `--session` are mutually exclusive.
@@ -381,7 +386,7 @@ This applies to all interactions through the CLI (and MCP) for Ziniao-backed ses
 ```bash
 ziniao navigate "https://example.com/products"
 ziniao wait ".product-card"
-COUNT=$(ziniao get count ".product-card" --json | jq '.count')
+COUNT=$(ziniao get count ".product-card" --json | jq '.data.count')
 for i in $(seq 0 $((COUNT < 10 ? COUNT - 1 : 9))); do
     ziniao find nth $i ".product-card a" click
     ziniao back
@@ -393,7 +398,7 @@ done
 ```bash
 while true; do
     ziniao snapshot --interactive
-    ziniao is visible ".next-page" --json | jq -e '.visible' || break
+    ziniao is visible ".next-page" --json | jq -e '.data.visible' || break
     ziniao click ".next-page"
     ziniao wait ".loaded"
 done

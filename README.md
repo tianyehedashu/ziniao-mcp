@@ -188,11 +188,14 @@ ziniao [全局选项] <命令> [参数]
 
 | 选项 | 说明 |
 |------|------|
-| `--store <id>` | 指定目标紫鸟店铺（不切换活动会话） |
-| `--session <id>` | 指定目标会话（店铺或 Chrome） |
-| `--json` | 以 JSON 格式输出结果 |
-| `--timeout <秒>` | 命令超时（默认自动：click/type/screenshot 等慢命令 120s，其余 60s） |
-| `--help` | 查看帮助 |
+| `--store <id>` | 指定目标紫鸟店铺（不切换活动会话）；与 `--session` 互斥 |
+| `--session <id>` | 指定目标会话（店铺或 Chrome）；与 `--store` 互斥 |
+| `--json` | 机器可读 JSON，固定信封 `{"success": bool, "data": object\|null, "error": string\|null}`（与 agent-browser CLI 一致）；成功时 `data` 为 daemon 返回体 |
+| `--json-legacy` | 输出 daemon 原始 JSON 对象（无信封）；与 `--json` 互斥；适用于依赖旧输出的脚本 |
+| `--timeout <秒>` | 命令超时；`0` 表示自动（navigate/click/snapshot/screenshot 等慢命令 120s，其余 60s） |
+| `--help` | 查看帮助；根命令底部会列出上述全局选项摘要 |
+
+详见 [docs/cli-json.md](docs/cli-json.md)。
 
 ### 命令概览
 
@@ -440,9 +443,10 @@ ziniao rec start
 ziniao rec stop --name my-flow
 ziniao rec replay my-flow
 
-# JSON 输出（便于脚本处理）
+# JSON 输出（信封: success / data / error；业务字段在 .data，jq 示例：.data.title）
 ziniao --json session list
 ziniao --json get title
+# 旧脚本需扁平 daemon JSON 时用：ziniao --json-legacy session list
 ```
 
 > **提示**：所有命令均支持 `--help` 查看详细参数，如 `ziniao chrome launch --help`。
@@ -716,6 +720,11 @@ ziniao-mcp/
 | [架构设计](docs/architecture.md) | 三层架构、模块职责、数据流 |
 | [API 参考](docs/api-reference.md) | 全部 MCP 工具的详细参数和返回值 |
 | [开发指南](docs/development.md) | 添加新工具、调试、构建发布、GitHub 自动发布 PyPI |
+| [CLI JSON 输出](docs/cli-json.md) | `--json` / `--json-legacy` 与 `jq` 字段路径 |
+
+## 上游与贡献
+
+本仓库主托管于 [github.com/tianyehedashu/ziniao-mcp](https://github.com/tianyehedashu/ziniao-mcp)。若以 submodule 或 vendor 方式嵌入其他项目，建议在 **上游仓库** 提交 PR，再于父仓库更新 submodule 指针（`git submodule update --remote third_party/ziniao-mcp` 等），以便 PyPI 包 `ziniao` 与文档单一来源。
 
 ## 许可证
 

@@ -7,7 +7,7 @@ from typing import Optional
 import typer
 
 from .. import get_json_mode, run_command
-from ..output import print_result
+from ..output import dumps_cli_json, print_result
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -20,7 +20,13 @@ def snapshot(
     compact: bool = typer.Option(False, "--compact", help="Remove scripts/styles/SVG for compact output."),
     out_file: Optional[str] = typer.Option(None, "--out-file", "-o", help="Write output to file (UTF-8), avoids console encoding issues on Windows."),
 ) -> None:
-    """Get the HTML snapshot of the current page."""
+    """Get the HTML snapshot of the current page.
+
+    Examples:
+        ziniao info snapshot
+        ziniao snapshot --interactive -o snap.html
+        ziniao snapshot --json | jq '.data.html[:200]'
+    """
     if selector or interactive or compact:
         result = run_command("snapshot_enhanced", {
             "selector": selector or "", "interactive": interactive, "compact": compact,
@@ -28,14 +34,13 @@ def snapshot(
     else:
         result = run_command("snapshot", {"full_page": full_page})
     if out_file:
-        import json as _json  # pylint: disable=import-outside-toplevel
         with open(out_file, "w", encoding="utf-8") as f:
             if get_json_mode():
-                f.write(_json.dumps(result, ensure_ascii=False, indent=2))
+                f.write(dumps_cli_json(result))
             elif "html" in result:
                 f.write(result["html"])
             else:
-                f.write(_json.dumps(result, ensure_ascii=False, indent=2))
+                f.write(dumps_cli_json(result))
         typer.echo(f"Snapshot written to {out_file}")
     else:
         print_result(result, json_mode=get_json_mode())
@@ -165,25 +170,36 @@ def clipboard_cmd(
 def register_top_level(parent: typer.Typer) -> None:
     @parent.command("snapshot")
     def _snapshot(
+        full_page: bool = typer.Option(False, "--full-page", help="Capture full page."),
+        selector: Optional[str] = typer.Option(None, "--selector", "-s", help="Limit to a specific element."),
+        interactive: bool = typer.Option(False, "--interactive", help="Only interactive elements."),
+        compact: bool = typer.Option(False, "--compact", help="Compact HTML output."),
         out_file: Optional[str] = typer.Option(None, "--out-file", "-o", help="Write to file (UTF-8)."),
     ) -> None:
-        """Get page HTML. Use -o file to avoid Windows console encoding issues."""
-        snapshot(out_file=out_file)
+        """Get page HTML snapshot. Same options as ``ziniao info snapshot``."""
+        snapshot(
+            full_page=full_page,
+            selector=selector,
+            interactive=interactive,
+            compact=compact,
+            out_file=out_file,
+        )
 
     @parent.command("url")
     def _url() -> None:
-        """Get current page URL."""
+        """Get current page URL. Same as ``ziniao info url``."""
         url_cmd()
 
     @parent.command("screenshot")
     def _screenshot(
-        file: Optional[str] = typer.Argument(None),
-        selector: Optional[str] = typer.Option(None, "-s"),
+        file: Optional[str] = typer.Argument(None, help="Optional path to save PNG."),
+        selector: Optional[str] = typer.Option(None, "--selector", "-s", help="Element selector."),
+        full_page: bool = typer.Option(False, "--full-page", help="Capture full page."),
     ) -> None:
-        """Take a screenshot."""
-        screenshot(file, selector)
+        """Capture a screenshot. Same options as ``ziniao info screenshot``."""
+        screenshot(file, selector, full_page)
 
     @parent.command("eval")
-    def _eval(script: str = typer.Argument(...)) -> None:
-        """Evaluate JS."""
+    def _eval(script: str = typer.Argument(..., help="JavaScript to evaluate.")) -> None:
+        """Evaluate JavaScript in the page. Same as ``ziniao info eval``."""
         eval_cmd(script)

@@ -4,6 +4,15 @@
 
 ## [Unreleased]
 
+### 新增
+
+- **`--json-legacy`**：输出无信封的 daemon JSON，与变更前的 `--json` 行为兼容
+- **`docs/cli-json.md`**：`--json` 信封与 `jq` 示例说明
+
+### 变更
+
+- **`--json`**：默认输出 `{"success","data","error"}` 信封（与 agent-browser CLI 对齐）；顶层快捷命令与 `nav` / `act` / `info` / `get` / `scroll` / `chrome` 子命令参数对齐（如 `wait` 的 `state`、`screenshot` 的 `--full-page`、`launch` 的 `--executable-path` 等）
+
 ## [0.2.5] - 2026-03-20
 
 ### 变更

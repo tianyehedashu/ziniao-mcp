@@ -8,7 +8,7 @@ import sys
 import typer
 
 from .. import get_json_mode, run_command
-from ..output import print_result
+from ..output import dumps_cli_json, print_result
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -69,8 +69,7 @@ def batch_run(
             break
 
     if get_json_mode():
-        print(json.dumps({"results": results, "total": len(commands), "executed": executed},
-                         ensure_ascii=False, indent=2))
+        print(dumps_cli_json({"results": results, "total": len(commands), "executed": executed}))
     else:
         for i, r in enumerate(results):
             typer.echo(f"--- [{i}] ---")

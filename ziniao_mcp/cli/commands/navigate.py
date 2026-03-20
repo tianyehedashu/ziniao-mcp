@@ -14,7 +14,13 @@ app = typer.Typer(no_args_is_help=True)
 
 @app.command("go")
 def go_cmd(url: str = typer.Argument(..., help="URL to navigate to.")) -> None:
-    """Navigate the active tab to a URL."""
+    """Navigate the active tab to a URL.
+
+    Examples:
+        ziniao nav go https://example.com
+        ziniao navigate https://example.com
+        ziniao --session mystore nav go https://example.com
+    """
     result = run_command("navigate", {"url": url})
     print_result(result, json_mode=get_json_mode())
 
@@ -55,7 +61,13 @@ def wait_cmd(
     state: str = typer.Option("visible", help="Wait state: visible, hidden, attached, detached."),
     timeout: int = typer.Option(30000, help="Timeout in milliseconds."),
 ) -> None:
-    """Wait for an element state or page settle."""
+    """Wait for an element state or page settle.
+
+    Examples:
+        ziniao nav wait "#main"
+        ziniao wait ".loader" --timeout 120
+        ziniao nav wait --state hidden ".spinner"
+    """
     result = run_command("wait", {"selector": selector or "", "state": state, "timeout": timeout})
     print_result(result, json_mode=get_json_mode())
 
@@ -85,27 +97,28 @@ def reload(
 
 def register_top_level(parent: typer.Typer) -> None:
     @parent.command("navigate")
-    def _navigate(url: str = typer.Argument(...)) -> None:
-        """Navigate to a URL."""
+    def _navigate(url: str = typer.Argument(..., help="URL to open (https:// added if no scheme).")) -> None:
+        """Navigate the active tab to a URL. Same as ``ziniao nav go``."""
         go_cmd(url)
 
     @parent.command("tab")
     def _tab(
-        action: str = typer.Argument("list"),
-        url_or_index: Optional[str] = typer.Argument(None),
-        page_index: int = typer.Option(-1, "-i"),
-        url: Optional[str] = typer.Option(None, "--url"),
+        action: str = typer.Argument("list", help="Tab action: list, switch, new, close."),
+        url_or_index: Optional[str] = typer.Argument(None, help="URL for 'new' tab, or omit for list."),
+        page_index: int = typer.Option(-1, "--index", "-i", help="Tab index for switch/close."),
+        url: Optional[str] = typer.Option(None, "--url", help="URL for new tab (alternative to positional)."),
     ) -> None:
-        """Manage tabs. Example: tab new https://example.com"""
+        """Manage browser tabs. Same as ``ziniao nav tab``."""
         tab_cmd(action, url_or_index, page_index, url)
 
     @parent.command("wait")
     def _wait(
-        selector: Optional[str] = typer.Argument(None),
-        timeout: int = typer.Option(30000),
+        selector: Optional[str] = typer.Argument(None, help="Element CSS selector to wait for."),
+        state: str = typer.Option("visible", help="Wait state: visible, hidden, attached, detached."),
+        timeout: int = typer.Option(30000, help="Timeout in milliseconds."),
     ) -> None:
-        """Wait for an element."""
-        wait_cmd(selector, timeout=timeout)
+        """Wait for an element state. Same options as ``ziniao nav wait``."""
+        wait_cmd(selector, state=state, timeout=timeout)
 
     @parent.command("back")
     def _back() -> None:
@@ -118,6 +131,8 @@ def register_top_level(parent: typer.Typer) -> None:
         forward()
 
     @parent.command("reload")
-    def _reload() -> None:
-        """Reload page."""
-        reload()
+    def _reload(
+        ignore_cache: bool = typer.Option(False, "--ignore-cache", help="Bypass browser cache."),
+    ) -> None:
+        """Reload the current page. Same as ``ziniao nav reload``."""
+        reload(ignore_cache=ignore_cache)

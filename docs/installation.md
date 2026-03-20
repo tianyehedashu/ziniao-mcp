@@ -93,6 +93,8 @@ uv tool install ziniao
 
 ziniao 的命令行不仅是 MCP Server 入口，还提供完整的浏览器操控能力。首次执行命令时会自动启动后台 daemon，后续命令复用同一会话。
 
+**JSON 输出**：`--json` 使用固定信封 `success` / `data` / `error`（便于脚本与 agent-browser 风格一致）；旧脚本请用 `--json-legacy`。详见 [cli-json.md](cli-json.md)。
+
 ```bash
 # 启动 Chrome 并打开网页
 ziniao launch --url https://www.baidu.com
