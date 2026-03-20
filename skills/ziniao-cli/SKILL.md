@@ -1,108 +1,44 @@
 ---
 name: ziniao-cli
-description: Command-line interface for automating Ziniao stores and Chrome browsers via CDP. Use when the user needs to manage multi-store sessions, automate page interactions (click, fill, type), take screenshots, record HAR, intercept network requests, or chain browser operations from the terminal. Triggers include "open a store", "switch session", "screenshot", "click a button", "fill a form", "run ziniao commands", "browser automation", "multi-store batch", or any CLI-based Ziniao/Chrome automation task.
-compatibility: Requires uv (recommended) or a project venv; `ziniao` on PATH via `uv tool install ziniao`. Optional Ziniao desktop client for store automation.
-metadata:
-  agentskills-spec: https://agentskills.io/specification
+description: Browser automation for multi-store sellers and Chrome. Use when the user needs to open stores, navigate pages, fill forms, click buttons, take screenshots, extract data, intercept network requests, or automate any browser task. Triggers include "open a store", "open a website", "fill out a form", "click a button", "take a screenshot", "scrape data", "switch session", "multi-store batch", "browser automation", or any Ziniao/Chrome automation request.
 allowed-tools: Bash(ziniao:*)
 ---
 
 # Ziniao CLI — Browser Automation from Terminal
 
-The `ziniao` CLI talks to a background daemon that manages browser sessions (Ziniao stores and Chrome instances) via CDP. Install with `uv tool install ziniao`, then use the single `ziniao` command for everything: CLI automation (`ziniao click`, `ziniao fill`, ...) and MCP server (`ziniao serve`). The daemon starts automatically on first CLI command. If your shell reports **"ziniao" is not recognized**, see [Install & PATH](#install--path) below. Ziniao sessions use built-in **stealth and anti-detection** (JS masking + human-like input); Chrome sessions use the same stack when launched via `ziniao launch`.
+Install with `uv tool install ziniao`. Supports Ziniao multi-store sessions and standalone Chrome, with built-in stealth and anti-detection. The daemon starts automatically on first command.
 
 ## Quick Setup
 
-Three scenarios — pick the one that fits:
-
-**Scenario 1: Chrome only (zero config)** — just works, no setup needed:
+**Chrome only (zero config):**
 
 ```bash
 ziniao launch --url https://example.com
 ```
 
-**Scenario 2: Chrome + state reuse** — run the wizard or set manually:
+**Chrome + state reuse** — wizard or manual:
 
 ```bash
-ziniao config init              # interactive wizard
-# OR set directly:
+ziniao config init              # interactive wizard → ~/.ziniao/config.yaml + .env
+# OR:
 ziniao config set chrome.user_data_dir "C:\Users\<you>\.ziniao\chrome-profile"
 ```
 
-This generates `~/.ziniao/config.yaml`:
+**Ziniao + Chrome (full feature):** run `ziniao config init` and answer the Ziniao questions, or copy [assets/config.example.yaml](assets/config.example.yaml) to `~/.ziniao/config.yaml` and fill in values. Put secrets in [assets/env.example](assets/env.example)-style variables.
 
-```yaml
-chrome:
-  executable_path: "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
-  user_data_dir: "C:\\Users\\<you>\\.ziniao\\chrome-profile"
-  default_cdp_port: 0
-  headless: false
-```
-
-**Scenario 3: Ziniao + Chrome (full feature)** — run `ziniao config init` and answer the Ziniao questions, or write `~/.ziniao/config.yaml` manually:
-
-```yaml
-ziniao:
-  browser:
-    version: v6
-    client_path: D:\ziniao\ziniao.exe
-  user_info:
-    company: your-company
-    username: your-user
-    password: your-pass
-
-chrome:
-  executable_path: ""
-  user_data_dir: ""
-```
-
-The wizard also generates `~/.ziniao/.env` (auto-loaded by CLI and daemon):
-
-```
-ZINIAO_COMPANY=your-company
-ZINIAO_USERNAME=your-user
-ZINIAO_PASSWORD=your-pass
-ZINIAO_CLIENT_PATH=D:\ziniao\ziniao.exe
-CHROME_PATH=C:\Program Files\Google\Chrome\Application\chrome.exe
-```
-
-**Config priority (daemon / `ziniao serve` / MCP)**: environment variables (including `~/.ziniao/.env` once loaded) → `serve` CLI flags → first existing YAML among `./config/config.yaml`, packaged `config/config.yaml`, `~/.ziniao/config.yaml`. **`ziniao config show`** uses a slightly different display order — see [references/configuration.md](references/configuration.md).
-
-To export config as MCP-compatible env block: `ziniao config env --shell mcp`
-
-## Configuration files & templates
-
-Per the [Agent Skills layout](https://agentskills.io/specification), copy-ready templates live under **`assets/`** (static files); deeper precedence and MCP notes are in **`references/`**.
-
-| File | Purpose |
-|------|---------|
-| [assets/config.example.yaml](assets/config.example.yaml) | Full `ziniao` + `chrome` YAML (including `stealth` under `ziniao`) |
-| [assets/env.example](assets/env.example) | `ZINIAO_*` / `CHROME_*` names for `~/.ziniao/.env` or MCP `env` |
-| [references/configuration.md](references/configuration.md) | Paths, precedence (CLI vs daemon), MCP, security |
-| [docs/cli-agent-browser-parity.md](../../docs/cli-agent-browser-parity.md) | Full CLI parity vs **agent-browser** (commands, batch format, snapshot semantics, daemon command names) |
-| [docs/cli-llm.md](../../docs/cli-llm.md) | Agent I/O aligned with **agent-browser**: `--json`, `--content-boundaries`, `--max-output`, `ZINIAO_*` env, stdin/batch rules, snapshot semantics |
-
-**Help alignment:** `ziniao nav --help`, `ziniao act --help`, etc. end with an epilog listing parent flags (`--store`, `--session`, `--json`, `--json-legacy`, `--content-boundaries`, `--max-output`, `--timeout`) and pointers to the docs above — similar to agent-browser repeating global options on subcommand help.
-
-**When the model consumes terminal output:** Use **`ziniao --json <subcommand>...`** (or **`ZINIAO_JSON=1`**). Add **`--content-boundaries`** when page HTML / long strings must be delimited from instructions (JSON gets **`_boundary`**; human mode gets `ZINIAO_PAGE_CONTENT` lines). Use **`--max-output N`** like agent-browser. Do not rely on custom JSON `meta` fields. See [cli-llm.md](../../docs/cli-llm.md).
-
-**Quick use:** copy `config.example.yaml` to `~/.ziniao/config.yaml` or `<repo>/config/config.yaml`, fill in values; put secrets in `env.example`-style variables or MCP `env` instead of committing them.
+Config priority: env vars (including `~/.ziniao/.env`) → CLI flags → YAML. Use `ziniao config show` to inspect. See [references/configuration.md](references/configuration.md) for paths and MCP setup.
 
 ## Core Workflow
 
-Every browser automation follows this pattern:
+Every automation follows: **Connect → Navigate → Inspect → Interact → Verify**.
 
-1. **Connect**: `ziniao open-store <id>` (Ziniao) or `ziniao launch` (Chrome)
-2. **Navigate**: `ziniao navigate <url>`
-3. **Inspect**: `ziniao snapshot` (page HTML) or `ziniao snapshot --interactive` (interactive elements only)
-4. **Interact**: `ziniao click`, `ziniao fill`, `ziniao type` (use CSS selectors or `ziniao find nth` for lists)
-5. **Verify**: `ziniao screenshot`, `ziniao get text`, `ziniao is visible`
+Ziniao uses **CSS selectors** (not refs like `@e1`). After `snapshot --interactive`, read the HTML to pick selectors for the next command.
 
 ```bash
-ziniao open-store my-store-001
+ziniao open-store my-store-001                          # or: ziniao launch --url <url>
 ziniao navigate "https://sellercentral.amazon.com/inventory"
 ziniao wait ".inventory-table"
-ziniao snapshot --interactive
+ziniao snapshot --interactive                            # read HTML, pick CSS selectors
 ziniao click "#edit-btn"
 ziniao fill "#price-input" "29.99"
 ziniao screenshot after-edit.png
@@ -110,380 +46,194 @@ ziniao screenshot after-edit.png
 
 ## Command Chaining
 
-Commands share a persistent daemon, so chaining with `&&` is safe and avoids repeated daemon wake-up.
+Commands share a persistent daemon, so chaining with `&&` is safe:
 
 ```bash
 ziniao navigate "https://example.com" && ziniao wait ".loaded" && ziniao screenshot page.png
 ziniao fill "#email" "user@test.com" && ziniao fill "#pass" "secret" && ziniao click "#login"
 ```
 
-**When to chain:** Use `&&` when you don't need to read the output of an intermediate command (e.g. navigate + wait + screenshot). Run commands separately when you need to parse output first (e.g. `ziniao get count ".item" --json` then loop with `ziniao find nth $i ".item" click`). With `--json`, parse fields under **`.data`** (see [JSON Output Mode](#json-output-mode)); use `--json-legacy` only if you need the old flat daemon dict.
+**When to chain:** Use `&&` when you don't need intermediate output. Run separately when you need to parse output first (e.g. `ziniao snapshot` to pick selectors, or `--json` then loop).
 
-## Ziniao Stores vs Chrome Sessions
+## Ziniao Stores vs Chrome
 
-| Backend | How to connect | Typical use |
-|--------|----------------|-------------|
-| **Ziniao store** | `ziniao open-store <store_id>` | Multi-store seller workflows, anti-detection, existing Ziniao client |
-| **Chrome (launch)** | `ziniao launch` | Launch a new Chrome, ziniao owns the process (close = terminate) |
-| **Chrome (connect)** | `ziniao connect <port>` | Connect to existing Chrome, ziniao does NOT own the process (close = disconnect only) |
+| Backend | Connect | Use case |
+|---------|---------|----------|
+| **Ziniao store** | `ziniao open-store <id>` | Multi-store seller workflows, anti-detection |
+| **Chrome (launch)** | `ziniao launch` | New Chrome, ziniao owns the process |
+| **Chrome (connect)** | `ziniao connect <port>` | Existing Chrome, disconnect only on close |
 
-Use `ziniao session list` to see all sessions (stores + Chrome). Use `--store <id>` or `--session <id>` to target a session without switching the active one.
+Setting `CHROME_USER_DATA` enables state reuse (cookies, localStorage, extensions persist).
 
-### Chrome Environment Variables
+## Key Commands
 
-Configure Chrome path and profile via environment variables (in MCP `env` or shell):
-
-| Variable | Description |
-|----------|-------------|
-| `CHROME_PATH` | Chrome executable path. Auto-detected if not set (registry > common paths > PATH) |
-| `CHROME_USER_DATA` | User data directory (profile). Set to reuse login state, cookies, extensions across sessions |
-| `CHROME_CDP_PORT` | Default CDP port. Auto-assigned if not set |
-
-Setting `CHROME_USER_DATA` is the key to **state reuse** — cookies, localStorage, and extensions persist across launches. If the profile is already locked by a running Chrome, `launch` auto-detects the existing instance's CDP port and connects to it (behaves like `connect`, will NOT terminate the Chrome on close).
-
-## Store Login & Multi-Store Workflows
-
-For seller portals (e.g. Seller Central), open the store once and reuse the same session:
+> Full reference: [references/commands.md](references/commands.md)
 
 ```bash
-# Single store: login and extract
-ziniao open-store us-store-001
-ziniao navigate "https://sellercentral.amazon.com/business-reports"
-ziniao wait ".report-table"
-ziniao eval "JSON.stringify(Array.from(document.querySelectorAll('tr')).map(r => r.textContent))"
-```
+# Connect
+ziniao open-store <id>               # Open Ziniao store
+ziniao launch [--url u] [--name n]   # Launch Chrome (--headless for headless)
+ziniao connect <port>                # Connect to existing Chrome
+ziniao session list                  # All sessions (stores + Chrome)
+ziniao session switch <id>           # Switch active session
 
-**Batch multiple stores** without switching the active session:
+# Navigate
+ziniao navigate <url>
+ziniao back | forward | reload
+ziniao tab list | tab new --url <url> | tab switch -i <n>
+ziniao wait <selector> [--timeout N]
 
-```bash
-for store_id in store_001 store_002 store_003; do
-    ziniao --store "$store_id" navigate "https://sellercentral.amazon.com/inventory"
-    ziniao --store "$store_id" wait ".inventory-table"
-    ziniao --store "$store_id" screenshot "${store_id}-inventory.png"
-done
-```
+# Interact
+ziniao click <selector>              # Click
+ziniao dblclick <selector>           # Double-click
+ziniao fill <selector> <value>       # Clear + type
+ziniao type <text> [-s <selector>]   # Char-by-char (optional selector)
+ziniao press Enter                   # Press key
+ziniao hover <selector>
+ziniao drag <source> <target>
+ziniao act select <selector> <value> # Dropdown
+ziniao act check | uncheck <selector>
 
-**Batch with JSON (e.g. PowerShell):**
+# Read
+ziniao get text|html|value <selector>
+ziniao get attr <selector> <attr>
+ziniao get count <selector>
+ziniao title | url
+ziniao is visible|enabled|checked <selector>
 
-```bash
-ziniao session list --json | jq -r '.data.sessions[].session_id' | while read id; do
-    ziniao --session "$id" screenshot "${id}-shot.png"
-done
-```
+# Find (ordinal / semantic)
+ziniao find first|last <selector> [action]
+ziniao find nth <n> <selector> [action]   # 0-based
+ziniao find text "Submit" [action]        # By text content
+ziniao find role button [action]          # By ARIA role (--name for accessible name)
 
-## Essential Commands
+# Inspect
+ziniao snapshot [--interactive] [--compact] [-s <selector>]
+ziniao screenshot [file] [-s <selector>] [--full-page]
+ziniao eval "<js>"
+ziniao info console | network | errors
+ziniao info highlight <selector>
 
-```bash
-# Store management
-ziniao list-stores                    # List Ziniao stores
-ziniao list-stores --opened-only      # Only opened stores
-ziniao open-store <id>                # Open store + connect CDP
-ziniao close-store <id>               # Close store
-
-# Chrome management (configure CHROME_PATH / CHROME_USER_DATA env vars for path & state reuse)
-ziniao launch [--name n] [--url u]   # Launch Chrome (auto-connects if profile locked)
-ziniao launch --headless             # Headless Chrome
-ziniao connect <port> [--name n]      # Connect to running Chrome (CDP port)
-ziniao chrome list                   # List Chrome sessions
-ziniao chrome close <id>              # Close: terminate if launched, disconnect if connected
-
-# Session control
-ziniao session list                   # All sessions (stores + Chrome)
-ziniao session switch <id>            # Switch active session
-ziniao session info <id>              # Session details
-
-# Navigation
-ziniao navigate <url>                 # Go to URL
-ziniao back                           # Back
-ziniao forward                        # Forward
-ziniao reload                         # Reload
-ziniao tab list                       # List tabs
-ziniao tab new --url <url>            # New tab
-ziniao tab switch -i 2                # Switch to tab index 2
-ziniao wait <selector> [--timeout N]  # Wait for element (ms)
-
-# Page interaction
-ziniao click <selector>               # Click
-ziniao dblclick <selector>            # Double-click
-ziniao fill <selector> <value>        # Fill input (clear then type)
-ziniao type <text> [-s <selector>]    # Type char-by-char (optional selector)
-ziniao press Enter                    # Press key
-ziniao hover <selector>               # Hover
-ziniao drag <source> <target>         # Drag and drop
-ziniao act focus <selector>           # Focus
-ziniao act select <selector> <value>  # Select option
-ziniao act check <selector>           # Check checkbox
-ziniao act uncheck <selector>         # Uncheck
-ziniao act keydown Shift              # Key down
-ziniao act keyup Shift                # Key up
-
-# Get element/page info
-ziniao get text <selector>            # Text content
-ziniao get html <selector>            # innerHTML
-ziniao get value <selector>           # Input value
-ziniao get attr <selector> <attr>      # Attribute (e.g. href)
-ziniao get count <selector>           # Count matches
-ziniao title                          # Page title
-ziniao url                            # Current URL
-
-# Find (semantic / ordinal)
-ziniao find first <selector> [action] # First match + optional action
-ziniao find last <selector> [action]  # Last match
-ziniao find nth <n> <selector> [action] # Nth match (0-based) + action
-ziniao find text "Submit" [action]     # By text content
-ziniao find role button [action]      # By ARIA role
-
-# Check state
-ziniao is visible <selector>           # Visible?
-ziniao is enabled <selector>          # Enabled?
-ziniao is checked <selector>         # Checked? (checkbox)
-
-# Scroll
-ziniao scroll down [pixels]           # Down (default 300)
-ziniao scroll up [pixels]             # Up
-ziniao scrollinto <selector>          # Scroll element into view
-
-# Page inspection
-ziniao snapshot                       # Full HTML
-ziniao snapshot --interactive         # Interactive elements only
-ziniao snapshot --compact            # Compact (no scripts/styles)
-ziniao snapshot -s "#section"         # Scope to selector
-ziniao screenshot [file]              # Screenshot (file optional)
-ziniao screenshot shot.png -s "#el"   # Screenshot element
-ziniao eval "document.title"         # Run JavaScript
-ziniao info console                   # Console messages
-ziniao info network                   # Network requests
-ziniao info errors                    # JS errors
-ziniao info highlight <selector>     # Highlight element
-
-# Network interception & HAR
-ziniao network route "<pattern>" [--abort] [--body ...] [--status N]  # Intercept (glob *)
-ziniao network unroute [pattern]      # Remove route(s); omit pattern = all
-ziniao network routes                 # List active routes
-ziniao network list [--filter url] [--clear]  # List/clear captured requests
-ziniao network har-start              # Start HAR recording
-ziniao network har-stop [path]        # Stop and save HAR (default ~/.ziniao/har/)
-
-# Cookies & storage
-ziniao info cookies                   # List cookies
+# Cookies, storage, clipboard
+ziniao info cookies                       # List
 ziniao info cookies set --name k --value v
 ziniao info cookies clear
-ziniao info storage local get
-ziniao info storage local set -k key -v val
+ziniao info storage local get | set -k <key> -v <val>
 ziniao info storage session get
-ziniao info clipboard read
-ziniao info clipboard write --text "hello"
+ziniao info clipboard read | write --text "hello"
 
-# Mouse
-ziniao mouse move <x> <y>
-ziniao mouse down [button]
-ziniao mouse up [button]
-ziniao mouse wheel <dy> [dx]
+# Scroll
+ziniao scroll down|up|left|right [pixels]
+ziniao scrollinto <selector>
 
-# Batch
-echo '[{"command":"navigate","args":{"url":"https://example.com"}}]' | ziniao batch run
-echo '[...]' | ziniao batch run --bail   # Stop on first error
+# Network interception & HAR
+ziniao network route "<pattern>" [--abort] [--body ...] [--status N]
+ziniao network unroute [pattern]
+ziniao network routes
+ziniao network list [--filter url] [--clear]
+ziniao network har-start
+ziniao network har-stop [path]
 
-# Recording
-ziniao rec start
-ziniao rec stop --name my-flow
-ziniao rec replay my-flow
-ziniao rec list
+# Batch, recording, emulation
+echo '[{"command":"navigate","args":{"url":"..."}}]' | ziniao batch run [--bail]
+ziniao rec start | stop --name <n> | replay <n> | list | delete <n>
+ziniao emulate --device "iPhone 14"       # Or --width W --height H
 
-# Emulation
-ziniao emulate --device "iPhone 14"
-ziniao emulate --width 1920 --height 1080
-
-# Configuration
-ziniao config init [--force]           # Interactive wizard → ~/.ziniao/config.yaml + .env
-ziniao config show                     # Show effective config with source labels
-ziniao config set <key> <value>        # Set value (dotted key: chrome.executable_path)
-ziniao config path                     # Show config file paths
-ziniao config env [--shell ps|bash|json|mcp]  # Export env var statements
-
-# MCP server
-ziniao serve                           # Start MCP server
-ziniao serve --config config.yaml     # With config file
-ziniao serve --company x --username y  # With credentials
-
-# Lifecycle
-ziniao quit                            # Stop daemon + cleanup
+# Cleanup
+ziniao close-store <id>
+ziniao chrome close <id>
+ziniao quit                               # Stop daemon
 ```
-
-## JSON Output Mode
-
-Use **`--json`** for machine-readable output. The top-level shape matches **agent-browser** CLI: `{"success": bool, "data": object|null, "error": string|null}`. On success, the daemon payload is under **`data`**.
-
-```bash
-ziniao session list --json
-# {"success":true,"data":{"active":"store_A","sessions":[...],"count":2},"error":null}
-
-ACTIVE=$(ziniao session list --json | jq -r '.data.active')
-ziniao is visible ".next" --json | jq -e '.data.visible'
-```
-
-Use **`--json-legacy`** when you need the previous behavior (raw daemon dict, no envelope). **`--json` and `--json-legacy` are mutually exclusive.**
-
-For LLM consumption, combine **`--json`** with optional **`--content-boundaries`** and **`--max-output`** (same ideas as agent-browser). Example: `ziniao --json --content-boundaries info snapshot | jq '._boundary'`.
-
-Full notes: [docs/cli-json.md](../../docs/cli-json.md), [docs/cli-llm.md](../../docs/cli-llm.md).
 
 ## Global Flags
 
 | Flag | Description |
 |------|-------------|
 | `--store <id>` | Target a Ziniao store (no session switch) |
-| `--session <id>` | Target any session — store or Chrome (no switch) |
-| `--json` | JSON with `success` / `data` / `error` envelope (agent-browser style) |
-| `--json-legacy` | Raw daemon JSON dict (implies JSON mode); for older scripts |
-| `--content-boundaries` | Add `_boundary` in JSON; delimit page content in human mode (agent-browser parity) |
-| `--max-output <N>` | Truncates snapshot HTML / eval on stdout (default **2000** if unset; **0** = unlimited); `-o` files stay full |
-| `--timeout <sec>` | Command timeout (0 = auto: 120s for slow commands like click/type/screenshot, 60s for others) |
+| `--session <id>` | Target any session (no switch); mutually exclusive with `--store` |
+| `--json` | JSON envelope: `{"success", "data", "error"}` |
+| `--json-legacy` | Raw daemon JSON, no envelope; for older scripts |
+| `--content-boundaries` | Wrap page content with boundary markers (LLM safety) |
+| `--max-output <N>` | Truncate snapshot/eval output (default 2000 chars; 0 = unlimited) |
+| `--timeout <sec>` | Override timeout (auto: 120s for slow cmds, 60s for others) |
 
-`--store` and `--session` are mutually exclusive.
-
-## Session Management and Cleanup
-
-Use named sessions to avoid conflicts when running multiple automations:
+Env equivalents: `ZINIAO_JSON=1`, `ZINIAO_CONTENT_BOUNDARIES=1`, `ZINIAO_MAX_OUTPUT=N`.
 
 ```bash
-ziniao --session store_A screenshot a.png
-ziniao --session chrome-9222 eval "document.title"
-ziniao session list
+# Parse JSON results under .data
+ACTIVE=$(ziniao session list --json | jq -r '.data.active')
+ziniao is visible ".next" --json | jq -e '.data.visible'
+
+# Content boundaries for LLM consumption
+ziniao --json --content-boundaries snapshot
 ```
-
-Always close stores or Chrome when done to free resources:
-
-```bash
-ziniao close-store my-store-001
-ziniao chrome close <id>
-ziniao quit   # Stop daemon (clears stale PID)
-```
-
-If the daemon is stuck, `ziniao quit` then retry; check `~/.ziniao/daemon.log` for errors.
 
 ## Selector Lifecycle
 
-Selectors are evaluated at command execution time. After navigation or dynamic DOM updates, re-query or re-snapshot:
-
-- After `ziniao click` that navigates or opens a modal, take a new `ziniao snapshot` or `ziniao wait <selector>` before next interaction.
-- For lists, use `ziniao get count ".item"` then `ziniao find nth $i ".item" click` in a loop; each `find nth` resolves at run time.
-
-## Timeouts and Slow Pages
-
-Timeout is **auto by default**: 120s for slow commands (click, type, fill, hover, screenshot, navigate, wait, launch, open-store), 60s for everything else. Override with `--timeout`:
+Selectors resolve at execution time. After navigation or DOM changes, **re-snapshot before the next interaction**:
 
 ```bash
-ziniao wait ".slow-widget" --timeout 180
-ziniao navigate "https://slow.example.com" --timeout 90
+ziniao click "#submit"                    # May navigate or open modal
+ziniao wait ".result"                     # Wait for new content
+ziniao snapshot --interactive             # Get fresh selectors
+ziniao click ".result a"                  # Now safe to use new selectors
 ```
 
-For slow pages, use `ziniao wait <selector>` after navigate so the next command runs only when the element is ready.
-
-## Stealth & Anti-Detection (Ziniao)
-
-When using **Ziniao stores**, the daemon applies:
-
-- **JS environment masking**: `navigator.webdriver`, plugins, and other detection vectors are patched via CDP before page load.
-- **Human-like behavior**: click/fill/type/hover use randomized delays and Bezier mouse movement when stealth is enabled.
-
-This applies to all interactions through the CLI (and MCP) for Ziniao-backed sessions. Chrome sessions launched with `ziniao launch` get the same treatment. To rely on it, use Ziniao stores or `ziniao launch` rather than a raw Chrome started outside ziniao.
+For lists, use `ziniao get count` then `ziniao find nth` in a loop — each `find nth` resolves at run time.
 
 ## Common Patterns
 
-### List Items — Click First N with find nth
+### Multi-Store Batch
 
 ```bash
-ziniao navigate "https://example.com/products"
-ziniao wait ".product-card"
-COUNT=$(ziniao get count ".product-card" --json | jq '.data.count')
-for i in $(seq 0 $((COUNT < 10 ? COUNT - 1 : 9))); do
-    ziniao find nth $i ".product-card a" click
-    ziniao back
+for store_id in store_001 store_002 store_003; do
+    ziniao --store "$store_id" navigate "https://example.com"
+    ziniao --store "$store_id" screenshot "${store_id}.png"
 done
 ```
 
-### Pagination Loop
+### List Iteration
 
 ```bash
-while true; do
-    ziniao snapshot --interactive
-    ziniao is visible ".next-page" --json | jq -e '.data.visible' || break
-    ziniao click ".next-page"
-    ziniao wait ".loaded"
+COUNT=$(ziniao get count ".item" --json | jq '.data.count')
+for i in $(seq 0 $((COUNT - 1))); do
+    ziniao find nth $i ".item a" click && ziniao back
 done
 ```
 
-### Batch Execution (JSON)
+### JavaScript Evaluation
+
+Shell quoting can corrupt complex expressions. Keep it simple or use single quotes:
 
 ```bash
-echo '[
-  {"command": "navigate", "args": {"url": "https://example.com"}},
-  {"command": "wait", "args": {"selector": ".loaded"}},
-  {"command": "get_title", "args": {}},
-  {"command": "screenshot", "args": {}}
-]' | ziniao batch run --json
-```
-
-### Network Mock / HAR
-
-```bash
-# Block images
-ziniao network route "*.png" --abort
-ziniao network route "*ads*" --abort
-
-# Mock API
-ziniao network route "*/api/config" --body '{"debug":true}' --content-type application/json
-
-# Record HAR
-ziniao network har-start
-ziniao navigate "https://example.com"
-ziniao click "#submit"
-ziniao network har-stop ./session.har
-ziniao network har-stop   # or save to default ~/.ziniao/har/
-```
-
-### Record and Replay
-
-```bash
-ziniao rec start
-# ... interact in browser ...
-ziniao rec stop --name login-flow
-ziniao rec replay login-flow --speed 2.0
-ziniao rec list
+ziniao eval 'document.title'
+ziniao eval 'document.querySelectorAll("img").length'
+ziniao eval 'JSON.stringify(Array.from(document.querySelectorAll("tr")).map(r => r.textContent))'
 ```
 
 ## Install & PATH
 
-PyPI package name is **`ziniao`** (GitHub repo is **`ziniao-mcp`**). The **`ziniao-mcp`** executable (if present) is an MCP-only alias for `python -m ziniao_mcp`, equivalent to `ziniao serve`.
-
 ```bash
-uv tool install ziniao
+uv tool install ziniao               # install
+ziniao update                        # upgrade from PyPI
+ziniao update --git                  # upgrade from GitHub main
 ```
 
-**Upgrade** (requires `uv` on PATH): `ziniao update` (PyPI), `ziniao update --git` (GitHub main), `ziniao update --dry-run` to print the `uv` command. On **Windows**, `ziniao update` by default spawns a **new console**, waits ~2s, then runs `uv` so the current process can exit and release **`ziniao.exe`** (avoids common self-lock / error 32). Use `ziniao update --sync` for in-process install (scripts/CI). After upgrading, run `ziniao quit` and reopen the terminal; restart Cursor MCP if you use it.
-
-If **`ziniao` is not recognized** after install, the uv tool directory is not on PATH:
-
-1. **Find the directory**: run `uv tool dir` to see where executables are installed.
-2. **Add to PATH**: add that directory to your user PATH, then reopen the terminal.
-3. **From source**: in the project repo run `uv run ziniao --help` or `uv tool install .`.
+If `ziniao` is not recognized: run `uv tool dir` to find the bin directory, add it to PATH, reopen terminal.
 
 ## Troubleshooting
 
 | Problem | Solution |
-|--------|----------|
-| First time setup | `ziniao config init` (interactive wizard) |
-| Config not taking effect | Check priority: env > CLI args > .env > project yaml > global yaml. Use `ziniao config show` to see sources |
+|---------|----------|
+| First time setup | `ziniao config init` |
 | Daemon won't start | Check `~/.ziniao/daemon.log` |
-| Connection refused | `ziniao quit` then retry (clears stale PID) |
+| Connection refused | `ziniao quit` then retry |
 | Store not found | `ziniao list-stores` to check IDs |
-| CDP connection lost | `ziniao close-store <id>` then `ziniao open-store <id>` |
-| Timeout | Use `--timeout 120` or `ziniao wait <selector>` before next step |
+| Timeout | `--timeout 120` or `ziniao wait` before next step |
 
-## Deep-Dive References
+## References
 
-| Reference | When to Use |
-|-----------|-------------|
+| File | Content |
+|------|---------|
 | [references/commands.md](references/commands.md) | Full command reference with all options |
-| [references/configuration.md](references/configuration.md) | YAML/env paths, precedence, MCP, templates in `assets/` |
+| [references/configuration.md](references/configuration.md) | YAML/env paths, precedence, MCP setup |

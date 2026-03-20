@@ -4,6 +4,16 @@
 
 ## [Unreleased]
 
+## [0.2.7] - 2026-03-20
+
+### 文档
+
+- **`skills/ziniao-cli/SKILL.md`**：精简并重排 Agent Skill（核心工作流、命令速查、全局选项与实现一致）；frontmatter 聚焦能力描述；移除对仓库外文档的依赖
+
+### 工程
+
+- **`pyproject.toml` / `.cursor-plugin/plugin.json` / Git 标签**：与 **`v0.2.7`** 对齐
+
 ## [0.2.6] - 2026-03-21
 
 ### 新增
