@@ -1,4 +1,4 @@
-"""Tests for CLI JSON envelope (--json) and legacy mode."""
+"""Tests for CLI JSON envelope, legacy mode, agent-browser-aligned boundaries."""
 
 from __future__ import annotations
 
@@ -13,8 +13,9 @@ from ziniao_mcp.cli.output import (
     daemon_to_envelope,
     dumps_cli_json,
     set_cli_json_legacy,
-    set_cli_llm,
-    set_last_daemon_command,
+    set_content_boundaries,
+    set_max_output_chars,
+    truncate_if_needed,
 )
 
 
@@ -33,14 +34,30 @@ def test_daemon_to_envelope_error() -> None:
 
 def test_dumps_cli_json_envelope_roundtrip() -> None:
     set_cli_json_legacy(False)
+    set_content_boundaries(False)
     try:
         s = dumps_cli_json({"ok": True, "n": 1})
         obj = json.loads(s)
         assert obj["success"] is True
         assert obj["data"]["n"] == 1
         assert obj["error"] is None
+        assert "_boundary" not in obj
     finally:
         set_cli_json_legacy(False)
+        set_content_boundaries(False)
+
+
+def test_dumps_cli_json_with_boundary() -> None:
+    set_cli_json_legacy(False)
+    set_content_boundaries(True)
+    try:
+        obj = json.loads(dumps_cli_json({"ok": True, "url": "https://a.test", "title": "x"}))
+        assert obj["success"] is True
+        assert "_boundary" in obj
+        assert "nonce" in obj["_boundary"]
+        assert obj["_boundary"]["origin"] == "https://a.test"
+    finally:
+        set_content_boundaries(False)
 
 
 def test_dumps_cli_json_legacy() -> None:
@@ -53,57 +70,50 @@ def test_dumps_cli_json_legacy() -> None:
         set_cli_json_legacy(False)
 
 
-def test_dumps_cli_json_llm_meta() -> None:
+def test_truncate_if_needed() -> None:
+    assert truncate_if_needed("abcd", None) == "abcd"
+    assert truncate_if_needed("abcd", 10) == "abcd"
+    t = truncate_if_needed("abcdef", 3)
+    assert "abc" in t
+    assert "truncated" in t
+
+
+def test_dumps_cli_json_default_truncates_html_on_stdout() -> None:
     set_cli_json_legacy(False)
-    set_cli_llm(True)
-    set_last_daemon_command("get_title")
+    set_content_boundaries(False)
+    set_max_output_chars(None)
     try:
-        obj = json.loads(dumps_cli_json({"ok": True, "title": "T"}))
+        html = "x" * 4000
+        obj = json.loads(dumps_cli_json({"ok": True, "html": html}, terminal_safety=True))
         assert obj["success"] is True
-        assert "meta" in obj
-        assert obj["meta"]["daemon_command"] == "get_title"
-        assert "data_field_names" in obj["meta"]
-        assert "title" in obj["meta"]["data_field_names"]
+        assert "truncated" in obj["data"]["html"]
+        assert len(obj["data"]["html"]) < len(html)
     finally:
-        set_cli_llm(False)
+        set_max_output_chars(None)
 
 
-def test_llm_and_json_legacy_mutually_exclusive() -> None:
-    runner = CliRunner()
-    result = runner.invoke(app, ["--llm", "--json-legacy", "config", "path"])
-    assert result.exit_code == 1
-    out = (result.stdout or "") + (result.stderr or "")
-    assert "llm" in out.lower() and "legacy" in out.lower()
+def test_dumps_cli_json_file_mode_full_html() -> None:
+    set_cli_json_legacy(False)
+    set_max_output_chars(None)
+    try:
+        html = "y" * 5000
+        obj = json.loads(
+            dumps_cli_json({"ok": True, "html": html}, terminal_safety=False),
+        )
+        assert obj["data"]["html"] == html
+    finally:
+        set_max_output_chars(None)
 
 
-def test_llm_flag_adds_meta(monkeypatch: pytest.MonkeyPatch) -> None:
-    from ziniao_mcp import cli as cli_mod
-
-    def fake_send_command(command: str, args: dict, target_session, timeout: float) -> dict:
-        return {"active": "x", "sessions": [], "count": 0}
-
-    monkeypatch.setattr(cli_mod, "send_command", fake_send_command)
-    runner = CliRunner()
-    result = runner.invoke(cli_mod.app, ["--llm", "session", "list"])
-    assert result.exit_code == 0, result.stdout + result.stderr
-    obj = json.loads(result.stdout)
-    assert obj["success"] is True
-    assert "meta" in obj
-    assert obj["meta"]["daemon_command"] == "session_list"
-
-
-def test_plain_outputs_json(monkeypatch: pytest.MonkeyPatch) -> None:
-    from ziniao_mcp import cli as cli_mod
-
-    def fake_send_command(command: str, args: dict, target_session, timeout: float) -> dict:
-        return {"active": "x", "sessions": [], "count": 0}
-
-    monkeypatch.setattr(cli_mod, "send_command", fake_send_command)
-    runner = CliRunner()
-    result = runner.invoke(cli_mod.app, ["--plain", "session", "list"])
-    assert result.exit_code == 0
-    obj = json.loads(result.stdout)
-    assert obj["sessions"] == []
+def test_dumps_cli_json_max_output_zero_no_truncation() -> None:
+    set_cli_json_legacy(False)
+    set_max_output_chars(0)
+    try:
+        html = "z" * 8000
+        obj = json.loads(dumps_cli_json({"ok": True, "html": html}, terminal_safety=True))
+        assert obj["data"]["html"] == html
+    finally:
+        set_max_output_chars(None)
 
 
 def test_json_and_json_legacy_mutually_exclusive() -> None:
@@ -118,7 +128,9 @@ def test_json_and_json_legacy_mutually_exclusive() -> None:
     "legacy,expect_top_keys",
     [(False, {"success", "data", "error"}), (True, {"active", "sessions", "count"})],
 )
-def test_session_list_json_shape_mocked(monkeypatch: pytest.MonkeyPatch, legacy: bool, expect_top_keys: set) -> None:
+def test_session_list_json_shape_mocked(
+    monkeypatch: pytest.MonkeyPatch, legacy: bool, expect_top_keys: set,
+) -> None:
     from ziniao_mcp import cli as cli_mod
 
     def fake_send_command(command: str, args: dict, target_session, timeout: float) -> dict:
@@ -127,6 +139,7 @@ def test_session_list_json_shape_mocked(monkeypatch: pytest.MonkeyPatch, legacy:
 
     monkeypatch.setattr(cli_mod, "send_command", fake_send_command)
     set_cli_json_legacy(legacy)
+    set_content_boundaries(False)
     try:
         args = ["session", "list"]
         if legacy:

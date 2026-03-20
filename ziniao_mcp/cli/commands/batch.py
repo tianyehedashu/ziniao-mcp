@@ -9,7 +9,7 @@ import typer
 
 from .. import get_json_mode, run_command
 from ..help_epilog import GROUP_CLI_EPILOG
-from ..output import dumps_cli_json, print_result, set_last_daemon_command
+from ..output import dumps_cli_json, print_result
 
 app = typer.Typer(no_args_is_help=True, epilog=GROUP_CLI_EPILOG)
 
@@ -72,7 +72,6 @@ def batch_run(
             break
 
     if get_json_mode():
-        set_last_daemon_command("batch_run")
         print(dumps_cli_json({"results": results, "total": len(commands), "executed": executed}))
     else:
         for i, r in enumerate(results):

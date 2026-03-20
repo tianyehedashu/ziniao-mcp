@@ -1,60 +1,55 @@
-# 面向大模型 / Agent 的 CLI 输入输出约定
+# 大模型 / Agent 如何消费 ziniao CLI 输出（与 agent-browser 对齐）
 
-本文说明如何让 **ziniao** 的终端输出更容易被大模型稳定解析，并与脚本、Agent 工具链对齐。
+不要依赖 **非标准** 的 CLI 扩展字段；业界常见做法是 **固定 JSON 信封 + 可选内容边界 + 截断 + 环境变量**，与 [agent-browser](https://github.com/vercel/agent-browser) CLI 一致。
 
-## 推荐组合
+## 1. 机器可读：只用 `--json`
 
-| 场景 | 建议标志 | 说明 |
-|------|-----------|------|
-| 结构化 + 自解释（推荐） | **`--llm`** | 等价打开 JSON 模式，并在响应中加入 **`meta`**（字段名列表、快照语义、批量说明等） |
-| 仅要信封、不要 meta | **`--json`** | `success` / `data` / `error`，见 [cli-json.md](cli-json.md) |
-| 兼容旧脚本 | **`--json-legacy`** | 原始 daemon 字典，无信封、无 meta |
-| 人类可读但可粘贴到对话 | **`--plain`** | 关闭 Rich 表格/颜色，stdout 为 **UTF-8 JSON**（成功为 daemon 字典，失败为 `{"success":false,"error":"..."}`） |
-
-`--llm` 与 **`--json-legacy`** 互斥。`--plain` 在已使用 **`--json` / `--llm`** 时不改变格式（仍以 JSON 信封输出）。
-
-## `--llm` 时的 `meta` 字段
-
-在 **`--json` 信封**之上增加顶层 **`meta`**（对象），例如：
+与 agent-browser 的 **`--json`** 相同，顶层为：
 
 ```json
-{
-  "success": true,
-  "data": { ... },
-  "error": null,
-  "meta": {
-    "schema_version": 1,
-    "role": "ziniao_cli_response",
-    "how_to_read": "...",
-    "docs": "docs/cli-llm.md",
-    "daemon_command": "session_list",
-    "data_field_names": ["active", "count", "sessions"]
-  }
-}
+{"success": true, "data": { ... }, "error": null}
 ```
 
-常见附加键：
+失败时 `data` 为 `null`，`error` 为字符串。业务字段永远在 **`data`** 里（与 `jq '.data.*'` 一致）。
 
-- **`daemon_command`**：本次对应的 daemon 命令名（批量汇总为 **`batch_run`**）。
-- **`data_field_names`**：`data` 的键名列表（便于模型在不读全文时建立结构预期）。
-- **`snapshot_semantics`**：当命令为 `snapshot` / `snapshot_enhanced` 时说明与 agent-browser 默认快照（无障碍树）的差异。
-- **`batch`**：当 `data` 为批量结果汇总时，说明 **`data.results[]`** 为每步原始字典、可能含 **`error`**。
+脚本或 Agent 应 **默认使用 `--json`**，而不是解析 Rich 表格。
 
-模型解析顺序建议：**先看 `success` → 再读 `error` 或 `data` → 用 `meta` 校正对字段含义的理解**。
+## 2. 内容与指令混淆： `--content-boundaries`
 
-## 输入侧（给模型下指令时写清楚）
+与 agent-browser 的 **`--content-boundaries`** 同思路：
 
-1. **命令名**：Typer 子命令（如 `nav go`）与 daemon 名（如 `navigate`）可能不同；写 **batch** 或自动化时必须使用 **daemon 名**，见 [cli-agent-browser-parity.md](cli-agent-browser-parity.md) 第 14 节。
-2. **批量 stdin**：形状为 `[{"command":"...", "args":{}}]`，**不是** agent-browser 的「数组的数组」；见 [cli-agent-browser-parity.md](cli-agent-browser-parity.md) 第 2 节。
-3. **`act type`**：参数顺序为 **`TEXT` 在前**，`--selector` 在后；与 agent-browser `type <selector> <text>` 相反。
-4. **全局选项位置**：`--store` / `--session` / `--json` / `--llm` / `--plain` / `--timeout` 写在**子命令组之前**，例如：  
-   `ziniao --llm info snapshot`
+- **JSON**：在顶层增加 **`_boundary`: `{"nonce","origin"}`**（与 agent-browser 在 JSON 中附加边界元数据一致）。
+- **人类可读**：对快照 HTML、`eval` 长字符串等，在 stdout 用 **`--- ZINIAO_PAGE_CONTENT ... ---`** / **`END_...`** 包裹（命名与 agent-browser 的 `AGENT_BROWSER_PAGE_CONTENT` 并列，避免与页面正文混淆）。
 
-## 快照与截图
+`nonce` 使用加密安全随机数，降低不可信页面伪造边界行的风险（与 agent-browser 设计动机一致）。
 
-- 默认 **`snapshot`** 返回的 **`data.html`** 是 **HTML 源码**，不是 agent-browser 那种带 `@e1` 的无障碍树；选型器用 **CSS**，或 `snapshot_enhanced --interactive` 等。
-- 截图成功时常见 **`data.data`** 为 **`data:image/...;base64,...`**；解码时取逗号后的 base64。
+## 3. 过长输出：`--max-output N`
 
-## 与 MCP 的关系
+与 agent-browser 的 **`--max-output`** 思路一致：限制 **字符数**，并在截断处附加说明行。**未设置**时 stdout 仍对快照 HTML、`eval` 字符串使用 **默认 2000 字符**（终端安全）。**`0` / `ZINIAO_MAX_OUTPUT=0`** 表示 stdout 不截断。**`-o` 写文件**始终全量。
 
-MCP 工具返回的结构由服务器定义，**不一定**与 CLI 的 `success`/`data`/`error` 信封相同。若 Agent 同时用 MCP 和 CLI，请在提示词里区分两条路径。
+## 4. 环境变量（对标 `AGENT_BROWSER_*`）
+
+| ziniao | 含义 | agent-browser 对照 |
+|--------|------|---------------------|
+| `ZINIAO_JSON=1` | 等价开启 JSON 信封 | `AGENT_BROWSER_JSON` |
+| `ZINIAO_CONTENT_BOUNDARIES=1` | 等价 `--content-boundaries` | `AGENT_BROWSER_CONTENT_BOUNDARIES` |
+| `ZINIAO_MAX_OUTPUT` | 正整数，等价 `--max-output` | `AGENT_BROWSER_MAX_OUTPUT` |
+
+CLI 显式传入的标志优先于环境变量中的布尔/数值合并逻辑见实现（与常见 CLI 一致）。
+
+## 5. 终端颜色：`NO_COLOR`
+
+与 agent-browser 仓库 **AGENTS.md** 一致：遵循 [no-color.org](https://no-color.org/)，**`NO_COLOR`** 下 Rich 等库应关闭着色（由依赖库处理）。
+
+## 6. 语义差异（文档约定，非 CLI 魔法字段）
+
+- **快照**：ziniao 默认 **`data.html`** 为 HTML；agent-browser 默认快照为 **无障碍树 + @ref**。迁移 Agent 提示词时必须在文档层说清，**不要**在 JSON 里塞自定义 `meta` 对象替代文档。
+- **batch**：stdin 格式与 agent-browser **不同**，见 [cli-agent-browser-parity.md](cli-agent-browser-parity.md)。
+
+## 7. 推荐 Agent 提示词片段
+
+```text
+调用 ziniao 时使用：ziniao --json [--content-boundaries] [--max-output 8000] <子命令>...
+解析：先读 success，再读 data 或 error。若启用 content-boundaries，先读 _boundary 再解析 data。
+快照字段为 HTML 时使用 CSS 选择器，不要假设存在 @e1 式 ref。
+```

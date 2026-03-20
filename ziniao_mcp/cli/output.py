@@ -1,20 +1,24 @@
-"""Output formatting: Rich tables for humans, raw JSON for machines."""
+"""Output formatting: Rich tables for humans, JSON envelope for machines (agent-browser aligned)."""
 
 from __future__ import annotations
 
-import contextvars
 import json
+import secrets
 import sys
-from typing import Any
+from typing import Any, Optional
 
-# Set by CLI callback: when True, --json prints the daemon dict as-is (legacy scripts).
+# --json-legacy: print raw daemon dict (no envelope).
 _CLI_JSON_LEGACY: bool = False
-_CLI_LLM: bool = False
-_CLI_PLAIN: bool = False
+# Mirror agent-browser --content-boundaries / AGENT_BROWSER_CONTENT_BOUNDARIES.
+_CLI_CONTENT_BOUNDARIES: bool = False
+# Mirror agent-browser --max-output / AGENT_BROWSER_MAX_OUTPUT (character count).
+# None = not set on CLI / env: apply DEFAULT_TERMINAL_MAX_OUTPUT_CHARS for stdout paths.
+# Explicit 0 or negative = opt out of truncation (full payload to terminal).
+_CLI_MAX_OUTPUT_CHARS: Optional[int] = None
+# Historical safeguard: large snapshot HTML / eval strings were capped for terminal stability.
+DEFAULT_TERMINAL_MAX_OUTPUT_CHARS: int = 2000
 
-_last_daemon_command: contextvars.ContextVar[str | None] = contextvars.ContextVar(
-    "ziniao_last_daemon_command", default=None,
-)
+_BOUNDARY_NONCE: str | None = None
 
 
 def set_cli_json_legacy(enabled: bool) -> None:
@@ -23,33 +27,32 @@ def set_cli_json_legacy(enabled: bool) -> None:
     _CLI_JSON_LEGACY = enabled
 
 
-def set_cli_llm(enabled: bool) -> None:
-    """When True and not legacy JSON, envelope includes ``meta`` for LLM-friendly parsing hints."""
-    global _CLI_LLM  # noqa: PLW0603
-    _CLI_LLM = enabled
+def set_content_boundaries(enabled: bool) -> None:
+    """Wrap page-like output and add JSON ``_boundary`` (same idea as agent-browser)."""
+    global _CLI_CONTENT_BOUNDARIES  # noqa: PLW0603
+    _CLI_CONTENT_BOUNDARIES = enabled
 
 
-def set_cli_plain(enabled: bool) -> None:
-    """When True (and not JSON mode), skip Rich and print UTF-8 JSON text for easy copy-paste."""
-    global _CLI_PLAIN  # noqa: PLW0603
-    _CLI_PLAIN = enabled
+def set_max_output_chars(limit: Optional[int]) -> None:
+    """Set explicit ``--max-output`` / ``ZINIAO_MAX_OUTPUT`` (None = use default terminal cap).
+
+    ``None`` here means the user did not specify a limit; stdout still uses
+    :data:`DEFAULT_TERMINAL_MAX_OUTPUT_CHARS` for snapshot HTML and eval ``result`` strings.
+    ``0`` or negative means no truncation when writing to the terminal.
+    """
+    global _CLI_MAX_OUTPUT_CHARS  # noqa: PLW0603
+    _CLI_MAX_OUTPUT_CHARS = limit
 
 
 def cli_json_uses_legacy() -> bool:
     return _CLI_JSON_LEGACY
 
 
-def cli_llm_enabled() -> bool:
-    return _CLI_LLM
-
-
-def cli_plain_enabled() -> bool:
-    return _CLI_PLAIN
-
-
-def set_last_daemon_command(name: str) -> None:
-    """Record the daemon command name for ``meta.daemon_command`` (set from ``run_command``)."""
-    _last_daemon_command.set(name)
+def _get_boundary_nonce() -> str:
+    global _BOUNDARY_NONCE  # noqa: PLW0603
+    if _BOUNDARY_NONCE is None:
+        _BOUNDARY_NONCE = secrets.token_hex(16)
+    return _BOUNDARY_NONCE
 
 
 def daemon_to_envelope(raw: dict[str, Any]) -> dict[str, Any]:
@@ -59,79 +62,102 @@ def daemon_to_envelope(raw: dict[str, Any]) -> dict[str, Any]:
     return {"success": True, "data": raw, "error": None}
 
 
-def _build_llm_meta(envelope: dict[str, Any], daemon_command: str | None) -> dict[str, Any]:
-    """Short, stable hints so models know how to interpret ``data`` without guessing."""
-    meta: dict[str, Any] = {
-        "schema_version": 1,
-        "role": "ziniao_cli_response",
-        "how_to_read": (
-            "If success is true, interpret `data` (object; shape depends on daemon_command). "
-            "If success is false, read `error` (string); `data` is null."
-        ),
-        "docs": "docs/cli-llm.md",
-    }
-    if daemon_command:
-        meta["daemon_command"] = daemon_command
+def _origin_from_data(data: Any) -> str:
+    if isinstance(data, dict):
+        return str(data.get("url") or data.get("origin") or "unknown")[:500]
+    return "unknown"
 
+
+def _effective_max_output_limit() -> Optional[int]:
+    """Character limit for terminal-oriented output (None = do not truncate)."""
+    if _CLI_MAX_OUTPUT_CHARS is None:
+        return DEFAULT_TERMINAL_MAX_OUTPUT_CHARS
+    if _CLI_MAX_OUTPUT_CHARS <= 0:
+        return None
+    return _CLI_MAX_OUTPUT_CHARS
+
+
+def truncate_if_needed(content: str, max_chars: Optional[int]) -> str:
+    """Character-based truncation (aligned with agent-browser ``--max-output``)."""
+    if max_chars is None or len(content) <= max_chars:
+        return content
+    total = len(content)
+    # Byte-safe slice by char count
+    out = content[:max_chars]
+    return (
+        f"{out}\n[truncated: showing {max_chars} of {total} chars. Use --max-output to adjust]"
+    )
+
+
+def _envelope_with_boundary(envelope: dict[str, Any]) -> dict[str, Any]:
+    """Insert top-level ``_boundary`` like agent-browser JSON + content-boundaries."""
+    origin = "unknown"
     if envelope.get("success") and isinstance(envelope.get("data"), dict):
-        d = envelope["data"]
-        keys = sorted(d.keys())
-        meta["data_field_names"] = keys[:80]
-        if len(keys) > 80:
-            meta["data_field_names_truncated"] = True
-
-        if daemon_command in ("snapshot", "snapshot_enhanced"):
-            meta["snapshot_semantics"] = (
-                "Unlike agent-browser CLI default snapshot (accessibility tree + @refs), ziniao returns HTML in "
-                "`data.html` unless using snapshot_enhanced with interactive/compact/selector. "
-                "Prefer CSS selectors; with interactive=true check `interactive_elements` if returned."
-            )
-        elif "html" in d:
-            meta["note"] = "`data.html` is an HTML string (length can be large)."
-
-        if isinstance(d.get("data"), str) and str(d["data"]).startswith("data:image"):
-            meta["screenshot"] = (
-                "`data.data` is a data URL; base64 payload follows the first comma — decode for raw image bytes."
-            )
-
-        if "results" in d and "total" in d and "executed" in d and isinstance(d.get("results"), list):
-            meta["batch"] = (
-                "`data.results` is a list of per-step daemon dicts (not individually enveloped); "
-                "each item may contain `error` on failure."
-            )
-
-    elif not envelope.get("success"):
-        meta["note"] = "Request failed; use `error` string. Optional: retry with `--timeout` or check session."
-
-    return meta
+        origin = _origin_from_data(envelope["data"])
+    return {
+        **envelope,
+        "_boundary": {"nonce": _get_boundary_nonce(), "origin": origin},
+    }
 
 
-def dumps_cli_json(data: dict[str, Any], *, indent: int = 2) -> str:
-    """Serialize for stdout/file when JSON mode is on (envelope unless legacy)."""
+def _truncate_large_fields_deep(obj: Any, limit: int) -> Any:
+    """Copy ``obj`` and truncate ``html`` / eval ``result`` strings (e.g. batch ``results[]``)."""
+    if isinstance(obj, dict):
+        out: dict[str, Any] = {}
+        for k, v in obj.items():
+            if k == "html" and isinstance(v, str):
+                out[k] = truncate_if_needed(v, limit)
+            elif k == "result" and isinstance(v, str) and obj.get("ok"):
+                out[k] = truncate_if_needed(v, limit)
+            else:
+                out[k] = _truncate_large_fields_deep(v, limit)
+        return out
+    if isinstance(obj, list):
+        return [_truncate_large_fields_deep(x, limit) for x in obj]
+    return obj
+
+
+def dumps_cli_json(
+    data: dict[str, Any],
+    *,
+    indent: int = 2,
+    terminal_safety: bool = True,
+) -> str:
+    """Serialize for stdout or file when JSON mode is on (envelope unless legacy).
+
+    When ``terminal_safety`` is True (default), snapshot ``html`` and string ``result`` fields
+    are truncated using :func:`_effective_max_output_limit` so megabyte payloads do not
+    freeze the terminal. Pass ``terminal_safety=False`` when writing full payloads to a file
+    (e.g. ``ziniao info snapshot -o``).
+    """
+    payload: dict[str, Any] = data
+    if terminal_safety:
+        lim = _effective_max_output_limit()
+        if lim is not None:
+            payload = _truncate_large_fields_deep(data, lim)
     if _CLI_JSON_LEGACY:
-        return json.dumps(data, ensure_ascii=False, indent=indent)
-    env = daemon_to_envelope(data)
-    if _CLI_LLM:
-        cmd = _last_daemon_command.get()
-        env = {**env, "meta": _build_llm_meta(env, cmd)}
+        return json.dumps(payload, ensure_ascii=False, indent=indent)
+    env = daemon_to_envelope(payload)
+    if _CLI_CONTENT_BOUNDARIES:
+        env = _envelope_with_boundary(env)
     return json.dumps(env, ensure_ascii=False, indent=indent)
+
+
+def _print_page_markers(origin: str, body: str) -> None:
+    nonce = _get_boundary_nonce()
+    print(f"--- ZINIAO_PAGE_CONTENT nonce={nonce} origin={origin} ---")
+    print(body)
+    print(f"--- END_ZINIAO_PAGE_CONTENT nonce={nonce} ---")
 
 
 def print_result(data: dict[str, Any], *, json_mode: bool = False) -> None:
     """Print a daemon response dict in the appropriate format."""
     if json_mode:
-        print(dumps_cli_json(data))
+        print(dumps_cli_json(data, terminal_safety=True))
         return
 
     if "error" in data:
-        if _CLI_PLAIN:
-            print(json.dumps({"success": False, "error": str(data["error"])}, ensure_ascii=False, indent=2))
-        else:
-            _print_error(data["error"])
-        return
-
-    if _CLI_PLAIN:
-        print(json.dumps(data, ensure_ascii=False, indent=2))
+        _print_error(data["error"])
         return
 
     try:
@@ -149,6 +175,14 @@ def _print_error(msg: str) -> None:
         Console(stderr=True).print(f"[bold red]Error:[/] {msg}")
     except ImportError:
         print(f"Error: {msg}", file=sys.stderr)
+
+
+def _emit_large_text(*, origin: str, text: str, console: Any) -> None:
+    text = truncate_if_needed(text, _effective_max_output_limit())
+    if _CLI_CONTENT_BOUNDARIES:
+        _print_page_markers(origin, text)
+    else:
+        console.print(text)
 
 
 def _print_rich(data: dict) -> None:
@@ -277,10 +311,8 @@ def _print_rich(data: dict) -> None:
 
     if "html" in data:
         html = data["html"]
-        if len(html) > 2000:
-            console.print(html[:2000] + "\n... (truncated)")
-        else:
-            console.print(html)
+        origin = _origin_from_data(data)
+        _emit_large_text(origin=origin, text=html, console=console)
         return
 
     if "data" in data and str(data.get("data", "")).startswith("data:image"):
@@ -289,10 +321,10 @@ def _print_rich(data: dict) -> None:
 
     if "result" in data and data.get("ok"):
         result = data["result"]
-        if isinstance(result, str) and len(result) > 2000:
-            console.print(result[:2000] + "\n... (truncated)")
+        if isinstance(result, str):
+            _emit_large_text(origin="eval", text=result, console=console)
         else:
-            console.print(repr(result) if not isinstance(result, str) else result)
+            console.print(repr(result))
         return
 
     if "frames" in data and isinstance(data["frames"], list):

@@ -23,9 +23,28 @@
 - **`data`**：成功时为 daemon 的完整响应对象（可能含 `ok`、`url`、`sessions`、`html` 等，因命令而异）。
 - **`error`**：失败时为字符串；成功时为 `null`。
 
-## `--llm`（信封 + `meta`）
+## `--content-boundaries`（与 agent-browser 一致）
 
-使用 **`--llm`** 时仍输出上述信封，并额外包含顶层 **`meta`**（`data` 内有哪些键、快照语义、批量结果说明等），便于大模型解析。与 **`--json-legacy`** 互斥。详见 [cli-llm.md](cli-llm.md)。
+与 **agent-browser** 的 **`--content-boundaries`** 相同：在 **`--json`** 输出上增加顶层 **`_boundary`**：
+
+```json
+{
+  "success": true,
+  "data": { ... },
+  "error": null,
+  "_boundary": { "nonce": "...", "origin": "https://..." }
+}
+```
+
+`origin` 尽量取自 `data.url` / `data.origin`。人类可读模式下，页面类文本会用 `ZINIAO_PAGE_CONTENT` 标记行包裹。环境变量 **`ZINIAO_CONTENT_BOUNDARIES=1`** 等价于该标志。
+
+## `--max-output`
+
+与 agent-browser 的 **`--max-output N`** 思路一致：限制快照 HTML、`eval` 返回字符串等的字符数。环境变量 **`ZINIAO_MAX_OUTPUT`**。
+
+- **未指定**（CLI 与环境均未设置）时，为 **避免终端被巨量 HTML 拖死**，stdout 上仍会对上述字段应用 **默认 2000 字符** 截断（历史行为）。
+- **`--max-output 0`** 或 **`ZINIAO_MAX_OUTPUT=0`**：stdout **不**再自动截断。
+- **`ziniao info snapshot -o file`**：写入文件的 HTML / JSON **始终完整**，不受默认截断影响（与「落盘要全量」一致）。
 
 ## `--json-legacy`
 
@@ -61,4 +80,6 @@ ziniao is visible ".btn" --json | jq '.data.visible'
 
 ## 写入文件
 
-`ziniao info snapshot -o file.html` 在同时使用 **`--json`** 时，写入文件的 JSON 同样使用上述信封格式。
+`ziniao info snapshot -o file.html` 在同时使用 **`--json`** 时，写入文件的 JSON 同样使用上述信封格式（若启用 **`--content-boundaries`**，也会包含 **`_boundary`**）。
+
+面向 Agent / 大模型的用法见 [cli-llm.md](cli-llm.md)（**不**引入非标准的 JSON 扩展字段，与 agent-browser 设计对齐）。

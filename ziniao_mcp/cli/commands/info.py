@@ -37,11 +37,11 @@ def snapshot(
     if out_file:
         with open(out_file, "w", encoding="utf-8") as f:
             if get_json_mode():
-                f.write(dumps_cli_json(result))
+                f.write(dumps_cli_json(result, terminal_safety=False))
             elif "html" in result:
                 f.write(result["html"])
             else:
-                f.write(dumps_cli_json(result))
+                f.write(dumps_cli_json(result, terminal_safety=False))
         typer.echo(f"Snapshot written to {out_file}")
     else:
         print_result(result, json_mode=get_json_mode())

@@ -5,29 +5,35 @@ Entry point registered as ``ziniao`` in pyproject.toml ``[project.scripts]``.
 
 from __future__ import annotations
 
+import os
 import sys
 from typing import Optional
 
 import typer
 
 from .connection import send_command
-from .output import set_cli_json_legacy, set_cli_llm, set_cli_plain, set_last_daemon_command
+from .output import set_cli_json_legacy, set_content_boundaries, set_max_output_chars
+
+
+def _env_truthy(name: str) -> bool:
+    v = os.environ.get(name, "").strip().lower()
+    return v in ("1", "true", "yes", "on")
+
 
 _CLI_EPILOG = """
-Global options (before any subcommand):
-  --store SESSION     Target one Ziniao store for this invocation only (mutually exclusive with --session).
-  --session SESSION   Target one session (store or Chrome) for this invocation only.
-  --json              Print JSON with a fixed envelope: {"success", "data", "error"} (like agent-browser).
-  --json-legacy       Print the raw daemon JSON dict (for older scripts).
-  --llm               Same as --json plus a ``meta`` object (field names, snapshot semantics, batch hints). For LLM / agent parsing.
-  --plain             No Rich tables/colors: print UTF-8 JSON (daemon dict, or {success,error} on failure). Good for pasting logs into chat.
-  --timeout SECONDS   Override auto timeout (0 = auto: 120s for slow commands e.g. snapshot/screenshot/navigate, 60s else).
+Global options (before any subcommand) — aligned with agent-browser where noted:
+  --store SESSION          Target one Ziniao store for this invocation (mutually exclusive with --session).
+  --session SESSION        Target one session (store or Chrome) for this invocation.
+  --json                   JSON envelope {"success","data","error"} (same shape as agent-browser --json).
+  --json-legacy            Raw daemon JSON (no envelope). Mutually exclusive with --json.
+  --content-boundaries     Wrap page-like output; JSON adds "_boundary" {nonce, origin} (like agent-browser).
+  --max-output N           Truncate snapshot HTML / eval text (default 2000 for stdout if unset; 0 = no cap).
+  --timeout SECONDS        Override auto timeout (0 = auto: 120s slow commands, 60s else).
 
-Use ``ziniao GROUP COMMAND --help`` for full flags (e.g. ``ziniao nav wait --help``). Top-level shortcuts mirror those groups.
+Environment (parallel to AGENT_BROWSER_*): ZINIAO_JSON, ZINIAO_CONTENT_BOUNDARIES, ZINIAO_MAX_OUTPUT.
+Rich respects NO_COLOR (see https://no-color.org/).
 
-Each group’s ``ziniao GROUP --help`` repeats parent flags in an epilog (same idea as agent-browser listing global options on subcommand help).
-
-Docs: ``docs/cli-agent-browser-parity.md`` (vs agent-browser), ``docs/cli-json.md`` (JSON envelope), ``docs/cli-llm.md`` (LLM-oriented I/O).
+Docs: docs/cli-json.md, docs/cli-llm.md, docs/cli-agent-browser-parity.md
 """.strip()
 
 app = typer.Typer(
@@ -64,7 +70,6 @@ def get_json_legacy_mode() -> bool:
 
 def run_command(command: str, args: dict | None = None) -> dict:
     """Send *command* to the daemon and return the parsed response dict."""
-    set_last_daemon_command(command)
     timeout = _GLOBAL_TIMEOUT if _GLOBAL_TIMEOUT_EXPLICIT else 0
     return send_command(command, args or {}, _target_session(), timeout)
 
@@ -80,22 +85,23 @@ def _main_callback(
     json_output: bool = typer.Option(
         False,
         "--json",
-        help='JSON output with envelope {"success","data","error"} (agent-browser style).',
+        help='JSON envelope {"success","data","error"} (agent-browser compatible).',
     ),
     json_legacy: bool = typer.Option(
         False,
         "--json-legacy",
-        help="JSON output as raw daemon dict (no envelope); implies JSON mode.",
+        help="JSON as raw daemon dict (no envelope); implies JSON mode.",
     ),
-    llm_hints: bool = typer.Option(
+    content_boundaries: bool = typer.Option(
         False,
-        "--llm",
-        help="Implies --json; add meta (field names, snapshot/batch hints) for LLM parsing. Incompatible with --json-legacy.",
+        "--content-boundaries",
+        help="Delimit page-like stdout / add JSON _boundary (agent-browser style). Or ZINIAO_CONTENT_BOUNDARIES=1.",
     ),
-    plain_output: bool = typer.Option(
-        False,
-        "--plain",
-        help="Skip Rich: print UTF-8 JSON (raw daemon dict, or {success,error} on failure). Ignored when --json/--llm.",
+    max_output: Optional[int] = typer.Option(
+        None,
+        "--max-output",
+        help="Max chars for snapshot HTML / eval on stdout (default 2000 if unset; 0 = unlimited). "
+        "Files from -o are never auto-truncated. Or ZINIAO_MAX_OUTPUT.",
     ),
     timeout: float = typer.Option(
         0, "--timeout", help="Command timeout in seconds (0 = auto: 120s for slow commands, 60s for others).",
@@ -109,16 +115,24 @@ def _main_callback(
     if json_output and json_legacy:
         typer.echo("Error: use either --json or --json-legacy, not both.", err=True)
         raise typer.Exit(1)
-    if llm_hints and json_legacy:
-        typer.echo("Error: --llm cannot be combined with --json-legacy.", err=True)
-        raise typer.Exit(1)
-    _GLOBAL_STORE = store
-    _GLOBAL_SESSION = session
-    _GLOBAL_JSON = json_output or json_legacy or llm_hints
+
+    json_from_env = _env_truthy("ZINIAO_JSON")
+    _GLOBAL_JSON = bool(json_output or json_legacy or json_from_env)
     _GLOBAL_JSON_LEGACY = json_legacy
     set_cli_json_legacy(json_legacy)
-    set_cli_llm(llm_hints)
-    set_cli_plain(plain_output)
+
+    boundaries = content_boundaries or _env_truthy("ZINIAO_CONTENT_BOUNDARIES")
+    set_content_boundaries(boundaries)
+
+    max_chars = max_output
+    if max_chars is None:
+        raw_m = os.environ.get("ZINIAO_MAX_OUTPUT", "").strip()
+        if raw_m.isdigit():
+            max_chars = int(raw_m)
+    set_max_output_chars(max_chars)
+
+    _GLOBAL_STORE = store
+    _GLOBAL_SESSION = session
     _GLOBAL_TIMEOUT = timeout
     _GLOBAL_TIMEOUT_EXPLICIT = timeout > 0
 

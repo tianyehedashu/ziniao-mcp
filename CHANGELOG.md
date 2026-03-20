@@ -4,20 +4,26 @@
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-03-21
+
 ### 新增
 
-- **`--llm`**：JSON 信封上增加 **`meta`**（`data` 键名、快照/批量说明、`daemon_command` 等），便于大模型解析；**`--plain`**：关闭 Rich，stdout 为 UTF-8 JSON 文本
-- **`docs/cli-llm.md`**：面向 LLM/Agent 的输入输出约定
-
+- **`--content-boundaries`**、**`--max-output`**：与 **agent-browser** CLI 同名的全局选项；JSON 可选顶层 **`_boundary`**；长文本按字符截断。环境变量 **`ZINIAO_JSON`**、**`ZINIAO_CONTENT_BOUNDARIES`**、**`ZINIAO_MAX_OUTPUT`**（对标 `AGENT_BROWSER_*`）。终端着色遵循 **`NO_COLOR`**
 - **`ziniao_mcp/cli/help_epilog.py`**：各命令分组 `Typer` 共用 `GROUP_CLI_EPILOG`，`ziniao <group> --help` 底部提示父级全局选项与对照文档（对齐 agent-browser 在子命令帮助中重复 Global Options 的体验）
-
 - **`--json-legacy`**：输出无信封的 daemon JSON，与变更前的 `--json` 行为兼容
 - **`docs/cli-json.md`**：`--json` 信封与 `jq` 示例说明
+- **`docs/cli-llm.md`**：面向 Agent 的约定（对齐 agent-browser，**不**使用自创 JSON `meta` 字段）
 - **`docs/cli-agent-browser-parity.md`**：与 agent-browser CLI 的全量能力对照（含 daemon `_COMMANDS` 列表）
 
 ### 变更
 
 - **`--json`**：默认输出 `{"success","data","error"}` 信封（与 agent-browser CLI 对齐）；顶层快捷命令与 `nav` / `act` / `info` / `get` / `scroll` / `chrome` 子命令参数对齐（如 `wait` 的 `state`、`screenshot` 的 `--full-page`、`launch` 的 `--executable-path` 等）
+- **移除** 实验性 **`--llm`**（顶层 `meta`）与 **`--plain`**，避免与 agent-browser 设计分叉；请改用 **`--json`** + **`--content-boundaries`** + **`--max-output`**
+- **stdout 截断**：未指定 **`--max-output` / `ZINIAO_MAX_OUTPUT`** 时，快照 HTML 与 `eval` 字符串在终端 / JSON stdout 上恢复 **默认 2000 字符** 上限；**`--max-output 0`** 关闭；**`info snapshot -o`** 写入文件仍为完整 HTML / JSON
+
+### 工程
+
+- **`pyproject.toml` / Git 标签**：包版本与 **`v0.2.6`** 标签对齐
 
 ## [0.2.5] - 2026-03-20
 
