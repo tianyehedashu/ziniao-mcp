@@ -79,6 +79,7 @@ Per the [Agent Skills layout](https://agentskills.io/specification), copy-ready 
 | [assets/config.example.yaml](assets/config.example.yaml) | Full `ziniao` + `chrome` YAML (including `stealth` under `ziniao`) |
 | [assets/env.example](assets/env.example) | `ZINIAO_*` / `CHROME_*` names for `~/.ziniao/.env` or MCP `env` |
 | [references/configuration.md](references/configuration.md) | Paths, precedence (CLI vs daemon), MCP, security |
+| [docs/cli-agent-browser-parity.md](../../docs/cli-agent-browser-parity.md) | Full CLI parity vs **agent-browser** (commands, batch format, snapshot semantics, daemon command names) |
 
 **Quick use:** copy `config.example.yaml` to `~/.ziniao/config.yaml` or `<repo>/config/config.yaml`, fill in values; put secrets in `env.example`-style variables or MCP `env` instead of committing them.
 

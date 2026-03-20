@@ -721,6 +721,7 @@ ziniao-mcp/
 | [API 参考](docs/api-reference.md) | 全部 MCP 工具的详细参数和返回值 |
 | [开发指南](docs/development.md) | 添加新工具、调试、构建发布、GitHub 自动发布 PyPI |
 | [CLI JSON 输出](docs/cli-json.md) | `--json` / `--json-legacy` 与 `jq` 字段路径 |
+| [与 agent-browser CLI 对照](docs/cli-agent-browser-parity.md) | 全量命令、参数语义、batch/snapshot 差异与 daemon 命令表 |
 
 ## 上游与贡献
 
