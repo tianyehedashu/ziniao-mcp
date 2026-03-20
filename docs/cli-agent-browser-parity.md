@@ -162,7 +162,9 @@
 
 1. **改 CLI 时**：同步更新 Typer 的 `help=` / docstring、[README CLI 章节](../README.md#cli-命令行工具)、以及本文档中与 agent-browser 的对照行。
 2. **面向 AI Agent**：在提示词中明确 **snapshot 格式差异** 与 **batch JSON 差异**，避免混用 agent-browser 文档中的示例。
-3. **若要对齐 agent-browser 子命令帮助粒度**：可在 Typer 上为高频命令增加 `rich_markup`/`epilog`，或维护按命令的 Markdown（类似 `print_command_help`）。
+3. **全局选项在子分组中的可见性**：各命令分组 Typer（`nav`、`act`、`info` 等）共用 `ziniao_mcp/cli/help_epilog.py` 中的 **`GROUP_CLI_EPILOG`**，在 `ziniao GROUP --help` 底部提示 `--store` / `--session` / `--json` 等与对照文档路径（对齐 agent-browser 在子命令帮助里重复 Global Options 的做法）。
+
+4. **若要对齐 agent-browser 单命令长帮助**：可继续为高频命令增加 docstring 示例或独立 Markdown（类似 `print_command_help`）。
 
 ---
 

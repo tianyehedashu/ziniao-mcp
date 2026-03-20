@@ -81,6 +81,8 @@ Per the [Agent Skills layout](https://agentskills.io/specification), copy-ready 
 | [references/configuration.md](references/configuration.md) | Paths, precedence (CLI vs daemon), MCP, security |
 | [docs/cli-agent-browser-parity.md](../../docs/cli-agent-browser-parity.md) | Full CLI parity vs **agent-browser** (commands, batch format, snapshot semantics, daemon command names) |
 
+**Help alignment:** `ziniao nav --help`, `ziniao act --help`, etc. end with an epilog listing parent flags (`--store`, `--session`, `--json`, `--json-legacy`, `--timeout`) and pointers to the docs above — similar to agent-browser repeating global options on subcommand help.
+
 **Quick use:** copy `config.example.yaml` to `~/.ziniao/config.yaml` or `<repo>/config/config.yaml`, fill in values; put secrets in `env.example`-style variables or MCP `env` instead of committing them.
 
 ## Core Workflow

@@ -7,9 +7,10 @@ from typing import Optional
 import typer
 
 from .. import get_json_mode, run_command
+from ..help_epilog import GROUP_CLI_EPILOG
 from ..output import print_result
 
-app = typer.Typer(no_args_is_help=True)
+app = typer.Typer(no_args_is_help=True, epilog=GROUP_CLI_EPILOG)
 
 
 @app.command("route")

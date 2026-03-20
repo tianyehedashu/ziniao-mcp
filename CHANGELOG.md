@@ -6,6 +6,8 @@
 
 ### 新增
 
+- **`ziniao_mcp/cli/help_epilog.py`**：各命令分组 `Typer` 共用 `GROUP_CLI_EPILOG`，`ziniao <group> --help` 底部提示父级全局选项与对照文档（对齐 agent-browser 在子命令帮助中重复 Global Options 的体验）
+
 - **`--json-legacy`**：输出无信封的 daemon JSON，与变更前的 `--json` 行为兼容
 - **`docs/cli-json.md`**：`--json` 信封与 `jq` 示例说明
 - **`docs/cli-agent-browser-parity.md`**：与 agent-browser CLI 的全量能力对照（含 daemon `_COMMANDS` 列表）

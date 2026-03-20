@@ -10,7 +10,9 @@ from typing import Optional
 
 import typer
 
-app = typer.Typer(no_args_is_help=True)
+from ..help_epilog import GROUP_CLI_EPILOG
+
+app = typer.Typer(no_args_is_help=True, epilog=GROUP_CLI_EPILOG)
 
 _STATE_DIR = Path.home() / ".ziniao"
 _GLOBAL_CONFIG = _STATE_DIR / "config.yaml"

@@ -22,6 +22,10 @@ Global options (before any subcommand):
   --timeout SECONDS   Override auto timeout (0 = auto: 120s for slow commands e.g. snapshot/screenshot/navigate, 60s else).
 
 Use ``ziniao GROUP COMMAND --help`` for full flags (e.g. ``ziniao nav wait --help``). Top-level shortcuts mirror those groups.
+
+Each group’s ``ziniao GROUP --help`` repeats parent flags in an epilog (same idea as agent-browser listing global options on subcommand help).
+
+Docs: ``docs/cli-agent-browser-parity.md`` (vs agent-browser), ``docs/cli-json.md`` (JSON envelope).
 """.strip()
 
 app = typer.Typer(
