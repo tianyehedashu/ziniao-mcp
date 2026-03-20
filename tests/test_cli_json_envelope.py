@@ -13,6 +13,8 @@ from ziniao_mcp.cli.output import (
     daemon_to_envelope,
     dumps_cli_json,
     set_cli_json_legacy,
+    set_cli_llm,
+    set_last_daemon_command,
 )
 
 
@@ -49,6 +51,59 @@ def test_dumps_cli_json_legacy() -> None:
         assert json.loads(s) == {"a": 2}
     finally:
         set_cli_json_legacy(False)
+
+
+def test_dumps_cli_json_llm_meta() -> None:
+    set_cli_json_legacy(False)
+    set_cli_llm(True)
+    set_last_daemon_command("get_title")
+    try:
+        obj = json.loads(dumps_cli_json({"ok": True, "title": "T"}))
+        assert obj["success"] is True
+        assert "meta" in obj
+        assert obj["meta"]["daemon_command"] == "get_title"
+        assert "data_field_names" in obj["meta"]
+        assert "title" in obj["meta"]["data_field_names"]
+    finally:
+        set_cli_llm(False)
+
+
+def test_llm_and_json_legacy_mutually_exclusive() -> None:
+    runner = CliRunner()
+    result = runner.invoke(app, ["--llm", "--json-legacy", "config", "path"])
+    assert result.exit_code == 1
+    out = (result.stdout or "") + (result.stderr or "")
+    assert "llm" in out.lower() and "legacy" in out.lower()
+
+
+def test_llm_flag_adds_meta(monkeypatch: pytest.MonkeyPatch) -> None:
+    from ziniao_mcp import cli as cli_mod
+
+    def fake_send_command(command: str, args: dict, target_session, timeout: float) -> dict:
+        return {"active": "x", "sessions": [], "count": 0}
+
+    monkeypatch.setattr(cli_mod, "send_command", fake_send_command)
+    runner = CliRunner()
+    result = runner.invoke(cli_mod.app, ["--llm", "session", "list"])
+    assert result.exit_code == 0, result.stdout + result.stderr
+    obj = json.loads(result.stdout)
+    assert obj["success"] is True
+    assert "meta" in obj
+    assert obj["meta"]["daemon_command"] == "session_list"
+
+
+def test_plain_outputs_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    from ziniao_mcp import cli as cli_mod
+
+    def fake_send_command(command: str, args: dict, target_session, timeout: float) -> dict:
+        return {"active": "x", "sessions": [], "count": 0}
+
+    monkeypatch.setattr(cli_mod, "send_command", fake_send_command)
+    runner = CliRunner()
+    result = runner.invoke(cli_mod.app, ["--plain", "session", "list"])
+    assert result.exit_code == 0
+    obj = json.loads(result.stdout)
+    assert obj["sessions"] == []
 
 
 def test_json_and_json_legacy_mutually_exclusive() -> None:

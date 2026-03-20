@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+import contextvars
 import json
 import sys
 from typing import Any
 
 # Set by CLI callback: when True, --json prints the daemon dict as-is (legacy scripts).
 _CLI_JSON_LEGACY: bool = False
+_CLI_LLM: bool = False
+_CLI_PLAIN: bool = False
+
+_last_daemon_command: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "ziniao_last_daemon_command", default=None,
+)
 
 
 def set_cli_json_legacy(enabled: bool) -> None:
@@ -16,8 +23,33 @@ def set_cli_json_legacy(enabled: bool) -> None:
     _CLI_JSON_LEGACY = enabled
 
 
+def set_cli_llm(enabled: bool) -> None:
+    """When True and not legacy JSON, envelope includes ``meta`` for LLM-friendly parsing hints."""
+    global _CLI_LLM  # noqa: PLW0603
+    _CLI_LLM = enabled
+
+
+def set_cli_plain(enabled: bool) -> None:
+    """When True (and not JSON mode), skip Rich and print UTF-8 JSON text for easy copy-paste."""
+    global _CLI_PLAIN  # noqa: PLW0603
+    _CLI_PLAIN = enabled
+
+
 def cli_json_uses_legacy() -> bool:
     return _CLI_JSON_LEGACY
+
+
+def cli_llm_enabled() -> bool:
+    return _CLI_LLM
+
+
+def cli_plain_enabled() -> bool:
+    return _CLI_PLAIN
+
+
+def set_last_daemon_command(name: str) -> None:
+    """Record the daemon command name for ``meta.daemon_command`` (set from ``run_command``)."""
+    _last_daemon_command.set(name)
 
 
 def daemon_to_envelope(raw: dict[str, Any]) -> dict[str, Any]:
@@ -27,10 +59,62 @@ def daemon_to_envelope(raw: dict[str, Any]) -> dict[str, Any]:
     return {"success": True, "data": raw, "error": None}
 
 
+def _build_llm_meta(envelope: dict[str, Any], daemon_command: str | None) -> dict[str, Any]:
+    """Short, stable hints so models know how to interpret ``data`` without guessing."""
+    meta: dict[str, Any] = {
+        "schema_version": 1,
+        "role": "ziniao_cli_response",
+        "how_to_read": (
+            "If success is true, interpret `data` (object; shape depends on daemon_command). "
+            "If success is false, read `error` (string); `data` is null."
+        ),
+        "docs": "docs/cli-llm.md",
+    }
+    if daemon_command:
+        meta["daemon_command"] = daemon_command
+
+    if envelope.get("success") and isinstance(envelope.get("data"), dict):
+        d = envelope["data"]
+        keys = sorted(d.keys())
+        meta["data_field_names"] = keys[:80]
+        if len(keys) > 80:
+            meta["data_field_names_truncated"] = True
+
+        if daemon_command in ("snapshot", "snapshot_enhanced"):
+            meta["snapshot_semantics"] = (
+                "Unlike agent-browser CLI default snapshot (accessibility tree + @refs), ziniao returns HTML in "
+                "`data.html` unless using snapshot_enhanced with interactive/compact/selector. "
+                "Prefer CSS selectors; with interactive=true check `interactive_elements` if returned."
+            )
+        elif "html" in d:
+            meta["note"] = "`data.html` is an HTML string (length can be large)."
+
+        if isinstance(d.get("data"), str) and str(d["data"]).startswith("data:image"):
+            meta["screenshot"] = (
+                "`data.data` is a data URL; base64 payload follows the first comma — decode for raw image bytes."
+            )
+
+        if "results" in d and "total" in d and "executed" in d and isinstance(d.get("results"), list):
+            meta["batch"] = (
+                "`data.results` is a list of per-step daemon dicts (not individually enveloped); "
+                "each item may contain `error` on failure."
+            )
+
+    elif not envelope.get("success"):
+        meta["note"] = "Request failed; use `error` string. Optional: retry with `--timeout` or check session."
+
+    return meta
+
+
 def dumps_cli_json(data: dict[str, Any], *, indent: int = 2) -> str:
     """Serialize for stdout/file when JSON mode is on (envelope unless legacy)."""
-    out = data if _CLI_JSON_LEGACY else daemon_to_envelope(data)
-    return json.dumps(out, ensure_ascii=False, indent=indent)
+    if _CLI_JSON_LEGACY:
+        return json.dumps(data, ensure_ascii=False, indent=indent)
+    env = daemon_to_envelope(data)
+    if _CLI_LLM:
+        cmd = _last_daemon_command.get()
+        env = {**env, "meta": _build_llm_meta(env, cmd)}
+    return json.dumps(env, ensure_ascii=False, indent=indent)
 
 
 def print_result(data: dict[str, Any], *, json_mode: bool = False) -> None:
@@ -40,7 +124,14 @@ def print_result(data: dict[str, Any], *, json_mode: bool = False) -> None:
         return
 
     if "error" in data:
-        _print_error(data["error"])
+        if _CLI_PLAIN:
+            print(json.dumps({"success": False, "error": str(data["error"])}, ensure_ascii=False, indent=2))
+        else:
+            _print_error(data["error"])
+        return
+
+    if _CLI_PLAIN:
+        print(json.dumps(data, ensure_ascii=False, indent=2))
         return
 
     try:

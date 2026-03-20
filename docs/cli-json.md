@@ -23,6 +23,10 @@
 - **`data`**：成功时为 daemon 的完整响应对象（可能含 `ok`、`url`、`sessions`、`html` 等，因命令而异）。
 - **`error`**：失败时为字符串；成功时为 `null`。
 
+## `--llm`（信封 + `meta`）
+
+使用 **`--llm`** 时仍输出上述信封，并额外包含顶层 **`meta`**（`data` 内有哪些键、快照语义、批量结果说明等），便于大模型解析。与 **`--json-legacy`** 互斥。详见 [cli-llm.md](cli-llm.md)。
+
 ## `--json-legacy`
 
 若脚本仍按 **旧版**「直接解析 daemon 字典」编写（例如 `jq '.sessions'`），请使用 **`--json-legacy`**，输出与原先 **`--json`** 行为一致（无 `success` / `data` / `error` 信封）。**`--json` 与 `--json-legacy` 不能同时使用。**

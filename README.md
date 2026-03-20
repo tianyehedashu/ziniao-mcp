@@ -191,11 +191,13 @@ ziniao [全局选项] <命令> [参数]
 | `--store <id>` | 指定目标紫鸟店铺（不切换活动会话）；与 `--session` 互斥 |
 | `--session <id>` | 指定目标会话（店铺或 Chrome）；与 `--store` 互斥 |
 | `--json` | 机器可读 JSON，固定信封 `{"success": bool, "data": object\|null, "error": string\|null}`（与 agent-browser CLI 一致）；成功时 `data` 为 daemon 返回体 |
-| `--json-legacy` | 输出 daemon 原始 JSON 对象（无信封）；与 `--json` 互斥；适用于依赖旧输出的脚本 |
+| `--json-legacy` | 输出 daemon 原始 JSON 对象（无信封）；与 `--json` / `--llm` 互斥；适用于依赖旧输出的脚本 |
+| `--llm` | 等价启用 JSON 信封，并附加 **`meta`**（字段名列表、快照/批量说明等），便于大模型与 Agent 解析 |
+| `--plain` | 关闭 Rich：stdout 为 UTF-8 JSON（成功为 daemon 字典，失败为 `success`+`error`）；与 `--json`/`--llm` 同时使用时仍以信封 JSON 为准 |
 | `--timeout <秒>` | 命令超时；`0` 表示自动（navigate/click/snapshot/screenshot 等慢命令 120s，其余 60s） |
 | `--help` | 查看帮助；根命令底部会列出上述全局选项摘要 |
 
-详见 [docs/cli-json.md](docs/cli-json.md)。
+详见 [docs/cli-json.md](docs/cli-json.md)、[docs/cli-llm.md](docs/cli-llm.md)。
 
 ### 命令概览
 
@@ -721,6 +723,7 @@ ziniao-mcp/
 | [API 参考](docs/api-reference.md) | 全部 MCP 工具的详细参数和返回值 |
 | [开发指南](docs/development.md) | 添加新工具、调试、构建发布、GitHub 自动发布 PyPI |
 | [CLI JSON 输出](docs/cli-json.md) | `--json` / `--json-legacy` 与 `jq` 字段路径 |
+| [CLI 与 LLM](docs/cli-llm.md) | `--llm` / `--plain`、输入约定、快照语义 |
 | [与 agent-browser CLI 对照](docs/cli-agent-browser-parity.md) | 全量命令、参数语义、batch/snapshot 差异与 daemon 命令表 |
 
 ## 上游与贡献

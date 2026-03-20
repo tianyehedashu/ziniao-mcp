@@ -80,8 +80,11 @@ Per the [Agent Skills layout](https://agentskills.io/specification), copy-ready 
 | [assets/env.example](assets/env.example) | `ZINIAO_*` / `CHROME_*` names for `~/.ziniao/.env` or MCP `env` |
 | [references/configuration.md](references/configuration.md) | Paths, precedence (CLI vs daemon), MCP, security |
 | [docs/cli-agent-browser-parity.md](../../docs/cli-agent-browser-parity.md) | Full CLI parity vs **agent-browser** (commands, batch format, snapshot semantics, daemon command names) |
+| [docs/cli-llm.md](../../docs/cli-llm.md) | **LLM-oriented I/O**: `--llm` (envelope + `meta`), `--plain` (no Rich), stdin/batch rules, snapshot vs agent-browser |
 
-**Help alignment:** `ziniao nav --help`, `ziniao act --help`, etc. end with an epilog listing parent flags (`--store`, `--session`, `--json`, `--json-legacy`, `--timeout`) and pointers to the docs above — similar to agent-browser repeating global options on subcommand help.
+**Help alignment:** `ziniao nav --help`, `ziniao act --help`, etc. end with an epilog listing parent flags (`--store`, `--session`, `--json`, `--json-legacy`, `--llm`, `--plain`, `--timeout`) and pointers to the docs above — similar to agent-browser repeating global options on subcommand help.
+
+**When the model consumes terminal output:** Prefer **`ziniao --llm <subcommand>...`** so each JSON response includes **`meta`** (`data_field_names`, `snapshot_semantics` for snapshot commands, `batch` for `batch run`, `daemon_command`). Use **`--plain`** when you need UTF-8 JSON without Rich tables (e.g. paste full stdout into chat). See [cli-llm.md](../../docs/cli-llm.md).
 
 **Quick use:** copy `config.example.yaml` to `~/.ziniao/config.yaml` or `<repo>/config/config.yaml`, fill in values; put secrets in `env.example`-style variables or MCP `env` instead of committing them.
 
@@ -321,7 +324,9 @@ ziniao is visible ".next" --json | jq -e '.data.visible'
 
 Use **`--json-legacy`** when you need the previous behavior (raw daemon dict, no envelope). **`--json` and `--json-legacy` are mutually exclusive.**
 
-Full notes: [docs/cli-json.md](../../docs/cli-json.md).
+Use **`--llm`** when an LLM reads stdout: same envelope as `--json`, plus **`meta`** (`data_field_names`, `daemon_command`, snapshot/batch hints). Example: `ziniao --llm session list | jq '.meta.data_field_names'`.
+
+Full notes: [docs/cli-json.md](../../docs/cli-json.md), [docs/cli-llm.md](../../docs/cli-llm.md).
 
 ## Global Flags
 
@@ -331,6 +336,8 @@ Full notes: [docs/cli-json.md](../../docs/cli-json.md).
 | `--session <id>` | Target any session — store or Chrome (no switch) |
 | `--json` | JSON with `success` / `data` / `error` envelope (agent-browser style) |
 | `--json-legacy` | Raw daemon JSON dict (implies JSON mode); for older scripts |
+| `--llm` | JSON envelope plus **`meta`** for LLM-friendly parsing (implies JSON; mutually exclusive with `--json-legacy`) |
+| `--plain` | No Rich: print UTF-8 JSON to stdout (daemon dict, or `{success,error}` on failure); with `--json`/`--llm` the envelope still wins |
 | `--timeout <sec>` | Command timeout (0 = auto: 120s for slow commands like click/type/screenshot, 60s for others) |
 
 `--store` and `--session` are mutually exclusive.

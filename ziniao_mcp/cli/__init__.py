@@ -11,7 +11,7 @@ from typing import Optional
 import typer
 
 from .connection import send_command
-from .output import set_cli_json_legacy
+from .output import set_cli_json_legacy, set_cli_llm, set_cli_plain, set_last_daemon_command
 
 _CLI_EPILOG = """
 Global options (before any subcommand):
@@ -19,13 +19,15 @@ Global options (before any subcommand):
   --session SESSION   Target one session (store or Chrome) for this invocation only.
   --json              Print JSON with a fixed envelope: {"success", "data", "error"} (like agent-browser).
   --json-legacy       Print the raw daemon JSON dict (for older scripts).
+  --llm               Same as --json plus a ``meta`` object (field names, snapshot semantics, batch hints). For LLM / agent parsing.
+  --plain             No Rich tables/colors: print UTF-8 JSON (daemon dict, or {success,error} on failure). Good for pasting logs into chat.
   --timeout SECONDS   Override auto timeout (0 = auto: 120s for slow commands e.g. snapshot/screenshot/navigate, 60s else).
 
 Use ``ziniao GROUP COMMAND --help`` for full flags (e.g. ``ziniao nav wait --help``). Top-level shortcuts mirror those groups.
 
 Each group’s ``ziniao GROUP --help`` repeats parent flags in an epilog (same idea as agent-browser listing global options on subcommand help).
 
-Docs: ``docs/cli-agent-browser-parity.md`` (vs agent-browser), ``docs/cli-json.md`` (JSON envelope).
+Docs: ``docs/cli-agent-browser-parity.md`` (vs agent-browser), ``docs/cli-json.md`` (JSON envelope), ``docs/cli-llm.md`` (LLM-oriented I/O).
 """.strip()
 
 app = typer.Typer(
@@ -62,6 +64,7 @@ def get_json_legacy_mode() -> bool:
 
 def run_command(command: str, args: dict | None = None) -> dict:
     """Send *command* to the daemon and return the parsed response dict."""
+    set_last_daemon_command(command)
     timeout = _GLOBAL_TIMEOUT if _GLOBAL_TIMEOUT_EXPLICIT else 0
     return send_command(command, args or {}, _target_session(), timeout)
 
@@ -84,6 +87,16 @@ def _main_callback(
         "--json-legacy",
         help="JSON output as raw daemon dict (no envelope); implies JSON mode.",
     ),
+    llm_hints: bool = typer.Option(
+        False,
+        "--llm",
+        help="Implies --json; add meta (field names, snapshot/batch hints) for LLM parsing. Incompatible with --json-legacy.",
+    ),
+    plain_output: bool = typer.Option(
+        False,
+        "--plain",
+        help="Skip Rich: print UTF-8 JSON (raw daemon dict, or {success,error} on failure). Ignored when --json/--llm.",
+    ),
     timeout: float = typer.Option(
         0, "--timeout", help="Command timeout in seconds (0 = auto: 120s for slow commands, 60s for others).",
     ),
@@ -96,11 +109,16 @@ def _main_callback(
     if json_output and json_legacy:
         typer.echo("Error: use either --json or --json-legacy, not both.", err=True)
         raise typer.Exit(1)
+    if llm_hints and json_legacy:
+        typer.echo("Error: --llm cannot be combined with --json-legacy.", err=True)
+        raise typer.Exit(1)
     _GLOBAL_STORE = store
     _GLOBAL_SESSION = session
-    _GLOBAL_JSON = json_output or json_legacy
+    _GLOBAL_JSON = json_output or json_legacy or llm_hints
     _GLOBAL_JSON_LEGACY = json_legacy
     set_cli_json_legacy(json_legacy)
+    set_cli_llm(llm_hints)
+    set_cli_plain(plain_output)
     _GLOBAL_TIMEOUT = timeout
     _GLOBAL_TIMEOUT_EXPLICIT = timeout > 0
 

@@ -9,7 +9,7 @@ import typer
 
 from .. import get_json_mode, run_command
 from ..help_epilog import GROUP_CLI_EPILOG
-from ..output import dumps_cli_json, print_result
+from ..output import dumps_cli_json, print_result, set_last_daemon_command
 
 app = typer.Typer(no_args_is_help=True, epilog=GROUP_CLI_EPILOG)
 
@@ -20,8 +20,10 @@ def batch_run(
 ) -> None:
     """Execute a JSON array of commands from stdin.
 
-    Each element should be: {"command": "...", "args": {...}}
-    Stdin must be UTF-8 (e.g. on Windows use: Get-Content -Encoding utf8 file.json | ziniao batch run).
+    Each element must be: {"command": "<daemon_command>", "args": {...}} — command names match
+    dispatch registry (e.g. navigate, snapshot, type_text), not always Typer spellings.
+
+    Stdin must be UTF-8 (e.g. on Windows: Get-Content -Encoding utf8 file.json | ziniao batch run).
 
     Example: echo '[{"command":"navigate","args":{"url":"https://example.com"}}]' | ziniao batch run
     """
@@ -70,6 +72,7 @@ def batch_run(
             break
 
     if get_json_mode():
+        set_last_daemon_command("batch_run")
         print(dumps_cli_json({"results": results, "total": len(commands), "executed": executed}))
     else:
         for i, r in enumerate(results):

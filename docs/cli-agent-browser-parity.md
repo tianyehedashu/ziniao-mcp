@@ -10,7 +10,8 @@
 |------|---------------|--------|
 | 调用方式 | 扁平 `agent-browser <动词> ...`，部分为复合命令（`get text`、`network route`） | **分组** + **顶层快捷**：`ziniao nav go` 与 `ziniao navigate` 等价；完整参数以 `ziniao <group> <cmd> --help` 为准 |
 | 会话 | `--session` 隔离浏览器进程（socket） | `--session` / `--store` 指向**已存在的**店铺或 Chrome 会话，**不切换**全局活动会话（仅本次命令） |
-| JSON | `{ success, data, error }` | 默认 **`--json`** 已对齐该信封；**`--json-legacy`** 为原始 daemon 字典（见 [cli-json.md](cli-json.md)） |
+| JSON | `{ success, data, error }` | **`--json`** 对齐信封；**`--json-legacy`** 原始 daemon 字典；**`--llm`** 信封 + **`meta`**（见 [cli-json.md](cli-json.md)、[cli-llm.md](cli-llm.md)） |
+| 人类可读输出 | Rich 表格 / 边界标记等 | **`--plain`**：无 Rich，stdout 为 UTF-8 JSON，便于粘贴给大模型 |
 | 帮助深度 | 根帮助 + **按命令**长帮助（Usage / Options / Examples / 环境变量） | Typer 默认帮助 + 部分命令 docstring 示例；全局选项见根 **`--help` epilog** 与本文档 |
 | 批量 | stdin：**JSON 数组的「字符串数组」**，每项是一条 argv | stdin：**JSON 数组的 `{ "command", "args" }`**，与 daemon 命令名一致（见下节） |
 

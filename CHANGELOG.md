@@ -6,6 +6,9 @@
 
 ### 新增
 
+- **`--llm`**：JSON 信封上增加 **`meta`**（`data` 键名、快照/批量说明、`daemon_command` 等），便于大模型解析；**`--plain`**：关闭 Rich，stdout 为 UTF-8 JSON 文本
+- **`docs/cli-llm.md`**：面向 LLM/Agent 的输入输出约定
+
 - **`ziniao_mcp/cli/help_epilog.py`**：各命令分组 `Typer` 共用 `GROUP_CLI_EPILOG`，`ziniao <group> --help` 底部提示父级全局选项与对照文档（对齐 agent-browser 在子命令帮助中重复 Global Options 的体验）
 
 - **`--json-legacy`**：输出无信封的 daemon JSON，与变更前的 `--json` 行为兼容
