@@ -21,14 +21,16 @@ def _env_truthy(name: str) -> bool:
 
 
 _CLI_EPILOG = """
-Global options (before any subcommand) — aligned with agent-browser where noted:
-  --store SESSION          Target one Ziniao store for this invocation (mutually exclusive with --session).
-  --session SESSION        Target one session (store or Chrome) for this invocation.
-  --json                   JSON envelope {"success","data","error"} (same shape as agent-browser --json).
-  --json-legacy            Raw daemon JSON (no envelope). Mutually exclusive with --json.
-  --content-boundaries     Wrap page-like output; JSON adds "_boundary" {nonce, origin} (like agent-browser).
-  --max-output N           Truncate snapshot HTML / eval text (default 2000 for stdout if unset; 0 = no cap).
-  --timeout SECONDS        Override auto timeout (0 = auto: 120s slow commands, 60s else).
+Global options (always before the subcommand: ziniao [options] <command> ...):
+  --store SESSION          This command only; does not change active session. E.g. ziniao --store mystore click "#ok"
+  --session SESSION        This command only; store or Chrome session id. E.g. ziniao --session s1 url (not with --store)
+  --json                   Machine-readable envelope. E.g. ziniao --json url | jq .data
+  --json-legacy            Raw daemon JSON, no envelope. E.g. ziniao --json-legacy session list (not with --json)
+  --content-boundaries     Human stdout: ZINIAO_PAGE_CONTENT markers; with --json: top-level _boundary. E.g. ziniao --content-boundaries snapshot
+  --max-output N           Cap snapshot/eval on stdout (default 2000 if unset; 0 = no cap). E.g. ziniao --max-output 0 snapshot
+  --timeout SECONDS        Per-command daemon timeout (0 = auto: 120s slow cmds, 60s else). E.g. ziniao --timeout 180 navigate URL
+  --install-completion     Install shell tab-completion for ziniao (Typer). E.g. ziniao --install-completion
+  --show-completion        Print completion script to stdout. E.g. ziniao --show-completion
 
 Quick reference (flat shortcuts; grouped: ziniao <nav|act|info|get|scroll|...> <cmd> --help):
   Usage: ziniao [global options] <command> [args]
@@ -98,34 +100,45 @@ def run_command(command: str, args: dict | None = None) -> dict:
 @app.callback()
 def _main_callback(
     store: Optional[str] = typer.Option(
-        None, "--store", help="Target a specific Ziniao store without switching the active session.",
+        None,
+        "--store",
+        help='Ziniao store id for this command only (no global session switch). '
+        'E.g. ziniao --store mystore click "#ok". Not with --session.',
     ),
     session: Optional[str] = typer.Option(
-        None, "--session", help="Target a specific session (store or Chrome) without switching the active session.",
+        None,
+        "--session",
+        help='Session id (store or Chrome) for this command only. '
+        'E.g. ziniao --session abc123 url. Not with --store.',
     ),
     json_output: bool = typer.Option(
         False,
         "--json",
-        help='JSON envelope {"success","data","error"} (agent-browser compatible).',
+        help='JSON envelope success/data/error (agent-browser style). '
+        'E.g. ziniao --json url | jq .data. Or env ZINIAO_JSON=1.',
     ),
     json_legacy: bool = typer.Option(
         False,
         "--json-legacy",
-        help="JSON as raw daemon dict (no envelope); implies JSON mode.",
+        help="Raw daemon JSON, no envelope. E.g. ziniao --json-legacy session list. Not with --json.",
     ),
     content_boundaries: bool = typer.Option(
         False,
         "--content-boundaries",
-        help="Delimit page-like stdout / add JSON _boundary (agent-browser style). Or ZINIAO_CONTENT_BOUNDARIES=1.",
+        help="Delimit large page text on stdout: human mode uses ZINIAO_PAGE_CONTENT lines; "
+        "with --json adds top-level _boundary. E.g. ziniao --content-boundaries snapshot. "
+        "Or ZINIAO_CONTENT_BOUNDARIES=1.",
     ),
     max_output: Optional[int] = typer.Option(
         None,
         "--max-output",
-        help="Max chars for snapshot HTML / eval on stdout (default 2000 if unset; 0 = unlimited). "
-        "Files from -o are never auto-truncated. Or ZINIAO_MAX_OUTPUT.",
+        help="Cap snapshot/eval chars on stdout (default 2000 if unset; 0=unlimited). "
+        "E.g. ziniao --max-output 0 snapshot. -o file output is never capped.",
     ),
     timeout: float = typer.Option(
-        0, "--timeout", help="Command timeout in seconds (0 = auto: 120s for slow commands, 60s for others).",
+        0,
+        "--timeout",
+        help="Daemon timeout seconds (0=auto: 120s slow cmds else 60s). E.g. ziniao --timeout 180 navigate URL",
     ),
 ) -> None:
     global _GLOBAL_STORE, _GLOBAL_SESSION, _GLOBAL_JSON, _GLOBAL_JSON_LEGACY  # noqa: PLW0603

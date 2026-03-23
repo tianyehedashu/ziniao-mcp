@@ -4,6 +4,17 @@
 
 ## [Unreleased]
 
+## [0.2.11] - 2026-03-23
+
+### 变更
+
+- **CLI 根级 `--help`**：全局选项（`--store` / `--session` / `--json` / `--json-legacy` / `--content-boundaries` / `--max-output` / `--timeout`）的 **Typer `help=`** 与 **epilog** 补充 **E.g.** 示例及用法顺序说明；**`--install-completion` / `--show-completion`** 写入 epilog
+- **`--content-boundaries`**：文案与实现对齐——人类 stdout 为 **`ZINIAO_PAGE_CONTENT`** 边界行，带 **`--json`** 时另有顶层 **`_boundary`**
+
+### 工程
+
+- **`pyproject.toml` / `.cursor-plugin/plugin.json` / Git 标签**：与 **`v0.2.11`** 对齐
+
 ## [0.2.10] - 2026-03-23
 
 ### 修复
