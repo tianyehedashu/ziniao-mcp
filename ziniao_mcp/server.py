@@ -260,7 +260,7 @@ def _register_prompts(mcp: FastMCP) -> None:
 【通用页面操作】（对紫鸟和 Chrome 通用，作用于当前活跃会话）
 - 导航：navigate_page，点击：click，填写：fill，按键：press_key，等待：wait_for，截图：take_screenshot。
 - 标签页：tab(action=list/switch/new/close)。iframe：switch_frame(action=list/switch/main)。
-- Recording: recorder(action='start'/'stop'/'replay'/'list'/'view'/'status').
+- Recording: recorder(action='start'/'stop'/'replay'/'list'/'view'/'status'); replay defaults to a new tab (reuse_tab=true for current tab).
 
 根据用户目标调用对应工具即可。""",
             },
@@ -281,7 +281,7 @@ def _register_prompts(mcp: FastMCP) -> None:
 - **Stop**: recorder(action='stop', name='optional', force=False). Saves under ~/.ziniao/recordings/; if name is set and the .json exists, use force=true to overwrite.
 - **Inspect JSON**: recorder(action='view', name='...', metadata_only=False). Loads metadata and actions; metadata_only=true omits the actions array.
 - **Status**: recorder(action='status'). Whether the current session is recording and the start URL.
-- **Replay**: recorder(action='replay', name='...') or recorder(action='replay', actions_json='[...]'). Use speed to adjust pace.
+- **Replay**: recorder(action='replay', name='...') or recorder(action='replay', actions_json='[...]'). By default opens a **new tab** (start URL from recording, or about:blank). Use reuse_tab=true to replay in the current active tab. Use speed to adjust pace.
 - **List / delete**: recorder(action='list'); recorder(action='delete', name='...').
 
 When the user asks to record, stop recording, or replay, call the matching action above.""",

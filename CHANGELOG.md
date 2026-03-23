@@ -4,6 +4,18 @@
 
 ## [Unreleased]
 
+## [0.2.14] - 2026-03-23
+
+### Changed
+
+- **`ziniao rec replay`** / MCP **`recorder(action='replay')`**：默认在**新标签页**回放（优先录制里的 **`start_url`**，否则 **`about:blank`**）；**`--reuse-tab`** / **`reuse_tab=true`** 仍在当前活动标签上回放
+- **`rec start` / `rec stop`**：若无可用普通网页标签，自动新开一页再注入/采集，避免「没有打开的页面」
+- **录制生成的 `NAME.py`**：改为 **`await browser.get(start_url 或 about:blank, new_tab=True)`** 再重放，不再使用 **`browser.tabs[0]`**
+
+### 工程
+
+- **`pyproject.toml` / `.cursor-plugin/plugin.json` / Git tag**：与 **`v0.2.14`** 对齐
+
 ## [0.2.13] - 2026-03-23
 
 ### Added

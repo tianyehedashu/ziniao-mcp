@@ -17,14 +17,14 @@ _REC_EPILOG = (
     + "\n\nRecorder flow: ziniao rec start, perform actions in the browser, then "
     "ziniao rec stop [--name] [--force]. List: ziniao rec list; inspect JSON: "
     "ziniao rec view NAME [--metadata-only] [-o file.json]; replay: "
-    "ziniao rec replay NAME or --actions-json '...'. Status: ziniao rec status."
+    "ziniao rec replay NAME [--reuse-tab] or --actions-json '...'. Status: ziniao rec status."
 )
 
 app = typer.Typer(
     help=(
         "Record clicks, fills, keys, and navigation in the active tab; stop saves JSON plus a generated script.\n\n"
         "Flow: rec start → interact in the browser → rec stop [--name] [--force]. "
-        "Then rec list | rec view NAME | rec replay NAME | rec delete NAME. "
+        "Then rec list | rec view NAME | rec replay NAME [--reuse-tab] | rec delete NAME. "
         "rec status shows whether a capture is active."
     ),
     no_args_is_help=True,
@@ -62,13 +62,22 @@ def replay(
         help="Inline JSON array of actions; overrides NAME when both given.",
     ),
     speed: float = typer.Option(1.0, "--speed", help="Replay speed multiplier (default 1.0)."),
+    reuse_tab: bool = typer.Option(
+        False,
+        "--reuse-tab",
+        help="Replay in the current active tab instead of opening a new tab.",
+    ),
 ) -> None:
     """Replay from disk by name, or from `--actions-json`.
+
+    Opens a new browser tab by default (recording start URL, or about:blank). Use
+    `--reuse-tab` to run in the current active tab instead.
 
     Examples:
 
         ziniao rec list
         ziniao rec replay my_recording
+        ziniao rec replay my_recording --reuse-tab
         ziniao rec replay --actions-json '[{"type":"click","selector":"#btn"}]'
     """
     n = (name or "").strip()
@@ -84,6 +93,7 @@ def replay(
         raise typer.Exit(code=2)
     result = run_command("recorder", {
         "action": "replay", "name": n, "actions_json": j, "speed": speed,
+        "reuse_tab": reuse_tab,
     })
     print_result(result, json_mode=get_json_mode())
 

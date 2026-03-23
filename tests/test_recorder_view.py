@@ -37,3 +37,17 @@ def test_do_view_requires_name() -> None:
 
     with pytest.raises(RuntimeError, match="View requires"):
         rec._do_view("", metadata_only=False)
+
+
+def test_generate_python_script_opens_new_tab_not_tabs_zero() -> None:
+    from ziniao_mcp.tools import recorder as rec
+
+    actions = [{"type": "click", "selector": "#x", "timestamp": 0}]
+    py = rec._generate_python_script(actions, 9222, "https://example.com/start", "r1")
+    assert "new_tab=True" in py
+    assert "browser.tabs[0]" not in py
+    assert "https://example.com/start" in py
+
+    py_blank = rec._generate_python_script(actions, 9222, "", "r2")
+    assert "about:blank" in py_blank
+    assert "new_tab=True" in py_blank

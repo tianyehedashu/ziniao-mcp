@@ -141,7 +141,7 @@ ziniao network har-stop [path]
 
 # Batch, recording, emulation
 echo '[{"command":"navigate","args":{"url":"..."}}]' | ziniao batch run [--bail]
-ziniao rec start | stop [--name <n>] [--force] | replay <n> | list | view <n> [--metadata-only] [--full] [-o file] | status | delete <n>
+ziniao rec start | stop [--name <n>] [--force] | replay <n> [--reuse-tab] | list | view <n> [--metadata-only] [--full] [-o file] | status | delete <n>   # replay opens a new tab by default
 ziniao emulate --device "iPhone 14"       # Or --width W --height H
 
 # Cleanup

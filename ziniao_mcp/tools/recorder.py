@@ -245,14 +245,10 @@ def _generate_python_script(
     lines.append("")
     lines.append("async def main(port: int) -> None:")
     lines.append('    browser = await nodriver.Browser.create(host="127.0.0.1", port=port)')
-    lines.append("    tab = browser.tabs[0]")
+    replay_target = start_url or "about:blank"
+    lines.append(f"    tab = await browser.get({replay_target!r}, new_tab=True)")
+    lines.append("    await tab.sleep(1)")
     lines.append("")
-
-    if start_url:
-        lines.append("    # Navigate to start URL")
-        lines.append(f"    await tab.get({start_url!r})")
-        lines.append("    await tab.sleep(1)")
-        lines.append("")
 
     step = 0
     prev_ts = actions[0]["timestamp"] if actions else 0
@@ -459,6 +455,7 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
         speed: float = 1.0,
         metadata_only: bool = False,
         force: bool = False,
+        reuse_tab: bool = False,
     ) -> str:
         """Record browser actions and replay saved recordings.
 
@@ -477,13 +474,15 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
             metadata_only: For action "view", omit the actions array when True.
             force: For action "stop", when name is set and the JSON file already
                 exists, overwrite if True; otherwise return an error.
+            reuse_tab: For action "replay", use the current active tab instead of
+                opening a new tab. Default False (always new tab for replay).
         """
         if action == "start":
             return await _do_start(session, _inject_recorder, _nav_setup)
         if action == "stop":
             return await _do_stop(session, name, _collect_actions, _clear_recorder, force)
         if action == "replay":
-            return await _do_replay(session, name, actions_json, speed)
+            return await _do_replay(session, name, actions_json, speed, reuse_tab=reuse_tab)
         if action == "list":
             return _do_list()
         if action == "delete":
@@ -502,7 +501,7 @@ async def _do_start(session, inject_fn, nav_setup_fn) -> str:
     if store.recording:
         return json.dumps({"status": "already_recording", "message": "Recording is already in progress."}, ensure_ascii=False)
 
-    tab = session.get_active_tab()
+    tab = await session.ensure_active_regular_tab("")
     start_url = getattr(getattr(tab, "target", None), "url", "") or ""
     store.recording = True
     store.recording_start_url = start_url
@@ -522,7 +521,7 @@ async def _do_stop(session, name, collect_fn, clear_fn, force: bool = False) -> 
     if not store.recording:
         return json.dumps({"status": "error", "message": "No active recording."}, ensure_ascii=False)
 
-    tab = session.get_active_tab()
+    tab = await session.ensure_active_regular_tab("")
     actions = await collect_fn(tab)
 
     # Calculate delay_ms between adjacent actions
@@ -558,12 +557,14 @@ async def _do_stop(session, name, collect_fn, clear_fn, force: bool = False) -> 
     }, ensure_ascii=False)
 
 
-async def _do_replay(session, name, actions_json, speed) -> str:
+async def _do_replay(session, name, actions_json, speed, reuse_tab: bool = False) -> str:
+    start_url = ""
     if actions_json:
         actions = json.loads(actions_json)
     elif name:
         meta = _load_recording(name)
         actions = meta.get("actions", [])
+        start_url = (meta.get("start_url") or "").strip()
     else:
         raise RuntimeError(
             "Replay requires a recording `name` (saved file) or `actions_json` (inline JSON array).",
@@ -578,7 +579,13 @@ async def _do_replay(session, name, actions_json, speed) -> str:
         human_fill as _hfill,
     )
 
-    tab = session.get_active_tab()
+    if reuse_tab:
+        try:
+            tab = session.get_active_tab()
+        except RuntimeError:
+            tab = await session.ensure_active_regular_tab(start_url)
+    else:
+        tab = await session.open_replay_tab(start_url)
     store = session.get_active_session()
     is_ziniao = store.backend_type == "ziniao"
     cfg = None

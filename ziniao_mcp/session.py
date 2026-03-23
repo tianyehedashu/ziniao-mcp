@@ -820,6 +820,65 @@ class SessionManager:
             session.active_tab_index = 0
         return session.tabs[session.active_tab_index]
 
+    async def ensure_active_regular_tab(self, initial_url: str = "") -> "Tab":
+        """若已有普通网页标签则返回当前活动标签；否则新建一页（about:blank 或 initial_url）。"""
+        store = self.get_active_session()
+        store.tabs = _filter_tabs(store.browser.tabs)
+        if store.tabs:
+            if store.active_tab_index >= len(store.tabs):
+                store.active_tab_index = 0
+            return store.tabs[store.active_tab_index]
+
+        target = (initial_url or "").strip() or "about:blank"
+        try:
+            new_tab = await store.browser.get(target, new_tab=True)
+        except Exception as exc:
+            raise RuntimeError(
+                "无法打开新页面（无可用普通标签且创建失败）。请检查 CDP 连接与浏览器状态。",
+            ) from exc
+        await asyncio.sleep(0.5)
+        store.tabs = _filter_tabs(store.browser.tabs)
+        if not store.tabs:
+            raise RuntimeError(
+                "无法打开新页面：创建标签后仍无普通网页标签。"
+                "请确认浏览器未仅停留在扩展或内部页面。",
+            )
+        store.iframe_context = None
+        try:
+            idx = store.tabs.index(new_tab)
+        except ValueError:
+            idx = len(store.tabs) - 1
+        store.active_tab_index = idx
+        t = store.tabs[store.active_tab_index]
+        await self.setup_tab_listeners(store, t)
+        return t
+
+    async def open_replay_tab(self, initial_url: str = "") -> "Tab":
+        """为回放专门新建普通网页标签（不重用当前标签）。"""
+        store = self.get_active_session()
+        target = (initial_url or "").strip() or "about:blank"
+        try:
+            new_tab = await store.browser.get(target, new_tab=True)
+        except Exception as exc:
+            raise RuntimeError(
+                "回放时无法打开新标签页。请检查 CDP 连接与浏览器状态。",
+            ) from exc
+        await asyncio.sleep(0.5)
+        store.tabs = _filter_tabs(store.browser.tabs)
+        if not store.tabs:
+            raise RuntimeError(
+                "回放时无法打开新标签页：创建后仍无普通网页标签。",
+            )
+        store.iframe_context = None
+        try:
+            idx = store.tabs.index(new_tab)
+        except ValueError:
+            idx = len(store.tabs) - 1
+        store.active_tab_index = idx
+        t = store.tabs[store.active_tab_index]
+        await self.setup_tab_listeners(store, t)
+        return t
+
     def get_open_store_ids(self) -> list[str]:
         """返回当前已打开店铺的 ID 列表。"""
         return list(self._stores.keys())
