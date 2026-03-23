@@ -4,6 +4,21 @@
 
 ## [Unreleased]
 
+## [0.2.8] - 2026-03-20
+
+### 新增
+
+- **`snapshot --interactive`**：每条交互元素自动计算 **`selector`** 字段（`#id` → `[name=…]` → `[aria-label=…]`，浏览器内验证唯一性）；终端表格显示 **Selector** 列，模型可直接用于 `click` / `fill`
+- **截断提示优化**：纯 HTML 快照被截断时追加 `snapshot --interactive` 建议，引导模型获取结构化选择器
+
+### 文档
+
+- **`skills/ziniao-cli/SKILL.md`**：纠正「交互快照后从 HTML 选选择器」的表述；说明 `ref` 与 CSS 选择器的关系及与完整快照的配合
+
+### 工程
+
+- **`pyproject.toml` / `.cursor-plugin/plugin.json` / Git 标签**：与 **`v0.2.8`** 对齐
+
 ## [0.2.7] - 2026-03-20
 
 ### 文档

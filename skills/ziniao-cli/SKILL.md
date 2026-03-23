@@ -32,13 +32,18 @@ Config priority: env vars (including `~/.ziniao/.env`) → CLI flags → YAML. U
 
 Every automation follows: **Connect → Navigate → Inspect → Interact → Verify**.
 
-Ziniao uses **CSS selectors** (not refs like `@e1`). After `snapshot --interactive`, read the HTML to pick selectors for the next command.
+Use **CSS selectors** with `click` / `fill` / `wait` (valid for `document.querySelector`). Column **`ref` (`@e0` …)** in `snapshot --interactive` is **only a row label** — **do not** pass `@eN` as a selector.
+
+**Inspect → pick selectors:**
+
+- **`ziniao snapshot --interactive`** — table with a **Selector** column (auto-computed, unique CSS selector like `#id` or `[name="…"]`). Copy the selector directly into `click` / `fill` / `wait`.
+- **`ziniao snapshot`** or **`ziniao snapshot --compact`** — full HTML when you need classes/structure or elements the interactive table didn't cover.
 
 ```bash
 ziniao open-store my-store-001                          # or: ziniao launch --url <url>
 ziniao navigate "https://sellercentral.amazon.com/inventory"
 ziniao wait ".inventory-table"
-ziniao snapshot --interactive                            # read HTML, pick CSS selectors
+ziniao snapshot --interactive                           # Selector column → directly use in click/fill
 ziniao click "#edit-btn"
 ziniao fill "#price-input" "29.99"
 ziniao screenshot after-edit.png

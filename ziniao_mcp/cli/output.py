@@ -85,7 +85,8 @@ def truncate_if_needed(content: str, max_chars: Optional[int]) -> str:
     # Byte-safe slice by char count
     out = content[:max_chars]
     return (
-        f"{out}\n[truncated: showing {max_chars} of {total} chars. Use --max-output to adjust]"
+        f"{out}\n[truncated: showing {max_chars} of {total} chars."
+        f" Use --max-output 0 for full output, or snapshot --interactive for element selectors]"
     )
 
 
@@ -269,12 +270,20 @@ def _print_rich(data: dict) -> None:
         from rich.table import Table as _Tbl  # pylint: disable=import-outside-toplevel
         table = _Tbl(title=f"Interactive Elements ({data.get('count', 0)})")
         table.add_column("Ref", style="cyan")
+        table.add_column("Selector", style="green")
         table.add_column("Tag")
-        table.add_column("Role")
         table.add_column("Type")
         table.add_column("Text")
         for el in data["interactive_elements"]:
-            table.add_row(el.get("ref", ""), el.get("tag", ""), el.get("role", ""), el.get("type", ""), el.get("text", "")[:60])
+            sel = (el.get("selector") or "").strip()
+            sel_cell = sel[:60] if sel else "[dim]—[/dim]"
+            table.add_row(
+                el.get("ref", ""),
+                sel_cell,
+                el.get("tag", ""),
+                el.get("type", ""),
+                el.get("text", "")[:60],
+            )
         console.print(table)
         return
 

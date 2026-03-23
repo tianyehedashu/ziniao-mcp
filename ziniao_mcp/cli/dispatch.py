@@ -1067,8 +1067,22 @@ async def _snapshot_enhanced(sm: Any, args: dict) -> dict:
 
     if interactive:
         js = """(() => {
-            const selectors = 'a,button,input,select,textarea,[role="button"],[role="link"],[tabindex]';
-            const els = document.querySelectorAll(selectors);
+            const sels = 'a,button,input,select,textarea,[role="button"],[role="link"],[tabindex]';
+            const els = document.querySelectorAll(sels);
+            function pick(el, tag, id, name) {
+                if (id) {
+                    try { const s='#'+CSS.escape(id); if(document.querySelectorAll(s).length===1) return s; } catch(e){}
+                }
+                if (name) {
+                    try { const s=tag+'[name='+JSON.stringify(name)+']'; if(document.querySelectorAll(s).length===1) return s; } catch(e){}
+                }
+                const al = el.getAttribute('aria-label');
+                if (al) {
+                    try { const s='[aria-label='+JSON.stringify(al)+']'; if(document.querySelectorAll(s).length===1) return s; } catch(e){}
+                }
+                if (id) { try { return '#'+CSS.escape(id); } catch(e){} }
+                return '';
+            }
             return Array.from(els).map((el, i) => {
                 const tag = el.tagName.toLowerCase();
                 const role = el.getAttribute('role') || '';
@@ -1076,7 +1090,15 @@ async def _snapshot_enhanced(sm: Any, args: dict) -> dict:
                 const type = el.getAttribute('type') || '';
                 const name = el.getAttribute('name') || '';
                 const href = el.getAttribute('href') || '';
-                return {ref: '@e' + i, tag, role, type, name, text, href: href.slice(0, 100)};
+                const id = el.id || '';
+                const classes = (typeof el.className === 'string')
+                    ? el.className.trim().replace(/\\s+/g, ' ').slice(0, 80)
+                    : '';
+                const selector = pick(el, tag, id, name);
+                return {
+                    ref: '@e' + i, tag, role, type, name, text, href: href.slice(0, 100),
+                    id, classes, selector,
+                };
             });
         })()"""
         elements = await tab.evaluate(js, return_by_value=True)
