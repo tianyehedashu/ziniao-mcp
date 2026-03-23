@@ -20,48 +20,34 @@ def _env_truthy(name: str) -> bool:
     return v in ("1", "true", "yes", "on")
 
 
+# Paragraph breaks: Rich keeps separate paragraphs readable in root --help.
 _CLI_EPILOG = """
-Global options (always before the subcommand: ziniao [options] <command> ...):
-  --store SESSION          This command only; does not change active session. E.g. ziniao --store mystore click "#ok"
-  --session SESSION        This command only; store or Chrome session id. E.g. ziniao --session s1 url (not with --store)
-  --json                   Machine-readable envelope. E.g. ziniao --json url | jq .data
-  --json-legacy            Raw daemon JSON, no envelope. E.g. ziniao --json-legacy session list (not with --json)
-  --content-boundaries     Human stdout: ZINIAO_PAGE_CONTENT markers; with --json: top-level _boundary. E.g. ziniao --content-boundaries snapshot
-  --max-output N           Cap snapshot/eval on stdout (default 2000 if unset; 0 = no cap). E.g. ziniao --max-output 0 snapshot
-  --timeout SECONDS        Per-command daemon timeout (0 = auto: 120s slow cmds, 60s else). E.g. ziniao --timeout 180 navigate URL
-  --install-completion     Install shell tab-completion for ziniao (Typer). E.g. ziniao --install-completion
-  --show-completion        Print completion script to stdout. E.g. ziniao --show-completion
 
-Quick reference (flat shortcuts; grouped: ziniao <nav|act|info|get|scroll|...> <cmd> --help):
-  Usage: ziniao [global options] <command> [args]
+[ Global flags ]
 
-  Navigation:  navigate <url> | tab [list|new|switch|close] ... | wait [selector] [--state ...] [--timeout MS]
-               back | forward | reload [--ignore-cache]
-  Interaction: click|dblclick <selector> | fill <selector> <text> [--fields-json ...]
-               type <text> [-s selector] | press <key> | hover <sel> | drag <src> <dst> | upload <sel> <files...>
-               select <sel> <value> | check|uncheck <sel> | dialog | focus | keydown|keyup <key>
-  Scroll:      scrollinto <selector> | scroll-up|scroll-down|scroll-left|scroll-right [px] [-s selector]
-  Read/inspect: snapshot [...] | screenshot [path] | eval <js> | url | title
-               text|html|value|attr|count <selector> ... (see ziniao get --help)
-  Session:     open-store|list-stores|close-store | launch | connect <port> | session | store | chrome | config
-               serve | update | quit | emulate | batch | network | mouse | find | is | rec | sys
+See Options above. Typical order: ziniao [OPTIONS] COMMAND [ARGS...]
 
-Differences vs agent-browser (full table: docs/cli-agent-browser-parity.md):
-  snapshot — HTML (and --interactive / --compact), not an accessibility tree with @refs.
-  type — TEXT first, optional -s selector (agent-browser uses type <sel> <text>).
-  wait — with no selector: short daemon sleep (capped); not the same as arbitrary ms-only wait.
-  connect / quit — Chrome CDP attach / stop ziniao daemon; not the same as agent-browser close.
-  No CLI: pdf, download-by-click, keyboard type / inserttext as standalone commands.
 
-Environment (parallel to AGENT_BROWSER_*): ZINIAO_JSON, ZINIAO_CONTENT_BOUNDARIES, ZINIAO_MAX_OUTPUT.
-Rich respects NO_COLOR (see https://no-color.org/).
+[ Command layout ]
 
-Docs: docs/cli-json.md, docs/cli-llm.md, docs/cli-agent-browser-parity.md
+Flat shortcuts — listed under Commands (navigate, click, snapshot, …).
+
+Grouped — ziniao nav|act|info|get|scroll|store|chrome|session|… (e.g. ziniao nav go URL = ziniao navigate URL).
+
+Group help — ziniao GROUP --help
+
+
+[ Environment ]
+
+ZINIAO_JSON   ZINIAO_CONTENT_BOUNDARIES   ZINIAO_MAX_OUTPUT
+
+NO_COLOR — when set, disable ANSI colors in terminal output.
+
 """.strip()
 
 app = typer.Typer(
     name="ziniao",
-    help="CLI for automating Ziniao stores and Chrome browsers via a background daemon.",
+    help="Automate Ziniao stores and Chrome (daemon-backed). Global flags: Options above; commands: table below.",
     epilog=_CLI_EPILOG,
     no_args_is_help=True,
     pretty_exceptions_enable=False,
@@ -114,7 +100,7 @@ def _main_callback(
     json_output: bool = typer.Option(
         False,
         "--json",
-        help='JSON envelope success/data/error (agent-browser style). '
+        help='JSON envelope: success, data, error. '
         'E.g. ziniao --json url | jq .data. Or env ZINIAO_JSON=1.',
     ),
     json_legacy: bool = typer.Option(

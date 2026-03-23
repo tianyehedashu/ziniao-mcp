@@ -163,7 +163,7 @@ def register_top_level(parent: typer.Typer) -> None:
         text: str = typer.Argument(..., help="Text to type."),
         selector: Optional[str] = typer.Option(None, "--selector", "-s", help="Target element selector."),
     ) -> None:
-        """type <text> [-s selector] — Type char-by-char (text first; opposite order vs agent-browser type <sel> <text>). Same as ``ziniao act type``."""
+        """type <text> [-s selector] — Type char-by-char; text is required first, selector optional (-s). Same as ``ziniao act type``."""
         type_text(text, selector)
 
     @parent.command("press")

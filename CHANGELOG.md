@@ -4,6 +4,18 @@
 
 ## [Unreleased]
 
+## [0.2.12] - 2026-03-23
+
+### 变更
+
+- **CLI 根级 `--help` epilog**：去掉与 **agent-browser** 对照及 **docs/** 引用；保留全局选项顺序、扁平/分组命令说明、环境变量与 **NO_COLOR**；段落分行便于 Rich 阅读
+- **`ziniao <group> --help`**：`GROUP_CLI_EPILOG` 去掉文档链接与 agent-browser 表述
+- **`--json`**：`help` 仅描述 ziniao 信封字段；顶层 **`type`** 说明去掉外部 CLI 对比
+
+### 工程
+
+- **`pyproject.toml` / `.cursor-plugin/plugin.json` / Git 标签**：与 **`v0.2.12`** 对齐
+
 ## [0.2.11] - 2026-03-23
 
 ### 变更
