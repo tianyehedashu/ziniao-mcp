@@ -34,7 +34,7 @@ def emulate(
 def register_top_level(parent: typer.Typer) -> None:
     @parent.command("quit")
     def _quit() -> None:
-        """Shut down the daemon."""
+        """quit — Stop ziniao daemon (not the same as closing only the browser). Same as ``ziniao sys quit``."""
         quit_cmd()
 
     @parent.command("emulate")
@@ -43,5 +43,5 @@ def register_top_level(parent: typer.Typer) -> None:
         width: int = typer.Option(0, "--width"),
         height: int = typer.Option(0, "--height"),
     ) -> None:
-        """Set viewport or emulate a device."""
+        """emulate [--device|--width|--height] — Viewport or device emulation. Same as ``ziniao sys emulate``."""
         emulate(device, width, height)

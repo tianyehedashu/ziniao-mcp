@@ -156,18 +156,18 @@ def _windows_spawn_uv_tool_install(uv_exe: str, git: bool) -> None:
 def update_cli(
     git: bool = typer.Option(
         False, "--git",
-        help="从 GitHub 仓库 main 安装最新版（而非 PyPI）。",
+        help="Install latest from GitHub main (instead of PyPI).",
     ),
     dry_run: bool = typer.Option(
         False, "--dry-run",
-        help="仅打印将执行的命令，不实际运行。",
+        help="Print the command only; do not run it.",
     ),
     sync: bool = typer.Option(
         False, "--sync",
-        help="在当前进程内同步执行 uv（默认仅 Windows：新开窗口并立即退出本进程，避免 exe 自占用导致错误 32）。",
+        help="Run uv in-process (default on Windows: new console + exit to avoid exe self-replace error 32).",
     ),
 ) -> None:
-    """使用 uv 将 ziniao CLI 升级到最新版（PyPI 或 GitHub）。"""
+    """Upgrade ziniao CLI to latest via uv (PyPI or GitHub)."""
     uv_exe = shutil.which("uv")
     if not uv_exe:
         _no_uv_message()

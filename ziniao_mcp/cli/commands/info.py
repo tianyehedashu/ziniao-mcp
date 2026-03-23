@@ -177,7 +177,7 @@ def register_top_level(parent: typer.Typer) -> None:
         compact: bool = typer.Option(False, "--compact", help="Compact HTML output."),
         out_file: Optional[str] = typer.Option(None, "--out-file", "-o", help="Write to file (UTF-8)."),
     ) -> None:
-        """Get page HTML snapshot. Same options as ``ziniao info snapshot``."""
+        """snapshot [options] — HTML snapshot (not a11y tree); --interactive/--compact, etc. Same as ``ziniao info snapshot``."""
         snapshot(
             full_page=full_page,
             selector=selector,
@@ -186,21 +186,16 @@ def register_top_level(parent: typer.Typer) -> None:
             out_file=out_file,
         )
 
-    @parent.command("url")
-    def _url() -> None:
-        """Get current page URL. Same as ``ziniao info url``."""
-        url_cmd()
-
     @parent.command("screenshot")
     def _screenshot(
         file: Optional[str] = typer.Argument(None, help="Optional path to save PNG."),
         selector: Optional[str] = typer.Option(None, "--selector", "-s", help="Element selector."),
         full_page: bool = typer.Option(False, "--full-page", help="Capture full page."),
     ) -> None:
-        """Capture a screenshot. Same options as ``ziniao info screenshot``."""
+        """screenshot [path] [--selector] [--full-page] — Save PNG screenshot. Same as ``ziniao info screenshot``."""
         screenshot(file, selector, full_page)
 
     @parent.command("eval")
     def _eval(script: str = typer.Argument(..., help="JavaScript to evaluate.")) -> None:
-        """Evaluate JavaScript in the page. Same as ``ziniao info eval``."""
+        """eval <js> — Run JavaScript in the page. Same as ``ziniao info eval``."""
         eval_cmd(script)

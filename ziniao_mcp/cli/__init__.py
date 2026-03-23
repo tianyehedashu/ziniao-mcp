@@ -30,6 +30,27 @@ Global options (before any subcommand) — aligned with agent-browser where note
   --max-output N           Truncate snapshot HTML / eval text (default 2000 for stdout if unset; 0 = no cap).
   --timeout SECONDS        Override auto timeout (0 = auto: 120s slow commands, 60s else).
 
+Quick reference (flat shortcuts; grouped: ziniao <nav|act|info|get|scroll|...> <cmd> --help):
+  Usage: ziniao [global options] <command> [args]
+
+  Navigation:  navigate <url> | tab [list|new|switch|close] ... | wait [selector] [--state ...] [--timeout MS]
+               back | forward | reload [--ignore-cache]
+  Interaction: click|dblclick <selector> | fill <selector> <text> [--fields-json ...]
+               type <text> [-s selector] | press <key> | hover <sel> | drag <src> <dst> | upload <sel> <files...>
+               select <sel> <value> | check|uncheck <sel> | dialog | focus | keydown|keyup <key>
+  Scroll:      scrollinto <selector> | scroll-up|scroll-down|scroll-left|scroll-right [px] [-s selector]
+  Read/inspect: snapshot [...] | screenshot [path] | eval <js> | url | title
+               text|html|value|attr|count <selector> ... (see ziniao get --help)
+  Session:     open-store|list-stores|close-store | launch | connect <port> | session | store | chrome | config
+               serve | update | quit | emulate | batch | network | mouse | find | is | rec | sys
+
+Differences vs agent-browser (full table: docs/cli-agent-browser-parity.md):
+  snapshot — HTML (and --interactive / --compact), not an accessibility tree with @refs.
+  type — TEXT first, optional -s selector (agent-browser uses type <sel> <text>).
+  wait — with no selector: short daemon sleep (capped); not the same as arbitrary ms-only wait.
+  connect / quit — Chrome CDP attach / stop ziniao daemon; not the same as agent-browser close.
+  No CLI: pdf, download-by-click, keyboard type / inserttext as standalone commands.
+
 Environment (parallel to AGENT_BROWSER_*): ZINIAO_JSON, ZINIAO_CONTENT_BOUNDARIES, ZINIAO_MAX_OUTPUT.
 Rich respects NO_COLOR (see https://no-color.org/).
 
@@ -161,19 +182,19 @@ def _register_commands() -> None:
         store,
         update_cmd,
     )
-    app.add_typer(store.app, name="store", help="Manage Ziniao stores.")
-    app.add_typer(chrome.app, name="chrome", help="Manage Chrome browser instances.")
-    app.add_typer(config_cmd.app, name="config", help="Configuration management (init/show/set/path/env).")
-    app.add_typer(session.app, name="session", help="Manage browser sessions (Ziniao + Chrome).")
-    app.add_typer(navigate.app, name="nav", help="Navigation commands.")
-    app.add_typer(interact.app, name="act", help="Page interaction commands.")
-    app.add_typer(info.app, name="info", help="Page inspection commands.")
+    app.add_typer(store.app, name="store", help="Manage Ziniao stores (list/open/close/…).")
+    app.add_typer(chrome.app, name="chrome", help="Chrome instances (launch/connect/list/close).")
+    app.add_typer(config_cmd.app, name="config", help="Configuration (init/show/set/path/env).")
+    app.add_typer(session.app, name="session", help="Sessions: Ziniao stores + Chrome.")
+    app.add_typer(navigate.app, name="nav", help="Navigation (go/tab/wait/back/forward/reload/frame).")
+    app.add_typer(interact.app, name="act", help="Page actions (click/fill/type/press/…).")
+    app.add_typer(info.app, name="info", help="Inspection (snapshot/screenshot/eval/console/…).")
     app.add_typer(recorder.app, name="rec", help="Record and replay browser actions.")
     app.add_typer(lifecycle.app, name="sys", help="Daemon lifecycle and emulation.")
-    app.add_typer(get.app, name="get", help="Get element/page information.")
+    app.add_typer(get.app, name="get", help="Read page/element data (text/url/title/…).")
     app.add_typer(find.app, name="find", help="Find elements by semantic locators.")
     app.add_typer(check.app, name="is", help="Check element state.")
-    app.add_typer(scroll.app, name="scroll", help="Scroll commands.")
+    app.add_typer(scroll.app, name="scroll", help="Scroll page or element into view.")
     app.add_typer(batch.app, name="batch", help="Batch command execution.")
     app.add_typer(mouse.app, name="mouse", help="Mouse control.")
     app.add_typer(network_cmd.app, name="network", help="Network interception, monitoring & HAR.")

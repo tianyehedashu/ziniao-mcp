@@ -63,7 +63,7 @@ def scroll_into(selector: str = typer.Argument(..., help="CSS selector of the ta
 def register_top_level(parent: typer.Typer) -> None:
     @parent.command("scrollinto")
     def _scrollinto(selector: str = typer.Argument(..., help="CSS selector of the target element.")) -> None:
-        """Scroll element into view. Same as ``ziniao scroll into``."""
+        """scrollinto <selector> — Scroll element into view. Same as ``ziniao scroll into``."""
         scroll_into(selector)
 
     @parent.command("scroll-up")
@@ -71,7 +71,7 @@ def register_top_level(parent: typer.Typer) -> None:
         pixels: int = typer.Argument(300, help="Pixels to scroll."),
         selector: Optional[str] = typer.Option(None, "--selector", "-s", help="Scroll inside this element."),
     ) -> None:
-        """Scroll up. Same as ``ziniao scroll up``."""
+        """scroll-up [px] [-s selector] — Scroll up. Same as ``ziniao scroll up``."""
         scroll_up(pixels, selector)
 
     @parent.command("scroll-down")
@@ -79,7 +79,7 @@ def register_top_level(parent: typer.Typer) -> None:
         pixels: int = typer.Argument(300, help="Pixels to scroll."),
         selector: Optional[str] = typer.Option(None, "--selector", "-s", help="Scroll inside this element."),
     ) -> None:
-        """Scroll down. Same as ``ziniao scroll down``."""
+        """scroll-down [px] [-s selector] — Scroll down. Same as ``ziniao scroll down``."""
         scroll_down(pixels, selector)
 
     @parent.command("scroll-left")
@@ -87,7 +87,7 @@ def register_top_level(parent: typer.Typer) -> None:
         pixels: int = typer.Argument(300, help="Pixels to scroll."),
         selector: Optional[str] = typer.Option(None, "--selector", "-s", help="Scroll inside this element."),
     ) -> None:
-        """Scroll left. Same as ``ziniao scroll left``."""
+        """scroll-left [px] [-s selector] — Scroll left. Same as ``ziniao scroll left``."""
         scroll_left(pixels, selector)
 
     @parent.command("scroll-right")
@@ -95,5 +95,5 @@ def register_top_level(parent: typer.Typer) -> None:
         pixels: int = typer.Argument(300, help="Pixels to scroll."),
         selector: Optional[str] = typer.Option(None, "--selector", "-s", help="Scroll inside this element."),
     ) -> None:
-        """Scroll right. Same as ``ziniao scroll right``."""
+        """scroll-right [px] [-s selector] — Scroll right. Same as ``ziniao scroll right``."""
         scroll_right(pixels, selector)

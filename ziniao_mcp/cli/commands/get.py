@@ -75,27 +75,27 @@ def get_count(selector: str = typer.Argument(..., help="CSS selector.")) -> None
 def register_top_level(parent: typer.Typer) -> None:
     @parent.command("title")
     def _title() -> None:
-        """Get page title. Same as ``ziniao get title``."""
+        """title — Page title. Same as ``ziniao get title``."""
         get_title()
 
     @parent.command("url")
     def _url() -> None:
-        """Get page URL. Same as ``ziniao get url``."""
+        """url — Page URL. Same as ``ziniao get url`` (same as ``ziniao info url``)."""
         get_url()
 
     @parent.command("text")
     def _text(selector: str = typer.Argument(..., help="CSS selector.")) -> None:
-        """Get element text. Same as ``ziniao get text``."""
+        """text <selector> — Element text. Same as ``ziniao get text``."""
         get_text(selector)
 
     @parent.command("html")
     def _html(selector: str = typer.Argument(..., help="CSS selector.")) -> None:
-        """Get innerHTML. Same as ``ziniao get html``."""
+        """html <selector> — Element innerHTML. Same as ``ziniao get html``."""
         get_html(selector)
 
     @parent.command("value")
     def _value(selector: str = typer.Argument(..., help="Input CSS selector.")) -> None:
-        """Get input value. Same as ``ziniao get value``."""
+        """value <selector> — Input value. Same as ``ziniao get value``."""
         get_value(selector)
 
     @parent.command("attr")
@@ -103,10 +103,10 @@ def register_top_level(parent: typer.Typer) -> None:
         selector: str = typer.Argument(..., help="CSS selector."),
         attribute: str = typer.Argument(..., help="Attribute name."),
     ) -> None:
-        """Get attribute value. Same as ``ziniao get attr``."""
+        """attr <selector> <name> — Attribute value. Same as ``ziniao get attr``."""
         get_attr(selector, attribute)
 
     @parent.command("count")
     def _count(selector: str = typer.Argument(..., help="CSS selector.")) -> None:
-        """Count matching elements. Same as ``ziniao get count``."""
+        """count <selector> — Count matching elements. Same as ``ziniao get count``."""
         get_count(selector)

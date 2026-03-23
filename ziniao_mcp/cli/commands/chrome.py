@@ -79,7 +79,7 @@ def register_top_level(parent: typer.Typer) -> None:
         user_data_dir: Optional[str] = typer.Option(None, "--user-data-dir", help="Chrome user data directory."),
         headless: bool = typer.Option(False, "--headless", help="Run headless."),
     ) -> None:
-        """Launch a new Chrome instance. Same options as ``ziniao chrome launch``."""
+        """launch [--url] [--headless] [--port] ... — Launch Chrome managed by ziniao. Same as ``ziniao chrome launch``."""
         launch(
             name=name,
             url=url,
@@ -94,5 +94,5 @@ def register_top_level(parent: typer.Typer) -> None:
         cdp_port: int = typer.Argument(..., help="CDP port to connect to."),
         name: Optional[str] = typer.Option(None, "--name", help="Session name."),
     ) -> None:
-        """Connect to Chrome by CDP port. Same as ``ziniao chrome connect``."""
+        """connect <port> [--name] — Attach to running Chrome via CDP. Same as ``ziniao chrome connect``."""
         connect(cdp_port, name)

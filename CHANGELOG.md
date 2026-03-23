@@ -4,6 +4,18 @@
 
 ## [Unreleased]
 
+## [0.2.9] - 2026-03-23
+
+### 变更
+
+- **CLI `--help`**：根级 epilog 增加 **Quick reference** 与 **agent-browser 差异** 摘要（指向 `docs/cli-agent-browser-parity.md`）；顶层快捷命令与各分组 `Typer` 的 `help=` 改为「用法形态 + Same as …」英文说明
+- **`ziniao update`**：`--git` / `--dry-run` / `--sync` 与命令说明改为英文
+- **去重**：移除 `info.register_top_level` 中重复的顶层 `url`（保留 `get` 注册；`ziniao info url` 不变）
+
+### 工程
+
+- **`pyproject.toml` / `.cursor-plugin/plugin.json` / Git 标签**：与 **`v0.2.9`** 对齐
+
 ## [0.2.8] - 2026-03-20
 
 ### 新增

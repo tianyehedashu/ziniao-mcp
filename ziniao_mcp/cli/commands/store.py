@@ -57,15 +57,15 @@ def register_top_level(parent: typer.Typer) -> None:
     def _list_stores(
         opened_only: bool = typer.Option(False, "--opened-only", help="Only show currently opened stores."),
     ) -> None:
-        """List Ziniao stores."""
+        """list-stores [--opened-only] — List Ziniao stores. Same as ``ziniao store list``."""
         list_stores(opened_only)
 
     @parent.command("open-store")
     def _open_store(store_id: str = typer.Argument(..., help="Store ID.")) -> None:
-        """Open a Ziniao store."""
+        """open-store <id> — Open store and connect CDP. Same as ``ziniao store open``."""
         open_store(store_id)
 
     @parent.command("close-store")
     def _close_store(store_id: str = typer.Argument(..., help="Store ID.")) -> None:
-        """Close a Ziniao store."""
+        """close-store <id> — Close store. Same as ``ziniao store close``."""
         close_store(store_id)

@@ -99,7 +99,7 @@ def reload(
 def register_top_level(parent: typer.Typer) -> None:
     @parent.command("navigate")
     def _navigate(url: str = typer.Argument(..., help="URL to open (https:// added if no scheme).")) -> None:
-        """Navigate the active tab to a URL. Same as ``ziniao nav go``."""
+        """navigate <url> — Open URL in the active tab (https:// added if no scheme). Same as ``ziniao nav go``."""
         go_cmd(url)
 
     @parent.command("tab")
@@ -109,7 +109,7 @@ def register_top_level(parent: typer.Typer) -> None:
         page_index: int = typer.Option(-1, "--index", "-i", help="Tab index for switch/close."),
         url: Optional[str] = typer.Option(None, "--url", help="URL for new tab (alternative to positional)."),
     ) -> None:
-        """Manage browser tabs. Same as ``ziniao nav tab``."""
+        """tab [list|new|switch|close] [url] [--index N] [--url U] — Manage tabs. Same as ``ziniao nav tab``."""
         tab_cmd(action, url_or_index, page_index, url)
 
     @parent.command("wait")
@@ -118,22 +118,22 @@ def register_top_level(parent: typer.Typer) -> None:
         state: str = typer.Option("visible", help="Wait state: visible, hidden, attached, detached."),
         timeout: int = typer.Option(30000, help="Timeout in milliseconds."),
     ) -> None:
-        """Wait for an element state. Same options as ``ziniao nav wait``."""
+        """wait [selector] [--state ...] [--timeout MS] — Wait for element state; without selector, short settle sleep. Same as ``ziniao nav wait``."""
         wait_cmd(selector, state=state, timeout=timeout)
 
     @parent.command("back")
     def _back() -> None:
-        """Go back."""
+        """back — Browser back. Same as ``ziniao nav back``."""
         back()
 
     @parent.command("forward")
     def _forward() -> None:
-        """Go forward."""
+        """forward — Browser forward. Same as ``ziniao nav forward``."""
         forward()
 
     @parent.command("reload")
     def _reload(
         ignore_cache: bool = typer.Option(False, "--ignore-cache", help="Bypass browser cache."),
     ) -> None:
-        """Reload the current page. Same as ``ziniao nav reload``."""
+        """reload [--ignore-cache] — Reload the page. Same as ``ziniao nav reload``."""
         reload(ignore_cache=ignore_cache)
