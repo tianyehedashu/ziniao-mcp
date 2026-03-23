@@ -5,6 +5,7 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
@@ -183,6 +184,38 @@ _NAV_PUSH_JS = (
     "window[Symbol.for('__ev_d')].push("
     "{{type:'navigate',url:{url},timestamp:Date.now()}})"
 )
+
+
+def _setup_navigation_reinjection(
+    store: Any,
+    tab: Any,
+    inject_fn: Callable[[Any], Awaitable[None]],
+) -> None:
+    """Reinject recorder JS after top-frame navigation and record navigate."""
+    from nodriver import cdp  # pylint: disable=import-outside-toplevel
+
+    handler_key = f"_recorder_nav_{id(tab)}"
+    if getattr(store, handler_key, False):
+        return
+    setattr(store, handler_key, True)
+
+    async def _on_frame_navigated(event: cdp.page.FrameNavigated) -> None:
+        if not store.recording:
+            return
+        if event.frame.parent_id:
+            return
+        url = event.frame.url or ""
+        _logger.debug("Detected navigation during recording: %s", url)
+        await asyncio.sleep(1)
+        try:
+            await inject_fn(tab)
+            push_js = _NAV_PUSH_JS.format(url=json.dumps(url))
+            await tab.evaluate(push_js, await_promise=False)
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            _logger.warning("Failed to re-inject recorder after navigation: %s", exc)
+
+    tab.add_handler(cdp.page.FrameNavigated, _on_frame_navigated)
+
 
 # ---------------------------------------------------------------------------
 # Python code generator
@@ -415,31 +448,8 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
         """Clear recorder state from page."""
         await tab.evaluate(_CLEAR_JS, await_promise=False)
 
-    def _setup_navigation_reinjection(store, tab) -> None:
-        """Reinject recorder JS after top-frame navigation and record navigate."""
-        from nodriver import cdp  # pylint: disable=import-outside-toplevel
-
-        handler_key = f"_recorder_nav_{id(tab)}"
-        if getattr(store, handler_key, False):
-            return
-        setattr(store, handler_key, True)
-
-        async def _on_frame_navigated(event: cdp.page.FrameNavigated):
-            if not store.recording:
-                return
-            if event.frame.parent_id:
-                return
-            url = event.frame.url or ""
-            _logger.debug("Detected navigation during recording: %s", url)
-            await asyncio.sleep(1)
-            try:
-                await _inject_recorder(tab)
-                push_js = _NAV_PUSH_JS.format(url=json.dumps(url))
-                await tab.evaluate(push_js, await_promise=False)
-            except Exception as exc:  # pylint: disable=broad-exception-caught
-                _logger.warning("Failed to re-inject recorder after navigation: %s", exc)
-
-        tab.add_handler(cdp.page.FrameNavigated, _on_frame_navigated)
+    def _nav_setup(store, tab) -> None:
+        _setup_navigation_reinjection(store, tab, _inject_recorder)
 
     @mcp.tool()
     async def recorder(
@@ -464,7 +474,7 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
             speed: Replay speed multiplier. Default is 1.0.
         """
         if action == "start":
-            return await _do_start(session, _inject_recorder, _setup_navigation_reinjection)
+            return await _do_start(session, _inject_recorder, _nav_setup)
         if action == "stop":
             return await _do_stop(session, name, _collect_actions, _clear_recorder)
         if action == "replay":

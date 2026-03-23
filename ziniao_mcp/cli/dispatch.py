@@ -620,8 +620,8 @@ async def _recorder(sm: Any, args: dict) -> dict:
 
     def _nav_setup(store, tab):
         from ..tools.recorder import _setup_navigation_reinjection  # pylint: disable=import-outside-toplevel
-        # Not directly callable, use inline setup
-        pass
+
+        _setup_navigation_reinjection(store, tab, _inject)
 
     if action == "start":
         raw_result = await _do_start(sm, _inject, _nav_setup)

@@ -4,6 +4,16 @@
 
 ## [Unreleased]
 
+## [0.2.10] - 2026-03-23
+
+### 修复
+
+- **`ziniao rec start`**：将 `_setup_navigation_reinjection` 提升为 `recorder` 模块顶层导出，修复 CLI 侧 `ImportError`；`dispatch` 中导航后重注入由占位改为实际调用，与 MCP 录制行为一致
+
+### 工程
+
+- **`pyproject.toml` / `.cursor-plugin/plugin.json` / Git 标签**：与 **`v0.2.10`** 对齐
+
 ## [0.2.9] - 2026-03-23
 
 ### 变更
