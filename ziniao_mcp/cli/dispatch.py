@@ -596,12 +596,20 @@ async def _har_stop(sm: Any, args: dict) -> dict:
 
 async def _recorder(sm: Any, args: dict) -> dict:
     from ..tools.recorder import (  # pylint: disable=import-outside-toplevel
-        _do_start, _do_stop, _do_replay, _do_list, _do_delete,
+        _do_start,
+        _do_stop,
+        _do_replay,
+        _do_list,
+        _do_delete,
+        _do_view,
+        _do_status,
     )
     action = args.get("action", "start")
     name = args.get("name", "")
     actions_json = args.get("actions_json", "")
     speed = args.get("speed", 1.0)
+    metadata_only = bool(args.get("metadata_only", False))
+    force = bool(args.get("force", False))
 
     async def _inject(tab):
         from ..tools.recorder import _RECORDER_JS  # pylint: disable=import-outside-toplevel
@@ -627,7 +635,7 @@ async def _recorder(sm: Any, args: dict) -> dict:
         raw_result = await _do_start(sm, _inject, _nav_setup)
         return json.loads(raw_result)
     if action == "stop":
-        raw_result = await _do_stop(sm, name, _collect, _clear)
+        raw_result = await _do_stop(sm, name, _collect, _clear, force)
         return json.loads(raw_result)
     if action == "replay":
         raw_result = await _do_replay(sm, name, actions_json, speed)
@@ -636,6 +644,10 @@ async def _recorder(sm: Any, args: dict) -> dict:
         return json.loads(_do_list())
     if action == "delete":
         return json.loads(_do_delete(name))
+    if action == "view":
+        return json.loads(_do_view(name, metadata_only))
+    if action == "status":
+        return json.loads(_do_status(sm))
     return {"error": f"Unknown recorder action: {action}"}
 
 

@@ -318,6 +318,87 @@ def _print_rich(data: dict) -> None:
         console.print(table)
         return
 
+    if "recordings" in data and isinstance(data["recordings"], list) and "count" in data:
+        from rich.table import Table as _Tbl  # pylint: disable=import-outside-toplevel
+        table = _Tbl(title=f"Recordings ({data.get('count', 0)})")
+        table.add_column("Name", style="cyan")
+        table.add_column("Created", style="dim")
+        table.add_column("#", justify="right")
+        table.add_column("Start URL", style="green")
+        for r in data["recordings"]:
+            surl = r.get("start_url") or ""
+            url_cell = surl if len(surl) <= 40 else surl[:37] + "…"
+            table.add_row(
+                r.get("name", ""),
+                (r.get("created_at") or "")[:22],
+                str(r.get("action_count", "")),
+                url_cell or "—",
+            )
+        console.print(table)
+        return
+
+    if (
+        data.get("status") == "ok"
+        and "recording" in data
+        and isinstance(data["recording"], dict)
+        and "metadata_only" in data
+    ):
+        from rich.table import Table as _Tbl  # pylint: disable=import-outside-toplevel
+        rec = data["recording"]
+        path = data.get("path", "")
+        meta_tbl = _Tbl(title="Recording")
+        meta_tbl.add_column("Field", style="cyan")
+        meta_tbl.add_column("Value", style="green")
+        meta_tbl.add_row("name", str(rec.get("name", "")))
+        meta_tbl.add_row("path", path)
+        meta_tbl.add_row("created_at", str(rec.get("created_at", "")))
+        meta_tbl.add_row("start_url", (rec.get("start_url") or "")[:120] or "—")
+        meta_tbl.add_row("action_count", str(rec.get("action_count", "")))
+        meta_tbl.add_row("cdp_port", str(rec.get("cdp_port", "")))
+        console.print(meta_tbl)
+        actions = rec.get("actions")
+        if data.get("metadata_only") or not actions:
+            console.print(
+                "[dim]Actions omitted or empty. "
+                "Use: ziniao rec view NAME --full | ziniao rec view NAME -o out.json[/dim]",
+            )
+            return
+        if isinstance(actions, list):
+            n = len(actions)
+            preview_n = min(12, n)
+            step_tbl = _Tbl(title=f"Actions (showing {preview_n} of {n})")
+            step_tbl.add_column("#", justify="right", style="dim")
+            step_tbl.add_column("type", style="cyan")
+            step_tbl.add_column("detail", style="white")
+            for i, act in enumerate(actions[:preview_n]):
+                at = act.get("type", "")
+                detail = ""
+                if at == "navigate":
+                    detail = act.get("url", "")[:72]
+                elif at in ("click", "fill", "select"):
+                    detail = (act.get("selector") or "")[:72]
+                    if at == "fill" and act.get("value") is not None:
+                        detail += " [dim](value hidden; export with -o)[/dim]"
+                elif at == "press_key":
+                    detail = act.get("key", "")
+                else:
+                    detail = str(act)[:72]
+                step_tbl.add_row(str(i + 1), at, detail)
+            console.print(step_tbl)
+            if n > preview_n:
+                console.print(
+                    f"[dim]… and {n - preview_n} more. Full JSON: ziniao rec view NAME -o recording.json[/dim]",
+                )
+        return
+
+    if data.get("status") == "ok" and "recording_active" in data:
+        if data["recording_active"]:
+            url = data.get("recording_start_url") or ""
+            console.print(f"[green]Recording active[/]  start_url={url or '—'}")
+        else:
+            console.print("[dim]Not recording.[/]")
+        return
+
     if "html" in data:
         html = data["html"]
         origin = _origin_from_data(data)

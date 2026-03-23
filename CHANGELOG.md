@@ -4,6 +4,23 @@
 
 ## [Unreleased]
 
+## [0.2.13] - 2026-03-23
+
+### Added
+
+- **Recorder CLI**: `ziniao rec view NAME` to inspect saved recordings (`--metadata-only`, `--full`, `-o` writes the same JSON as on disk); `ziniao rec status` for active capture state
+- **Recorder MCP**: `recorder(action='view'|'status')`; `view` accepts `metadata_only`; `stop` accepts `force` to overwrite an existing file
+- **CLI output**: human mode uses Rich tables/summaries for `rec list`, `rec view`, and `rec status` instead of dumping large raw JSON
+
+### Changed
+
+- **`rec stop --name`**: if `~/.ziniao/recordings/<name>.json` already exists, fail unless **`--force`** or MCP `force=true` (auto timestamp filenames unchanged)
+- **MCP prompts**: recorder guide and related strings in English; group epilog uses `See: ziniao --help` (avoids awkward line wraps)
+
+### 工程
+
+- **`pyproject.toml` / `.cursor-plugin/plugin.json` / Git tag**：与 **`v0.2.13`** 对齐
+
 ## [0.2.12] - 2026-03-23
 
 ### 变更

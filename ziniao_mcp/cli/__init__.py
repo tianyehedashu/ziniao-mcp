@@ -188,7 +188,14 @@ def _register_commands() -> None:
     app.add_typer(navigate.app, name="nav", help="Navigation (go/tab/wait/back/forward/reload/frame).")
     app.add_typer(interact.app, name="act", help="Page actions (click/fill/type/press/…).")
     app.add_typer(info.app, name="info", help="Inspection (snapshot/screenshot/eval/console/…).")
-    app.add_typer(recorder.app, name="rec", help="Record and replay browser actions.")
+    app.add_typer(
+        recorder.app,
+        name="rec",
+        help=(
+            "Record clicks/fills/navigation in the active tab; stop saves .json + .py under ~/.ziniao/recordings/. "
+            "Commands: start, stop [--force], list, view, replay, status, delete."
+        ),
+    )
     app.add_typer(lifecycle.app, name="sys", help="Daemon lifecycle and emulation.")
     app.add_typer(get.app, name="get", help="Read page/element data (text/url/title/…).")
     app.add_typer(find.app, name="find", help="Find elements by semantic locators.")

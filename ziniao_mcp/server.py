@@ -229,7 +229,7 @@ def create_server(config: dict[str, Any] | None = None) -> tuple[FastMCP, Sessio
 
 
 def _register_prompts(mcp: FastMCP) -> None:
-    """注册 MCP prompts，供客户端发现并调用。"""
+    """Register MCP prompts for client discovery."""
 
     @mcp.prompt(
         name="ziniao_mcp",
@@ -260,7 +260,7 @@ def _register_prompts(mcp: FastMCP) -> None:
 【通用页面操作】（对紫鸟和 Chrome 通用，作用于当前活跃会话）
 - 导航：navigate_page，点击：click，填写：fill，按键：press_key，等待：wait_for，截图：take_screenshot。
 - 标签页：tab(action=list/switch/new/close)。iframe：switch_frame(action=list/switch/main)。
-- 录制：recorder(action='start'/'stop'/'replay'/'list')。
+- Recording: recorder(action='start'/'stop'/'replay'/'list'/'view'/'status').
 
 根据用户目标调用对应工具即可。""",
             },
@@ -275,14 +275,16 @@ def _register_prompts(mcp: FastMCP) -> None:
         return [
             {
                 "role": "user",
-                "content": """使用 recorder 工具进行浏览器操作录制与回放：
+                "content": """Use the recorder tool to capture and replay browser actions:
 
-- **开始录制**：recorder(action='start')。先打开目标页面并切到要操作的标签，再调用；会在当前页注入监听，之后在浏览器中的点击、输入、按键、导航都会被记录。**支持页面跳转**：点击链接等导致整页导航时，会自动重新注入录制器并记录 navigate，无需手动处理。
-- **停止录制**：recorder(action='stop', name='可选名称')。停止录制并保存到 ~/.ziniao/recordings/，同时生成 .json 与可独立运行的 .py 脚本。
-- **回放**：recorder(action='replay', name='录制名称') 或 recorder(action='replay', actions_json='[...]')。按 name 加载已保存录制并回放，可用 speed 调节回放速度。
-- **列出录制**：recorder(action='list')。recorder(action='delete', name='...') 删除指定录制。
+- **Start**: recorder(action='start'). Open the target page and active tab first; injection records clicks, typing, keys, and navigation. **Full navigations** (e.g. link clicks) re-inject the recorder and log navigate steps automatically.
+- **Stop**: recorder(action='stop', name='optional', force=False). Saves under ~/.ziniao/recordings/; if name is set and the .json exists, use force=true to overwrite.
+- **Inspect JSON**: recorder(action='view', name='...', metadata_only=False). Loads metadata and actions; metadata_only=true omits the actions array.
+- **Status**: recorder(action='status'). Whether the current session is recording and the start URL.
+- **Replay**: recorder(action='replay', name='...') or recorder(action='replay', actions_json='[...]'). Use speed to adjust pace.
+- **List / delete**: recorder(action='list'); recorder(action='delete', name='...').
 
-用户说「录一下」「停止录制」「回放刚才的」或类似需求时，按上述对应 action 调用即可。""",
+When the user asks to record, stop recording, or replay, call the matching action above.""",
             },
         ]
 

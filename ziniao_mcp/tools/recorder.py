@@ -457,6 +457,8 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
         name: str = "",
         actions_json: str = "",
         speed: float = 1.0,
+        metadata_only: bool = False,
+        force: bool = False,
     ) -> str:
         """Record browser actions and replay saved recordings.
 
@@ -466,24 +468,33 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
 
         Args:
             action: The recorder action ("start" | "stop" | "replay" |
-                "list" | "delete").
+                "list" | "delete" | "view" | "status").
             name: Optional recording name. Used when saving (stop) or targeting
-                replay/delete.
+                replay/delete/view.
             actions_json: Optional JSON action list for replay. If provided, it
                 takes priority over name.
             speed: Replay speed multiplier. Default is 1.0.
+            metadata_only: For action "view", omit the actions array when True.
+            force: For action "stop", when name is set and the JSON file already
+                exists, overwrite if True; otherwise return an error.
         """
         if action == "start":
             return await _do_start(session, _inject_recorder, _nav_setup)
         if action == "stop":
-            return await _do_stop(session, name, _collect_actions, _clear_recorder)
+            return await _do_stop(session, name, _collect_actions, _clear_recorder, force)
         if action == "replay":
             return await _do_replay(session, name, actions_json, speed)
         if action == "list":
             return _do_list()
         if action == "delete":
             return _do_delete(name)
-        raise RuntimeError(f"Unknown action: {action}. Supported: start, stop, replay, list, delete.")
+        if action == "view":
+            return _do_view(name, metadata_only)
+        if action == "status":
+            return _do_status(session)
+        raise RuntimeError(
+            f"Unknown action: {action}. Supported: start, stop, replay, list, delete, view, status.",
+        )
 
 
 async def _do_start(session, inject_fn, nav_setup_fn) -> str:
@@ -506,7 +517,7 @@ async def _do_start(session, inject_fn, nav_setup_fn) -> str:
     }, ensure_ascii=False)
 
 
-async def _do_stop(session, name, collect_fn, clear_fn) -> str:
+async def _do_stop(session, name, collect_fn, clear_fn, force: bool = False) -> str:
     store = session.get_active_session()
     if not store.recording:
         return json.dumps({"status": "error", "message": "No active recording."}, ensure_ascii=False)
@@ -526,7 +537,16 @@ async def _do_stop(session, name, collect_fn, clear_fn) -> str:
     if not actions:
         return json.dumps({"status": "empty", "message": "No actions were recorded."}, ensure_ascii=False)
 
-    rec_name = name or datetime.now().strftime("rec_%Y%m%d_%H%M%S")
+    rec_name = (name or "").strip() or datetime.now().strftime("rec_%Y%m%d_%H%M%S")
+    json_path = _RECORDINGS_DIR / f"{rec_name}.json"
+    if (name or "").strip() and json_path.exists() and not force:
+        return json.dumps({
+            "status": "error",
+            "message": (
+                f"Recording '{rec_name}' already exists. Use another --name or pass force=true to overwrite."
+            ),
+        }, ensure_ascii=False)
+
     paths = _save_recording(rec_name, actions, store.cdp_port, store.recording_start_url)
 
     return json.dumps({
@@ -545,7 +565,9 @@ async def _do_replay(session, name, actions_json, speed) -> str:
         meta = _load_recording(name)
         actions = meta.get("actions", [])
     else:
-        raise RuntimeError("Replay requires name or actions_json.")
+        raise RuntimeError(
+            "Replay requires a recording `name` (saved file) or `actions_json` (inline JSON array).",
+        )
 
     if not actions:
         return json.dumps({"status": "empty", "message": "Action list is empty."}, ensure_ascii=False)
@@ -644,4 +666,30 @@ def _do_delete(name: str) -> str:
     return json.dumps({
         "status": "deleted",
         "name": name,
+    }, ensure_ascii=False)
+
+
+def _do_view(name: str, metadata_only: bool = False) -> str:
+    n = (name or "").strip()
+    if not n:
+        raise RuntimeError("View requires the name parameter.")
+    meta = _load_recording(n)
+    path = (_RECORDINGS_DIR / f"{n}.json").resolve()
+    recording: dict[str, Any] = dict(meta)
+    if metadata_only:
+        recording.pop("actions", None)
+    return json.dumps({
+        "status": "ok",
+        "path": str(path),
+        "recording": recording,
+        "metadata_only": metadata_only,
+    }, ensure_ascii=False, indent=2)
+
+
+def _do_status(session) -> str:
+    store = session.get_active_session()
+    return json.dumps({
+        "status": "ok",
+        "recording_active": store.recording,
+        "recording_start_url": getattr(store, "recording_start_url", "") or "",
     }, ensure_ascii=False)

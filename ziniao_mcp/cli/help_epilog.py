@@ -8,5 +8,5 @@ GROUP_CLI_EPILOG = (
     "--store, --session, --json, --json-legacy, --content-boundaries, --max-output, --timeout; "
     "env ZINIAO_JSON / ZINIAO_CONTENT_BOUNDARIES / ZINIAO_MAX_OUTPUT.\n"
     "Example: ziniao --json --content-boundaries info snapshot\n"
-    "Full root help: ziniao --help"
+    "See: ziniao --help"
 )
