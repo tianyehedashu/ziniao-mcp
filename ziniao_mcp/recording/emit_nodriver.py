@@ -147,11 +147,67 @@ then run: ``python {title}.py`` (or pass ``--port`` if different).
             lines.append(f"    # {step}. Press key {key}")
             append_press_key_code(lines, key)
 
+        elif act_type == "dblclick":
+            sel = act.get("selector") or "body"
+            lines.append(f"    # {step}. Double-click {sel}")
+            dbl_js = (
+                f"document.querySelector({json.dumps(sel)})"
+                f"?.dispatchEvent(new MouseEvent('dblclick',{{bubbles:true}}))"
+            )
+            lines.append(f"    await tab.evaluate({dbl_js!r})")
+
+        elif act_type == "hover":
+            sel = act.get("selector") or "body"
+            lines.append(f"    # {step}. Hover {sel}")
+            hover_js = (
+                f"(function(){{var el=document.querySelector({json.dumps(sel)});"
+                f"if(!el)return;"
+                f"el.dispatchEvent(new MouseEvent('mouseover',{{bubbles:true}}));"
+                f"el.dispatchEvent(new MouseEvent('mouseenter',{{bubbles:false}}))}})()"
+            )
+            lines.append(f"    await tab.evaluate({hover_js!r})")
+            lines.append("    await asyncio.sleep(0.15)")
+
+        elif act_type == "scroll":
+            sx = int(act.get("scrollX", 0))
+            sy = int(act.get("scrollY", 0))
+            lines.append(f"    # {step}. Scroll to ({sx}, {sy})")
+            lines.append(f"    await tab.evaluate('window.scrollTo({sx},{sy})')")
+            lines.append("    await asyncio.sleep(0.2)")
+
         elif act_type == "navigate":
             url = act.get("url", "")
             lines.append(f"    # {step}. Navigate to {url}")
             lines.append(f"    await tab.get({url!r})")
             lines.append("    await tab.sleep(1)")
+
+        elif act_type == "upload":
+            sel = act.get("selector") or "input[type=file]"
+            fnames = act.get("fileNames", [])
+            lines.append(f"    # {step}. Upload via {sel} (original: {fnames})")
+            lines.append("    # TODO: provide actual file paths for replay")
+
+        elif act_type == "dialog":
+            dt = act.get("dialogType", "alert")
+            msg = (act.get("message") or "")[:50]
+            lines.append(f"    # {step}. Dialog ({dt}): {msg}")
+            lines.append("    # Handled by CDP dialog handler")
+
+        elif act_type == "drag":
+            src = act.get("sourceSelector") or "body"
+            tgt = act.get("targetSelector") or "body"
+            lines.append(f"    # {step}. Drag {src} -> {tgt}")
+            drag_js = (
+                f"(function(){{var s=document.querySelector({json.dumps(src)}),"
+                f"t=document.querySelector({json.dumps(tgt)});"
+                f"if(!s||!t)return;"
+                f"var d=new DataTransfer();"
+                f"s.dispatchEvent(new DragEvent('dragstart',{{bubbles:true,dataTransfer:d}}));"
+                f"t.dispatchEvent(new DragEvent('dragover',{{bubbles:true,dataTransfer:d}}));"
+                f"t.dispatchEvent(new DragEvent('drop',{{bubbles:true,dataTransfer:d}}));"
+                f"s.dispatchEvent(new DragEvent('dragend',{{bubbles:true,dataTransfer:d}}))}})();"
+            )
+            lines.append(f"    await tab.evaluate({drag_js!r})")
 
         else:
             lines.append(f"    # {step}. Unknown action: {act_type}")

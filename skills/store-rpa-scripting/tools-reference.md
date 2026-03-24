@@ -1,98 +1,89 @@
-# ziniao-mcp 工具速查
+# ziniao CLI 探索 ↔ 独立脚本对照
 
-**Phase 1 探索**时使用以下 MCP 工具交互式操作页面。**Phase 3 生成脚本**时，将 MCP 工具调用转换为对应的 Python 代码（见下方"脚本中的对应写法"）。
+**Phase 1** 在终端使用 `ziniao`（详见 **ziniao-cli** skill）。**Phase 3** 将同一语义写成 `ziniao_webdriver` + `nodriver`，进程内直连 CDP，不拉起 CLI。
 
-## Phase 1 探索用工具
+## Phase 1 常用命令（速查）
 
-## 连接与生命周期
+### 连接与会话
 
-| 工具 | 参数 | 用途 |
-|------|------|------|
-| `connect_store(store_id)` | store_id: 店铺 ID | 连接已运行的店铺（推荐） |
-| `open_store(store_id)` | store_id: 店铺 ID | 打开并连接店铺（会重启已运行的） |
-| `list_stores()` | 无 | 获取所有店铺列表 |
-| `list_open_stores()` | 无 | 查看已打开的店铺 |
-| `close_store(store_id)` | store_id: 店铺 ID | 关闭店铺 |
+| CLI | 说明 |
+|-----|------|
+| `ziniao list-stores` | 列出紫鸟侧会话 ID（任务需要时） |
+| `ziniao open-store <id>` | 打开并接入该会话 |
+| `ziniao launch [--url …]` / `ziniao connect <port>` | 非紫鸟或已有 Chrome |
+| `ziniao session list` / `session switch <id>` | 多会话 |
+| `ziniao --store <id> <子命令>` | 指定会话执行子命令 |
+| `ziniao close-store <id>` | 关闭紫鸟会话 |
 
-## 导航
+### 导航与页签
 
-| 工具 | 参数 | 用途 |
-|------|------|------|
-| `navigate_page(url)` | url: 目标 URL | 导航到页面 |
-| `wait_for(selector, state, timeout)` | selector: CSS 选择器 | 等待元素/页面加载 |
-| `list_pages()` | 无 | 列出所有标签页 |
-| `select_page(page_index)` | page_index: 索引 | 切换标签页 |
-| `new_page(url)` | url: 可选 | 新建标签页 |
-| `close_page(page_index)` | page_index: 默认 -1 | 关闭标签页 |
+| CLI | 说明 |
+|-----|------|
+| `ziniao navigate <url>` | 跳转 |
+| `ziniao wait <selector> [--timeout N]` | 等待元素 |
+| `ziniao back` / `forward` / `reload` | 历史与刷新 |
+| `ziniao tab list` / `tab new` / `tab switch` | 标签页 |
 
-## 页面理解
+### 页面理解
 
-| 工具 | 参数 | 用途 |
-|------|------|------|
-| `take_snapshot()` | 无 | 获取 HTML 结构（定位选择器） |
-| `take_screenshot(selector, full_page)` | 均可选 | 视觉确认 |
-| `evaluate_script(script)` | script: JS 代码 | 提取数据/验证选择器 |
+| CLI | 说明 |
+|-----|------|
+| `ziniao snapshot --interactive` | 表格含 **Selector** 列（勿用 `@eN` 当选择器） |
+| `ziniao snapshot` / `snapshot --compact` | 完整或紧凑 HTML |
+| `ziniao screenshot [file] [-s <selector>]` | 截图 |
+| `ziniao eval '<js>'` | 执行 JS |
 
-## 输入交互
+### 交互
 
-| 工具 | 参数 | 用途 |
-|------|------|------|
-| `click(selector)` | selector: CSS 选择器 | 点击元素 |
-| `fill(selector, value)` | selector + value | 清空并填写输入框 |
-| `fill_form(fields_json)` | JSON 字段列表 | 批量填写表单 |
-| `type_text(text, selector)` | text + 可选 selector | 逐字键入（触发事件） |
-| `press_key(key)` | key: 按键名 | 按键（Enter/Tab/Escape 等） |
-| `hover(selector)` | selector | 鼠标悬停 |
-| `drag(source, target)` | 两个选择器 | 拖拽 |
-| `handle_dialog(action, text)` | action: accept/dismiss | 处理弹窗 |
-| `upload_file(selector, file_paths_json)` | 选择器 + 文件路径 JSON | 上传文件 |
+| CLI | 说明 |
+|-----|------|
+| `ziniao click <selector>` | 点击 |
+| `ziniao fill <selector> <value>` | 清空并输入 |
+| `ziniao type <text> [-s <selector>]` | 逐字输入 |
+| `ziniao press Enter` | 按键（另有其它 key 子命令见 commands 文档） |
+| `ziniao hover` / `dblclick` / `drag` | 见 ziniao-cli |
+| `ziniao act dialog accept\|dismiss` | 原生 JS 对话框 |
+| `ziniao act select` / `check` / `uncheck` | 表单控件 |
 
-## 网络分析
+### 读取与枚举
 
-| 工具 | 参数 | 用途 |
-|------|------|------|
-| `list_network_requests(url_pattern, limit)` | 均可选 | 列出捕获的请求 |
-| `get_network_request(request_id)` | request_id | 获取请求详情 |
+| CLI | 说明 |
+|-----|------|
+| `ziniao get text\|html\|value <selector>` | 读 DOM |
+| `ziniao get count <selector>` | 匹配数量 |
+| `ziniao find nth <n> <selector> [action]` | 列表第 n 项 |
+| `ziniao url` / `ziniao title` | 页面信息 |
 
-## 调试
+### 网络
 
-| 工具 | 参数 | 用途 |
-|------|------|------|
-| `list_console_messages(level, limit)` | 均可选 | 查看控制台输出 |
-| `get_console_message(message_id)` | message_id | 获取完整消息 |
-| `emulate(device_name)` | 设备名 | 模拟移动设备 |
-| `resize_page(width, height)` | 宽高像素 | 调整视口大小 |
+| CLI | 说明 |
+|-----|------|
+| `ziniao network list [--filter]` | 已捕获请求 |
+| `ziniao network har-start` / `har-stop [path]` | HAR 导出 |
 
-## 脚本中的对应写法
+更多选项与全局 flag（`--json`、`--timeout` 等）见 **ziniao-cli** skill。
 
-MCP 工具探索阶段的操作，在生成的 Python 脚本中对应的写法。
+## Phase 3：CLI 语义 → Python（nodriver）
 
-### 客户端与店铺生命周期
+### 客户端与 CDP
 
-| MCP 工具 | Python 代码（ziniao_webdriver） |
-|----------|-------------------------------|
-| `start_client` | `client.heartbeat()` / `client.start_browser()` |
-| `list_stores` | `client.get_browser_list()` |
-| `open_store(id)` | `client.open_store(id)` → 返回含 `debuggingPort` 的 dict |
-| `connect_store(id)` | 先 `open_store` 获取端口，再 `nodriver.Browser.create(port=port)` |
-| `close_store(id)` | `client.close_store(browser_oauth)` |
-| `stop_client` | `client.get_exit()` |
+| CLI / 概念 | Python（ziniao_webdriver + nodriver） |
+|------------|----------------------------------------|
+| `open-store` 成功 | `client.open_store(id)` → 取 `debuggingPort` |
+| 已附着浏览器 | `await nodriver.Browser.create(host="127.0.0.1", port=cdp_port)` |
+| 客户端未启动 | `client.heartbeat()` → 否则 `client.start_browser()` |
 
-### 浏览器操作
+### 页内操作
 
-| MCP 工具 | nodriver Python 代码 |
-|----------|---------------------|
-| `connect_store` | `browser = await nodriver.Browser.create(host="127.0.0.1", port=cdp_port)` |
-| `navigate_page(url)` | `await tab.get(url)` |
-| `wait_for(selector)` | `await tab.select(selector, timeout=30)` |
-| `take_snapshot()` | `html = await tab.get_content()` |
-| `click(selector)` | `elem = await tab.select(sel); await elem.click()` |
-| `fill(selector, value)` | `elem = await tab.select(sel); await elem.clear_input(); await elem.send_keys(value)` |
-| `type_text(text)` | `await tab.send(cdp.input_.dispatch_key_event("char", text=ch))` |
-| `press_key(key)` | `await tab.send(cdp.input_.dispatch_key_event(...))` |
-| `evaluate_script(js)` | `result = await tab.evaluate(js)` |
-| `take_screenshot()` | `await tab.send(cdp.page.capture_screenshot())` |
-| `upload_file(sel, paths)` | `elem = await tab.select(sel); await elem.send_file(path)` |
-| `list_pages()` | `browser.tabs` |
-| `select_page(i)` | `tab = browser.tabs[i]; await tab.bring_to_front()` |
-| `new_page(url)` | `tab = await browser.get(url, new_tab=True)` |
+| CLI | nodriver 思路 |
+|-----|----------------|
+| `navigate url` | `await tab.get(url)` |
+| `wait selector` | `await tab.select(selector, timeout=秒)` |
+| `snapshot`（内容） | `await tab.get_content()` 或 evaluate 取结构 |
+| `click` | `elem = await tab.select(...); await elem.click()` |
+| `fill` | `clear_input` + `send_keys`（与 nodriver API 一致即可） |
+| `eval` | `await tab.evaluate(js)` |
+| `screenshot` | `cdp.page.capture_screenshot` |
+| `tab` 切换 | `browser.tabs` / `bring_to_front` / `get(..., new_tab=True)` |
+
+生成脚本时，保持与 Phase 1 验证过的选择器、等待顺序一致。

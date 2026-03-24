@@ -49,6 +49,10 @@ _RECORDER_JS = r"""
 
     var actions = window[SYM_DATA];
     var inputTimers = {};
+    var scrollTimer = null;
+    var hoverTimer = null;
+    var lastHoverSel = '';
+    var dragSource = null;
 
     function getSelector(el) {
         if (!el || el === document || el === document.documentElement) return 'html';
@@ -113,7 +117,6 @@ _RECORDER_JS = r"""
         actions.push(obj);
     }
 
-    // --- click ---
     document.addEventListener('click', function(e) {
         var tgt = e.target;
         if (!tgt || !tgt.tagName) return;
@@ -122,11 +125,40 @@ _RECORDER_JS = r"""
         record({ type: 'click', selector: getSelector(tgt) });
     }, true);
 
-    // --- checkbox / radio ---
+    document.addEventListener('dblclick', function(e) {
+        var tgt = e.target;
+        if (!tgt || !tgt.tagName) return;
+        record({ type: 'dblclick', selector: getSelector(tgt) });
+    }, true);
+
+    document.addEventListener('mouseover', function(e) {
+        var tgt = e.target;
+        if (!tgt || !tgt.tagName) return;
+        var sel = getSelector(tgt);
+        if (sel === lastHoverSel || sel === 'html' || sel === 'body') return;
+        if (hoverTimer) clearTimeout(hoverTimer);
+        hoverTimer = setTimeout(function() {
+            hoverTimer = null;
+            lastHoverSel = sel;
+            var tag = tgt.tagName.toLowerCase();
+            var ok = (tag === 'a' || tag === 'button' || tag === 'li' || tag === 'summary' || tag === 'details');
+            if (!ok) {
+                try { ok = tgt.matches('[role],[aria-haspopup],[data-toggle],[data-hover],.menu-item,.nav-item,.dropdown-toggle'); } catch(ex) {}
+            }
+            if (!ok) return;
+            record({ type: 'hover', selector: sel });
+        }, 300);
+    }, true);
+
     document.addEventListener('change', function(e) {
         var tgt = e.target;
         if (!tgt) return;
         var tag = tgt.tagName.toLowerCase();
+        if (tag === 'input' && tgt.type === 'file') {
+            var files = Array.from(tgt.files || []).map(function(f) { return f.name; });
+            record({ type: 'upload', selector: getSelector(tgt), fileNames: files });
+            return;
+        }
         if (tag === 'input' && (tgt.type === 'checkbox' || tgt.type === 'radio')) {
             record({ type: 'click', selector: getSelector(tgt) });
             return;
@@ -137,47 +169,92 @@ _RECORDER_JS = r"""
         }
     }, true);
 
-    // --- input (debounced fill) ---
     document.addEventListener('input', function(e) {
         var tgt = e.target;
         if (!tgt) return;
         var tag = tgt.tagName.toLowerCase();
-        if (tag !== 'input' && tag !== 'textarea') return;
+        var isEditable = (tag === 'input' || tag === 'textarea');
+        if (!isEditable && tgt.isContentEditable) isEditable = true;
+        if (!isEditable) return;
         if (tgt.type === 'checkbox' || tgt.type === 'radio') return;
 
         var sel = getSelector(tgt);
         if (inputTimers[sel]) clearTimeout(inputTimers[sel]);
         inputTimers[sel] = setTimeout(function() {
             delete inputTimers[sel];
+            var val = (tag === 'input' || tag === 'textarea') ? tgt.value : (tgt.innerText || '');
             var last = actions[actions.length - 1];
             if (last && last.type === 'fill' && last.selector === sel) {
-                last.value = tgt.value;
+                last.value = val;
                 last.timestamp = Date.now();
             } else {
-                record({ type: 'fill', selector: sel, value: tgt.value });
+                record({ type: 'fill', selector: sel, value: val });
             }
         }, 500);
     }, true);
 
-    // --- special keys ---
     var SPECIAL_KEYS = {
         'Enter': 'Enter', 'Tab': 'Tab', 'Escape': 'Escape',
         'Backspace': 'Backspace', 'Delete': 'Delete',
         'ArrowUp': 'ArrowUp', 'ArrowDown': 'ArrowDown',
-        'ArrowLeft': 'ArrowLeft', 'ArrowRight': 'ArrowRight'
+        'ArrowLeft': 'ArrowLeft', 'ArrowRight': 'ArrowRight',
+        ' ': 'Space', 'Home': 'Home', 'End': 'End',
+        'PageUp': 'PageUp', 'PageDown': 'PageDown',
+        'F1': 'F1', 'F2': 'F2', 'F3': 'F3', 'F4': 'F4',
+        'F5': 'F5', 'F6': 'F6', 'F7': 'F7', 'F8': 'F8',
+        'F9': 'F9', 'F10': 'F10', 'F11': 'F11', 'F12': 'F12'
     };
     document.addEventListener('keydown', function(e) {
-        var keyName = SPECIAL_KEYS[e.key];
-        if (!keyName) return;
         var mods = '';
         if (e.ctrlKey) mods += 'Control+';
         if (e.altKey) mods += 'Alt+';
         if (e.shiftKey) mods += 'Shift+';
         if (e.metaKey) mods += 'Meta+';
-        record({ type: 'press_key', key: mods + keyName });
+        var keyName = SPECIAL_KEYS[e.key];
+        if (keyName) {
+            record({ type: 'press_key', key: mods + keyName });
+            return;
+        }
+        if (mods && e.key.length === 1) {
+            record({ type: 'press_key', key: mods + e.key });
+        }
     }, true);
 
-    // --- navigation (popstate / hashchange) ---
+    document.addEventListener('scroll', function() {
+        if (scrollTimer) clearTimeout(scrollTimer);
+        scrollTimer = setTimeout(function() {
+            scrollTimer = null;
+            record({ type: 'scroll', scrollX: Math.round(window.scrollX), scrollY: Math.round(window.scrollY) });
+        }, 500);
+    }, true);
+
+    document.addEventListener('dragstart', function(e) {
+        if (e.target) dragSource = { selector: getSelector(e.target) };
+    }, true);
+    document.addEventListener('drop', function(e) {
+        if (!dragSource || !e.target) return;
+        record({ type: 'drag', sourceSelector: dragSource.selector, targetSelector: getSelector(e.target) });
+        dragSource = null;
+    }, true);
+
+    var origAlert = window.alert;
+    var origConfirm = window.confirm;
+    var origPrompt = window.prompt;
+    window.alert = function(msg) {
+        record({ type: 'dialog', dialogType: 'alert', message: String(msg || '') });
+        return origAlert.apply(this, arguments);
+    };
+    window.confirm = function(msg) {
+        var result = origConfirm.apply(this, arguments);
+        record({ type: 'dialog', dialogType: 'confirm', message: String(msg || ''), accepted: result });
+        return result;
+    };
+    window.prompt = function(msg, def) {
+        var result = origPrompt.apply(this, arguments);
+        record({ type: 'dialog', dialogType: 'prompt', message: String(msg || ''), response: result });
+        return result;
+    };
+
     window.addEventListener('popstate', function() {
         record({ type: 'navigate', url: location.href });
     });
@@ -385,10 +462,12 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
     ) -> str:
         """Record browser actions and replay saved recordings.
 
-        This tool records interactions such as click, fill, key press, and
-        navigation. On stop, it saves JSON metadata and generates a standalone
-        Python script based on nodriver. Recording defaults to engine dom2;
-        replay accepts both schema v1 (legacy) and v2 (dom2) action lists.
+        This tool records interactions such as click, dblclick, hover, fill,
+        select, key press, scroll, navigation, file upload, dialog, and
+        drag-and-drop. On stop, it saves JSON metadata and generates a
+        standalone Python script based on nodriver. Recording defaults to
+        engine dom2; replay accepts both schema v1 (legacy) and v2 (dom2)
+        action lists.
 
         Args:
             action: The recorder action ("start" | "stop" | "replay" |
@@ -586,6 +665,18 @@ async def _do_stop(
     }, ensure_ascii=False)
 
 
+async def _scroll_to(tab: Any, selector: str) -> None:
+    """Scroll element into view before interaction."""
+    try:
+        await tab.evaluate(
+            f"document.querySelector({json.dumps(selector)})"
+            f"?.scrollIntoView({{block:'center',behavior:'instant'}})",
+        )
+        await asyncio.sleep(0.15)
+    except Exception:  # pylint: disable=broad-exception-caught
+        pass
+
+
 async def _do_replay(
     session,
     name,
@@ -620,6 +711,7 @@ async def _do_replay(
         human_click as _hclick,
         human_fill as _hfill,
     )
+    from nodriver import cdp as _cdp  # pylint: disable=import-outside-toplevel
 
     if reuse_tab:
         try:
@@ -637,16 +729,63 @@ async def _do_replay(
     speed = max(0.1, speed)
     replayed = 0
 
+    # Pre-collect dialog responses so the CDP handler can use them in order
+    dialog_responses = [a for a in actions if a.get("type") == "dialog"]
+    _dialog_idx = [0]
+
+    async def _on_dialog(event: _cdp.page.JavascriptDialogOpening) -> None:
+        accept = True
+        prompt_text = ""
+        if _dialog_idx[0] < len(dialog_responses):
+            dr = dialog_responses[_dialog_idx[0]]
+            accept = dr.get("accepted", True)
+            prompt_text = str(dr.get("response") or "")
+            _dialog_idx[0] += 1
+        try:
+            await tab.send(_cdp.page.handle_java_script_dialog(
+                accept=accept, prompt_text=prompt_text,
+            ))
+        except Exception:  # pylint: disable=broad-exception-caught
+            pass
+
+    tab.add_handler(_cdp.page.JavascriptDialogOpening, _on_dialog)
+
+    # Multi-tab: map recorded target_id -> replay tab
+    tab_map: dict[str, Any] = {}
+    current_target_id: str | None = None
+
     for act in actions:
         act = normalize_action_for_replay(act)
         delay_ms = act.get("delay_ms", 0)
         if delay_ms > 100:
             await asyncio.sleep(delay_ms / 1000 / speed)
 
+        # Switch tab when target_id changes
+        rec_tid = act.get("target_id")
+        if rec_tid and rec_tid != current_target_id:
+            if current_target_id is None:
+                tab_map[rec_tid] = tab
+            elif rec_tid in tab_map:
+                tab = tab_map[rec_tid]
+            else:
+                try:
+                    from ..session import _filter_tabs  # pylint: disable=import-outside-toplevel
+                    all_tabs = _filter_tabs(list(store.browser.tabs))
+                    known_ids = {id(t) for t in tab_map.values()}
+                    for t in all_tabs:
+                        if id(t) not in known_ids:
+                            tab_map[rec_tid] = t
+                            tab = t
+                            break
+                except Exception:  # pylint: disable=broad-exception-caught
+                    pass
+            current_target_id = rec_tid
+
         act_type = act.get("type", "")
         try:
             if act_type == "click":
                 sel = act.get("selector") or "body"
+                await _scroll_to(tab, sel)
                 elem = await find_element(tab, sel, store, timeout=10)
                 if elem:
                     if cfg or is_ziniao:
@@ -654,8 +793,28 @@ async def _do_replay(
                     else:
                         await elem.click()
 
+            elif act_type == "dblclick":
+                sel = act.get("selector") or "body"
+                await _scroll_to(tab, sel)
+                await tab.evaluate(
+                    f"document.querySelector({json.dumps(sel)})"
+                    f"?.dispatchEvent(new MouseEvent('dblclick',{{bubbles:true}}))",
+                )
+
+            elif act_type == "hover":
+                sel = act.get("selector") or "body"
+                await _scroll_to(tab, sel)
+                await tab.evaluate(
+                    f"(function(){{var el=document.querySelector({json.dumps(sel)});"
+                    f"if(!el)return;"
+                    f"el.dispatchEvent(new MouseEvent('mouseover',{{bubbles:true}}));"
+                    f"el.dispatchEvent(new MouseEvent('mouseenter',{{bubbles:false}}))}})()",
+                )
+                await asyncio.sleep(0.15)
+
             elif act_type == "fill":
                 sel = act.get("selector") or "body"
+                await _scroll_to(tab, sel)
                 elem = await find_element(tab, sel, store, timeout=10)
                 if elem:
                     if cfg or is_ziniao:
@@ -667,33 +826,72 @@ async def _do_replay(
             elif act_type == "select":
                 sel = act.get("selector") or "select"
                 val = act.get("value", "")
+                await _scroll_to(tab, sel)
                 await tab.evaluate(
                     f"document.querySelector({json.dumps(sel)}).value = {json.dumps(val)};"
                     f"document.querySelector({json.dumps(sel)}).dispatchEvent(new Event('change'))",
                 )
 
             elif act_type == "press_key":
-                from nodriver import cdp  # pylint: disable=import-outside-toplevel
                 from ._keys import parse_key as _parse  # pylint: disable=import-outside-toplevel
                 key = act.get("key", "Enter")
                 actual_key, vk, modifiers = _parse(key)
-                await tab.send(cdp.input_.dispatch_key_event(
+                await tab.send(_cdp.input_.dispatch_key_event(
                     "rawKeyDown", windows_virtual_key_code=vk, modifiers=modifiers, key=actual_key,
                 ))
-                await tab.send(cdp.input_.dispatch_key_event(
+                await tab.send(_cdp.input_.dispatch_key_event(
                     "keyUp", windows_virtual_key_code=vk, modifiers=modifiers, key=actual_key,
                 ))
 
+            elif act_type == "scroll":
+                sx = int(act.get("scrollX", 0))
+                sy = int(act.get("scrollY", 0))
+                await tab.evaluate(f"window.scrollTo({sx},{sy})")
+                await asyncio.sleep(0.2)
+
             elif act_type == "navigate":
-                from nodriver import cdp as _cdp  # pylint: disable=import-outside-toplevel
                 url = act.get("url", "")
                 if url:
                     await tab.send(_cdp.page.navigate(url=url))
                     await tab.sleep(1)
 
+            elif act_type == "upload":
+                sel = act.get("selector") or "input[type=file]"
+                file_names = act.get("fileNames") or []
+                _logger.info(
+                    "Upload action: selector=%s, fileNames=%s (provide actual file paths for replay)",
+                    sel, file_names,
+                )
+
+            elif act_type == "dialog":
+                pass  # handled by _on_dialog CDP handler
+
+            elif act_type == "drag":
+                src_sel = act.get("sourceSelector") or "body"
+                tgt_sel = act.get("targetSelector") or "body"
+                await _scroll_to(tab, src_sel)
+                await tab.evaluate(
+                    f"(function(){{var s=document.querySelector({json.dumps(src_sel)}),"
+                    f"t=document.querySelector({json.dumps(tgt_sel)});"
+                    f"if(!s||!t)return;"
+                    f"var d=new DataTransfer();"
+                    f"s.dispatchEvent(new DragEvent('dragstart',{{bubbles:true,dataTransfer:d}}));"
+                    f"t.dispatchEvent(new DragEvent('dragover',{{bubbles:true,dataTransfer:d}}));"
+                    f"t.dispatchEvent(new DragEvent('drop',{{bubbles:true,dataTransfer:d}}));"
+                    f"s.dispatchEvent(new DragEvent('dragend',{{bubbles:true,dataTransfer:d}}))}})()",
+                )
+
             replayed += 1
         except Exception as exc:  # pylint: disable=broad-exception-caught
             _logger.warning("Replay step %d (%s) failed: %s", replayed + 1, act_type, exc)
+
+    # Clean up dialog handler
+    try:
+        lst = tab.handlers.get(_cdp.page.JavascriptDialogOpening, [])
+        if _on_dialog in lst:
+            lst.remove(_on_dialog)
+    except Exception:  # pylint: disable=broad-exception-caught
+        pass
 
     return json.dumps({
         "status": "done",

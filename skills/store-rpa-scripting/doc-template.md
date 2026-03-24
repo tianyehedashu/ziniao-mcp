@@ -9,22 +9,26 @@ Phase 4 生成的过程文档应遵循以下模板。文件命名与脚本对应
 
 ## 1. 概述
 - **目标**: [一句话描述自动化目标]
-- **适用平台**: [Amazon / TikTok / 通用]
-- **适用店铺**: [store_id 列表或"所有店铺"]
+- **范围**: [入口 URL / 会话类型；业务背景由任务方定义，此处不展开站点细节]
 - **生成日期**: [YYYY-MM-DD]
 
 ## 2. 环境准备
 
-### 2.1 依赖安装
+### 2.1 探索环境（CLI，Phase 1）
+- 已安装：`uv tool install ziniao`（或等价），`ziniao config show` 可正常输出
+- 探索命令见过程文档第 3 节记录
+
+### 2.2 独立脚本依赖（Phase 3）
 ```bash
 pip install nodriver ziniao
+# 或与项目一致：uv add nodriver ziniao
 ```
 
-### 2.2 紫鸟客户端
+### 2.3 紫鸟客户端（脚本内 ZiniaoClient）
 - 客户端路径: `D:\ziniao\ziniao.exe`（按实际修改）
 - 确保客户端版本支持 WebDriver 模式
 
-### 2.3 账号配置
+### 2.4 账号配置
 在脚本中修改 `ZINIAO_CONFIG`：
 | 字段 | 说明 | 示例 |
 |------|------|------|
@@ -33,7 +37,7 @@ pip install nodriver ziniao
 | username | 登录用户名 | `admin` |
 | password | 登录密码 | `***` |
 
-### 2.4 输入数据（如需）
+### 2.5 输入数据（如需）
 - 文件路径: `tasks.csv`
 - 格式说明: [列名和含义]
 - 示例行: [1-2 行样例数据]
@@ -47,9 +51,9 @@ pip install nodriver ziniao
 
 ### 3.2 操作流程验证
 [Phase 1 中每一步探索的记录，包括：]
-- 使用的 MCP 工具和参数
-- 返回结果摘要
-- 发现的选择器
+- 执行的终端命令（`ziniao ...`）及关键参数
+- 终端输出或 `--json` 解析结果摘要
+- 发现的选择器（注明是否来自 `snapshot --interactive` 的 Selector 列）
 - 遇到的异常及处理方式
 
 ### 3.3 API 接口（如有）
@@ -97,7 +101,7 @@ python rpa_[task_name].py
 
 ## 生成要点
 
-- 将 Phase 1 探索过程中的**实际工具调用和返回结果**记录到"探索记录"章节
+- 将 Phase 1 探索过程中的**实际 `ziniao` 命令与输出摘要**记录到"探索记录"章节
 - 将 Phase 2 确认的步骤表格完整复制到"操作步骤详解"章节
 - 脚本文件名和文档文件名保持对应（如 `rpa_batch_price.py` + `rpa_batch_price_doc.md`）
 - 文档应足够详细，让不了解项目的人也能按文档复现整个流程

@@ -104,6 +104,10 @@ def _recorder_js_body(binding_name: str) -> str:
     }}
 
     var inputTimers = {{}};
+    var scrollTimer = null;
+    var hoverTimer = null;
+    var lastHoverSel = '';
+    var dragSource = null;
 
     document.addEventListener('click', function(e) {{
         var tgt = e.target;
@@ -116,10 +120,45 @@ def _recorder_js_body(binding_name: str) -> str:
         record({{ type: 'click', selector: getSelector(tgt), locator: loc }});
     }}, true);
 
+    document.addEventListener('dblclick', function(e) {{
+        var tgt = e.target;
+        if (!tgt || !tgt.tagName) return;
+        var loc = getLocator(tgt);
+        if (!loc || !loc.strategy) loc = {{ strategy: 'css', value: getSelector(tgt) }};
+        record({{ type: 'dblclick', selector: getSelector(tgt), locator: loc }});
+    }}, true);
+
+    document.addEventListener('mouseover', function(e) {{
+        var tgt = e.target;
+        if (!tgt || !tgt.tagName) return;
+        var sel = getSelector(tgt);
+        if (sel === lastHoverSel || sel === 'html' || sel === 'body') return;
+        if (hoverTimer) clearTimeout(hoverTimer);
+        hoverTimer = setTimeout(function() {{
+            hoverTimer = null;
+            lastHoverSel = sel;
+            var tag = tgt.tagName.toLowerCase();
+            var ok = (tag === 'a' || tag === 'button' || tag === 'li' || tag === 'summary' || tag === 'details');
+            if (!ok) {{
+                try {{ ok = tgt.matches('[role],[aria-haspopup],[data-toggle],[data-hover],.menu-item,.nav-item,.dropdown-toggle'); }} catch(ex) {{}}
+            }}
+            if (!ok) return;
+            var loc = getLocator(tgt);
+            if (!loc || !loc.strategy) loc = {{ strategy: 'css', value: sel }};
+            record({{ type: 'hover', selector: sel, locator: loc }});
+        }}, 300);
+    }}, true);
+
     document.addEventListener('change', function(e) {{
         var tgt = e.target;
         if (!tgt) return;
         var tag = tgt.tagName.toLowerCase();
+        if (tag === 'input' && tgt.type === 'file') {{
+            var files = Array.from(tgt.files || []).map(function(f) {{ return f.name; }});
+            var loc = getLocator(tgt);
+            record({{ type: 'upload', selector: getSelector(tgt), locator: loc, fileNames: files }});
+            return;
+        }}
         if (tag === 'input' && (tgt.type === 'checkbox' || tgt.type === 'radio')) {{
             var loc = getLocator(tgt);
             record({{ type: 'click', selector: getSelector(tgt), locator: loc }});
@@ -135,14 +174,17 @@ def _recorder_js_body(binding_name: str) -> str:
         var tgt = e.target;
         if (!tgt) return;
         var tag = tgt.tagName.toLowerCase();
-        if (tag !== 'input' && tag !== 'textarea') return;
+        var isEditable = (tag === 'input' || tag === 'textarea');
+        if (!isEditable && tgt.isContentEditable) isEditable = true;
+        if (!isEditable) return;
         if (tgt.type === 'checkbox' || tgt.type === 'radio') return;
         var sel = getSelector(tgt);
         var loc = getLocator(tgt);
         if (inputTimers[sel]) clearTimeout(inputTimers[sel]);
         inputTimers[sel] = setTimeout(function() {{
             delete inputTimers[sel];
-            record({{ type: 'fill', selector: sel, locator: loc, value: tgt.value }});
+            var val = (tag === 'input' || tag === 'textarea') ? tgt.value : (tgt.innerText || '');
+            record({{ type: 'fill', selector: sel, locator: loc, value: val }});
         }}, 500);
     }}, true);
 
@@ -150,18 +192,64 @@ def _recorder_js_body(binding_name: str) -> str:
         'Enter': 'Enter', 'Tab': 'Tab', 'Escape': 'Escape',
         'Backspace': 'Backspace', 'Delete': 'Delete',
         'ArrowUp': 'ArrowUp', 'ArrowDown': 'ArrowDown',
-        'ArrowLeft': 'ArrowLeft', 'ArrowRight': 'ArrowRight'
+        'ArrowLeft': 'ArrowLeft', 'ArrowRight': 'ArrowRight',
+        ' ': 'Space', 'Home': 'Home', 'End': 'End',
+        'PageUp': 'PageUp', 'PageDown': 'PageDown',
+        'F1': 'F1', 'F2': 'F2', 'F3': 'F3', 'F4': 'F4',
+        'F5': 'F5', 'F6': 'F6', 'F7': 'F7', 'F8': 'F8',
+        'F9': 'F9', 'F10': 'F10', 'F11': 'F11', 'F12': 'F12'
     }};
     document.addEventListener('keydown', function(e) {{
-        var keyName = SPECIAL_KEYS[e.key];
-        if (!keyName) return;
         var mods = '';
         if (e.ctrlKey) mods += 'Control+';
         if (e.altKey) mods += 'Alt+';
         if (e.shiftKey) mods += 'Shift+';
         if (e.metaKey) mods += 'Meta+';
-        record({{ type: 'press_key', key: mods + keyName }});
+        var keyName = SPECIAL_KEYS[e.key];
+        if (keyName) {{
+            record({{ type: 'press_key', key: mods + keyName }});
+            return;
+        }}
+        if (mods && e.key.length === 1) {{
+            record({{ type: 'press_key', key: mods + e.key }});
+        }}
     }}, true);
+
+    document.addEventListener('scroll', function() {{
+        if (scrollTimer) clearTimeout(scrollTimer);
+        scrollTimer = setTimeout(function() {{
+            scrollTimer = null;
+            record({{ type: 'scroll', scrollX: Math.round(window.scrollX), scrollY: Math.round(window.scrollY) }});
+        }}, 500);
+    }}, true);
+
+    document.addEventListener('dragstart', function(e) {{
+        if (e.target) dragSource = {{ selector: getSelector(e.target) }};
+    }}, true);
+    document.addEventListener('drop', function(e) {{
+        if (!dragSource || !e.target) return;
+        var tgt = e.target;
+        record({{ type: 'drag', sourceSelector: dragSource.selector, targetSelector: getSelector(tgt) }});
+        dragSource = null;
+    }}, true);
+
+    var origAlert = window.alert;
+    var origConfirm = window.confirm;
+    var origPrompt = window.prompt;
+    window.alert = function(msg) {{
+        record({{ type: 'dialog', dialogType: 'alert', message: String(msg || '') }});
+        return origAlert.apply(this, arguments);
+    }};
+    window.confirm = function(msg) {{
+        var result = origConfirm.apply(this, arguments);
+        record({{ type: 'dialog', dialogType: 'confirm', message: String(msg || ''), accepted: result }});
+        return result;
+    }};
+    window.prompt = function(msg, def) {{
+        var result = origPrompt.apply(this, arguments);
+        record({{ type: 'dialog', dialogType: 'prompt', message: String(msg || ''), response: result }});
+        return result;
+    }};
 
     window.addEventListener('popstate', function() {{
         record({{ type: 'navigate', url: location.href }});
@@ -202,6 +290,39 @@ def _make_binding_handler(
     return _on_binding
 
 
+def _setup_dom2_nav_handler(tab: "Tab", store: "StoreSession") -> None:
+    """Record navigate actions for full-page navigations via FrameNavigated."""
+    handler_key = f"_dom2_nav_{id(tab)}"
+    if getattr(store, handler_key, False):
+        return
+    setattr(store, handler_key, True)
+    target_id = str(tab.target_id)
+
+    async def _on_frame_navigated(event: cdp.page.FrameNavigated) -> None:
+        if not store.recording or getattr(store, "recording_engine", "legacy") != "dom2":
+            return
+        if event.frame.parent_id:
+            return
+        url = event.frame.url or ""
+        buf = getattr(store, "recording_ring_buffer", None)
+        if buf is None:
+            return
+        t0 = float(getattr(store, "recording_monotonic_t0", 0.0) or 0.0)
+        payload = {
+            "type": "navigate",
+            "url": url,
+            "timestamp": int(time.time() * 1000),
+            "target_id": target_id,
+            "seq": int(getattr(store, "recording_seq", 0)),
+            "mono_ts": time.monotonic() - t0,
+        }
+        store.recording_seq = int(getattr(store, "recording_seq", 0)) + 1
+        buf.append(payload)
+
+    tab.add_handler(cdp.page.FrameNavigated, _on_frame_navigated)
+    store.recording_dom2_frame_handlers.append((tab, _on_frame_navigated))
+
+
 async def _attach_dom2_to_tab(
     tab: "Tab",
     store: "StoreSession",
@@ -220,6 +341,7 @@ async def _attach_dom2_to_tab(
         ),
     )
     store.recording_script_entries.append((tab, sid))
+    _setup_dom2_nav_handler(tab, store)
 
 
 def _tabs_to_attach(
@@ -260,6 +382,7 @@ async def start_dom2_capture(
     store.recording_seq = 0
     store.recording_monotonic_t0 = time.monotonic()
     store.recording_dom2_handlers = []
+    store.recording_dom2_frame_handlers = []
     store.recording_script_entries = []
     store.recording_dropped_events = 0
     store.recording_scope = scope
@@ -323,6 +446,15 @@ async def stop_dom2_capture(store: "StoreSession") -> None:
         except asyncio.CancelledError:
             pass
         store.recording_poll_task = None
+
+    for tab, handler in list(getattr(store, "recording_dom2_frame_handlers", []) or []):
+        try:
+            lst = tab.handlers.get(cdp.page.FrameNavigated, [])
+            if handler in lst:
+                lst.remove(handler)
+        except Exception:  # pylint: disable=broad-exception-caught
+            pass
+    store.recording_dom2_frame_handlers = []
 
     for tab, handler in list(getattr(store, "recording_dom2_handlers", []) or []):
         try:

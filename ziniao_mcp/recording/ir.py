@@ -51,7 +51,52 @@ def redact_actions_secrets(actions: list[dict[str, Any]]) -> list[dict[str, Any]
 
 _INTERNAL_KEYS = frozenset({
     "mono_ts", "perf_ts", "perfTs", "seq", "target_id", "frameUrl",
+    # Drag locators are not consumed by replay/codegen; strip for smaller JSON.
+    "sourceLocator", "targetLocator",
 })
+
+
+def _interval_ms_between(actions: list[dict[str, Any]], j: int, i: int) -> float | None:
+    """Elapsed ms from action j to action i (i > j). None if timing is unknown."""
+    if j >= i:
+        return None
+    aj, ai = actions[j], actions[i]
+    mj, mi = aj.get("mono_ts"), ai.get("mono_ts")
+    if mj is not None and mi is not None:
+        return max(0.0, (float(mi) - float(mj)) * 1000.0)
+    tj = int(aj.get("timestamp", 0) or 0)
+    ti = int(ai.get("timestamp", 0) or 0)
+    if tj > 0 and ti > 0:
+        return float(max(0, ti - tj))
+    total = 0
+    for k in range(j + 1, i + 1):
+        total += int(actions[k].get("delay_ms", 0) or 0)
+    if total <= 0:
+        return None
+    return float(total)
+
+
+def _dedup_dblclick(actions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Remove click events that precede a dblclick on the same selector within 500ms.
+
+    Only removes when a reliable interval exists (mono_ts, valid timestamps, or
+    positive summed delay_ms). Missing clocks no longer drop arbitrary clicks.
+    """
+    if len(actions) < 2:
+        return actions
+    skip: set[int] = set()
+    for i, a in enumerate(actions):
+        if a.get("type") != "dblclick":
+            continue
+        sel = a.get("selector", "")
+        for j in range(i - 1, max(i - 3, -1), -1):
+            prev = actions[j]
+            if prev.get("type") != "click" or prev.get("selector") != sel:
+                continue
+            span = _interval_ms_between(actions, j, i)
+            if span is not None and span < 500:
+                skip.add(j)
+    return [a for idx, a in enumerate(actions) if idx not in skip]
 
 
 def actions_for_disk(
@@ -61,6 +106,7 @@ def actions_for_disk(
 ) -> list[dict[str, Any]]:
     """Compute delays while mono_ts is still available, then strip internal fields."""
     compute_delay_ms(actions)
+    actions = _dedup_dblclick(actions)
     cleaned: list[dict[str, Any]] = []
     for a in actions:
         ac = {k: v for k, v in a.items() if k not in _INTERNAL_KEYS}

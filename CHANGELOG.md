@@ -4,6 +4,31 @@
 
 ## [Unreleased]
 
+## [0.2.19] - 2026-03-27
+
+### Added
+
+- **录制（`legacy` / `dom2` 注入脚本）**：`scroll`（防抖）、`dblclick`、`hover`（防抖 + 可交互元素过滤）、`upload`（`type=file` 仅记录文件名）、`dialog`（`alert` / `confirm` / `prompt` 包装记录）、`drag`（`sourceSelector` / `targetSelector`）；**`contenteditable`** 合并为 `fill`；键盘：**Space**、**Home/End**、**PageUp/PageDown**、**F1–F12**；**修饰键 + 单字符** 记为 `press_key`
+- **`dom2`**：顶层 **`Page.FrameNavigated`** 补录整页 **`navigate`**；**`StoreSession.recording_dom2_frame_handlers`**，`stop` 时摘除监听器（避免录制结束后仍往 buffer 写）
+- **回放（`_do_replay`）**：交互前 **`scrollIntoView`**；`scroll` / `dblclick` / `hover` / `drag`；**`JavascriptDialogOpening`** 按录制顺序 **`handle_java_script_dialog`**；**`target_id`** 变化时启发式切换标签
+- **代码生成**：**`emit_nodriver`** / **`emit_playwright`** 覆盖上述新动作类型
+- **`tools/_keys.py`**：补充 **F1–F12** 虚拟键码
+- **文档**：**`docs/recording.md`** 同步能力与回放说明
+
+### Fixed
+
+- **`ir._dedup_dblclick`**：在缺少 **`mono_ts`/有效 `timestamp`/正数 `delay_ms` 链** 时不再误删前置 `click`；有可靠间隔且小于 **500ms** 时才去重
+- **拖拽落盘**：不再写入未消费的 **`sourceLocator`/`targetLocator`**；**`_INTERNAL_KEYS`** 剥离历史字段
+- **单测**：**`tests/test_recording_package.py`** 覆盖去重与拖拽字段剥离
+
+### Changed
+
+- **`skills/store-rpa-scripting`**：Phase 1 以 **`ziniao` CLI** 为主线；**`examples.md`** 改为占位符模式示例
+
+### 工程
+
+- **`pyproject.toml` / `.cursor-plugin/plugin.json` / Git tag**：与 **`v0.2.19`** 对齐
+
 ## [0.2.18] - 2026-03-26
 
 ### Fixed

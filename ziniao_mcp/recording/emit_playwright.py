@@ -71,6 +71,12 @@ def generate_playwright_typescript(
         if t == "click":
             lines.append(f"  // step {step}: click")
             lines.append(f"  await {loc_expr}.click();")
+        elif t == "dblclick":
+            lines.append(f"  // step {step}: dblclick")
+            lines.append(f"  await {loc_expr}.dblclick();")
+        elif t == "hover":
+            lines.append(f"  // step {step}: hover")
+            lines.append(f"  await {loc_expr}.hover();")
         elif t == "fill":
             val = json.dumps(str(act.get("value", "")))
             lines.append(f"  // step {step}: fill")
@@ -82,9 +88,27 @@ def generate_playwright_typescript(
         elif t == "press_key":
             key = json.dumps(str(act.get("key", "Enter")))
             lines.append(f"  await page.keyboard.press({key});")
+        elif t == "scroll":
+            sx = int(act.get("scrollX", 0))
+            sy = int(act.get("scrollY", 0))
+            lines.append(f"  // step {step}: scroll")
+            lines.append(f"  await page.evaluate('window.scrollTo({sx},{sy})');")
         elif t == "navigate":
             url = json.dumps(str(act.get("url", "")))
             lines.append(f"  await page.goto({url});")
+        elif t == "upload":
+            sel = json.dumps(act.get("selector") or "input[type=file]")
+            fnames = act.get("fileNames", [])
+            lines.append(f"  // step {step}: upload (original: {fnames})")
+            lines.append(f"  await page.locator({sel}).setInputFiles([/* provide paths */]);")
+        elif t == "dialog":
+            dt = act.get("dialogType", "alert")
+            lines.append(f"  // step {step}: dialog ({dt}) — auto-handled by page.on('dialog')")
+        elif t == "drag":
+            src = json.dumps(act.get("sourceSelector") or "body")
+            tgt = json.dumps(act.get("targetSelector") or "body")
+            lines.append(f"  // step {step}: drag")
+            lines.append(f"  await page.locator({src}).dragTo(page.locator({tgt}));")
         else:
             lines.append(f"  // step {step}: unsupported {t}")
 

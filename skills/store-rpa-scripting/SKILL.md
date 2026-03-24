@@ -1,182 +1,137 @@
 ---
 name: store-rpa-scripting
-description: 通过紫鸟 MCP 工具探索店铺页面结构，梳理操作步骤，然后生成可独立运行的 Python RPA 脚本（基于 nodriver + CDP）。当用户提到 RPA、自动化脚本、批量操作、定时任务、店铺运营脚本、自动化流程时触发。
-allowed-tools: Bash(ziniao:*), Bash(python:*), ziniao-*
+description: 以终端工具调用为主线，先调研页面与流程，再确认步骤并落地独立 Python 自动化脚本（ziniao_webdriver + nodriver + CDP）。默认 ziniao CLI 已就绪；不写具体店铺/平台业务细节，业务上下文由用户任务提供。触发词：RPA、自动化脚本、批量流程、定时任务、运营自动化、浏览器自动化落地。
+allowed-tools: Bash(ziniao:*), Bash(python:*)
 ---
 
-# 店铺运营 RPA 脚本生成
+# 工具驱动的 RPA 落地流程
+
+本 skill 描述**怎么做**：用 CLI 调研与验证、结构化确认、生成可独立运行的脚本与文档。**不描述**具体站点、店铺名称、SKU、后台菜单等业务事实——这些一律来自用户输入或 Phase 1 工具输出，禁止臆造。
 
 ## 核心工作流
 
 ```
-Phase 1: 探索（通过 ziniao-mcp 工具）
-  list_stores → connect_store → navigate_page → take_snapshot
-  → click/fill/evaluate 逐步验证 → 截图/snapshot 检测结果
-  → 异常场景探索 → API 分析
+Phase 1 调研（终端 ziniao，工具调用闭环）
+  接入会话 → navigate → wait → snapshot（--interactive）→ get/eval
+  → 交互命令逐步验证 → screenshot 佐证 → 异常路径 → network / HAR（如需）
                     ↓
-Phase 2: 确认（结构化步骤文档，用户审核）
+Phase 2 确认（结构化步骤表，用户或任务方审核）
                     ↓
-Phase 3: 生成脚本（独立运行，不依赖 MCP）
-  ziniao_webdriver 管理客户端/店铺 + nodriver 操作浏览器
+Phase 3 实现（独立 Python，不依赖 CLI 守护进程）
+  浏览器接入（ZiniaoClient + open_store 或等价）+ nodriver/CDP
                     ↓
-Phase 4: 生成过程文档（完整复现指南）
-  环境准备 + 配置说明 + 操作步骤 + 脚本使用 + 故障排查
+Phase 4 交付文档（可复现：命令记录 + 步骤表 + 运行方式 + 排障）
 ```
 
-**关键原则**：
-- Phase 1 全程使用 ziniao-mcp 工具交互式探索，不需要手动操作浏览器
-- Phase 3 生成的脚本**完全独立于 MCP**，直接使用 `ziniao_webdriver` + `nodriver`，可通过 `python script.py` 独立运行
+**接入会话**（按任务环境选一，细节查 **ziniao-cli** skill）：紫鸟店铺 `open-store` / 纯 Chrome `launch` / 已有进程 `connect`。
 
-## Phase 1: 探索（全程使用 ziniao-mcp 工具）
+## Agent 执行要点
 
-目标：通过 MCP 工具实际操作页面，摸清完整流程和所有细节。
+1. **工具优先**：每一步先有可执行命令或脚本动作，再写说明；能用 `ziniao snapshot`、`get count`、`eval`、`network list` 确认的不要猜 DOM。
+2. **调研再实现**：未在页面上用命令验证过的选择器与顺序，不写入 Phase 2 定稿表，更不直接写进 Phase 3。
+3. **语义对齐**：Phase 3 的 `tab.get` / `tab.select` / `evaluate` 与 Phase 1 的 `navigate` / `wait` / `eval` 一一对应，仅替换为进程内 CDP 调用。
+4. **边界**：不展开「哪家店、哪个菜单、什么字段含义」；表格与模板里用占位符（`[入口URL]`、`[会话标识]`、`[选择器]`）即可。
 
-### 1.1 打开店铺并定位目标页面
+## 默认环境（已配置）
 
-通过 MCP 工具完成店铺连接和页面定位：
+- CLI 在 PATH；配置已通过 `ziniao config show` 或等价方式就绪。
+- 守护进程与日志：`~/.ziniao/daemon.log`；异常时 `ziniao quit` 重试。
+- 命令全集、flag、`--json` 用法以 **ziniao-cli** skill / `references/commands.md` 为准。
 
-```
-- [ ] list_stores() 获取所有店铺，记录目标店铺的 ID 和名称
-- [ ] connect_store(store_id) 连接目标店铺（未运行会自动打开）
-- [ ] navigate_page(url) 导航到目标页面
-- [ ] wait_for(关键元素选择器) 确认页面加载完成
-- [ ] take_snapshot() 获取初始页面结构
-```
+## Phase 1：调研（终端）
 
-多店铺场景额外探索：
-- `list_stores` 确认所有目标店铺 ID 和站点信息
-- 逐个 `connect_store` 切换到不同店铺，验证流程在各店铺上一致
-- 记录不同店铺间的页面差异（语言、布局、URL 格式）
+目标：得到**可复现的命令序列** + **经工具验证的选择器与等待条件**。
 
-### 1.2 分析页面结构，提取选择器
+### Snapshot 与选择器
 
-1. 从 snapshot 中识别目标元素（按钮、输入框、表格、链接等）
-2. 选择器优先级：`#id` > `[name="x"]` > `[data-testid="x"]` > `.parent .child`
-3. 验证唯一性：`evaluate_script("document.querySelectorAll('选择器').length")`
-4. 对动态内容（列表、表格），用 `evaluate_script` 提取结构化数据试探
+- `snapshot --interactive` 的 **`ref`（`@e0`…）不是选择器**；只用 **Selector** 列或手写稳定选择器。
+- 导航或 DOM 大变后：**wait → 再 snapshot**。
 
-### 1.3 逐步交互验证
+### 1.1 接入并打开入口
 
-**关键：每一步操作后都要验证结果，不能假设操作成功。**
+```bash
+# 紫鸟店铺示例（会话标识以任务为准）
+ziniao list-stores
+ziniao open-store "<会话标识>"
+# 或：ziniao launch --url "<入口URL>"  /  ziniao connect <port>
 
-```
-操作流程（每一步都要做）：
-1. 执行操作 → click / fill / type_text / press_key
-2. 等待响应 → wait_for(结果元素) 或 tab.sleep
-3. 验证结果 → take_snapshot 或 take_screenshot 确认状态变化
-4. 记录发现 → 选择器、等待条件、预期结果
+ziniao navigate "<入口URL>"
+ziniao wait "<就绪选择器>"
+ziniao snapshot --interactive
 ```
 
-示例探索过程：
+多会话：用 `ziniao --store "<id>" <子命令>` 或脚本内循环；**各会话差异只记录任务给定的事实**，不扩展业务解读。
 
-```
-# 第一步：点击搜索框，输入关键词
-click("#search-input")                    → 确认输入框获得焦点
-type_text("SKU001")                       → 确认文字已输入
-press_key("Enter")                        → 触发搜索
+### 1.2 结构与唯一性
 
-# 第二步：等待搜索结果
-wait_for(".result-table", timeout=10000)  → 确认结果表格出现
-take_snapshot()                           → 检查结果内容是否正确
+- 选择器优先级：`#id` > `[name]` > `[data-testid]` > 稳定 class。
+- `ziniao get count "<sel>"` 或 `ziniao eval 'document.querySelectorAll(...).length'` 验证数量。
+- 结构化数据：`ziniao eval 'JSON.stringify(...)'`（注意 shell 引号）。
 
-# 第三步：点击目标行的编辑按钮
-click(".result-row:first-child .edit-btn") → 进入编辑页
-wait_for("#edit-form")                     → 确认编辑表单加载
-take_snapshot()                            → 获取表单字段结构
+### 1.3 逐步验证（模式，非业务示例）
 
-# 第四步：修改字段并提交
-fill("#price-input", "29.99")              → 填写新价格
-take_screenshot()                          → 截图确认填写内容
-click("#save-btn")                         → 提交
+每步：**操作 → wait → snapshot 或 screenshot → 记录命令与现象**。
 
-# 第五步：检测提交结果
-wait_for(".success-toast", timeout=10000)  → 等待成功提示出现
-take_snapshot()                            → 确认页面状态已更新
+```bash
+ziniao wait "<依赖元素>"
+ziniao click "<sel>"
+ziniao fill "<sel>" "<值>"
+ziniao wait "<下一屏锚点>" --timeout 60
+ziniao screenshot step.png
 ```
 
-### 1.4 探索异常场景
+### 命令串联
 
-正常流程走通后，还需探索以下情况：
-
-| 场景 | 探索方法 |
-|------|----------|
-| 元素加载慢/不出现 | 增大 `wait_for` timeout，观察最长等待时间 |
-| 操作后弹窗确认 | `handle_dialog(action="accept")` 预设策略，再操作 |
-| 动态加载/懒加载 | 滚动页面 → `take_snapshot` 检查新内容是否出现 |
-| 翻页/分页 | 点击下一页 → `wait_for` 等待内容刷新 → 记录翻页选择器 |
-| 操作失败提示 | `take_snapshot` 查找错误消息元素的选择器 |
-| 登录过期/跳转 | 检查 `evaluate_script("location.href")` 是否被重定向 |
-
-### 1.5 API 分析（数据提取类 RPA）
-
-```
-1. 在页面上手动执行一次目标操作
-2. list_network_requests(url_pattern="api") → 找到关键接口
-3. get_network_request(id) → 记录 method、URL、headers、payload
-4. 评估：直接调 API 更稳定，还是操作页面更合适？
+```bash
+ziniao navigate "<url>" && ziniao wait "<sel>" && ziniao screenshot done.png
 ```
 
-## Phase 2: 确认
+### 1.4 异常与网络
 
-将探索结果整理为结构化文档，呈现给用户确认。
+| 场景 | 工具向思路 |
+|------|------------|
+| 慢加载 | `--timeout` / `wait` 加大 |
+| JS 弹窗 | `ziniao act dialog accept` / `dismiss` |
+| 懒加载 | `scroll` / `scrollinto` 后再 snapshot |
+| 接口调研 | `network list`、`har-start` / `har-stop` |
 
-**输出模板**：
+## Phase 2：确认（输出给用户/任务方）
+
+用**抽象步骤表**冻结流程；具体 URL/选择器/参数来自 Phase 1 输出，不得编造。
 
 ```markdown
-## RPA 流程: [任务名称]
+## 自动化流程: [任务名]
 
 ### 前置条件
-- 紫鸟账号: company=[企业名], username=[用户名]
-- 客户端路径: [path]（如 D:\ziniao\ziniao.exe）
-- 目标店铺: [store_id] ([store_name])
-- 多店铺场景: [列出所有目标 store_id]（如需）
-- 输入数据: [CSV/Excel 路径及格式说明]（如需）
+- CLI / 配置：`ziniao config show` 已就绪（或说明等价配置）
+- 会话：[open-store | launch | connect] + [会话标识或说明]
+- 入口：[入口URL]
+- 外部输入：[数据文件/参数，无则写「无」]
 
 ### 操作步骤
-| # | 操作 | 选择器/参数 | 等待条件 | 预期结果 |
+| # | 动作 | 选择器/参数 | 等待条件 | 预期结果 |
 |---|------|------------|----------|----------|
-| 1 | 导航 | URL: ... | `.main-content` 出现 | 页面加载完成 |
-| 2 | 点击 | `#search-btn` | `#search-input` 获焦 | 搜索框激活 |
-| 3 | 输入 | `#search-input` = "SKU" | — | 文字已填入 |
-| 4 | 按键 | Enter | `.result-table` 出现 | 搜索结果显示 |
-| 5 | 点击 | `.edit-btn` | `#edit-form` 出现 | 进入编辑页 |
-| 6 | 填写 | `#price` = "29.99" | — | 价格已更新 |
-| 7 | 截图 | — | — | 存证确认 |
-| 8 | 提交 | `#save-btn` | `.success-toast` 出现 | 保存成功 |
+| 1 | navigate | URL | 锚点出现 | 就绪 |
+| … | … | … | … | … |
 
-### 异常处理
-| 异常 | 检测方式 | 处理策略 |
-|------|----------|----------|
-| 元素未找到 | `tab.select` 返回 None | 重试 3 次，间隔 2s |
-| 保存失败 | `.error-message` 出现 | 记录错误，跳过当前项 |
-| 页面跳转 | URL 不匹配预期 | 重新导航到目标页 |
-| 弹窗拦截 | dialog 事件 | 自动 accept |
+### 异常与策略
+| 异常 | 检测 | 处理 |
+|------|------|------|
+| 元素缺失 | select None | 重试/跳过/记录 |
+| 业务错误提示 | 错误锚点 | 记录并中止或分支 |
 
 ### 结果校验
-- 操作后通过 [选择器/JS] 验证状态确实已变更
-- 批量操作结束后输出成功/失败汇总
+- 用 [选择器/JS] 断言最终状态；批量任务输出汇总。
 ```
 
-**确认要点**：
-- 每步操作是否都有对应的等待条件和预期结果
-- 选择器是否稳定（避免动态 class、随机 id）
-- 异常处理策略是否覆盖已知场景
-- 批量操作是否需要参数化输入
+## Phase 3：实现（独立 Python）
 
-## Phase 3: 生成 Python 脚本
+在 Phase 2 定稿后生成脚本：**不** `subprocess` 调 `ziniao`；用 `ZiniaoClient` + `nodriver` 直连 CDP（与 Phase 1 语义一致）。
 
-用户确认后，生成基于 nodriver 的独立 Python 脚本。
-
-### 脚本模板
-
-脚本需包含完整生命周期：配置账号 -> 启动客户端 -> 打开店铺 -> 操作 -> 关闭。
+### 生命周期模板
 
 ```python
-"""
-RPA: [任务名称]
-用途: [简要描述]
-依赖: pip install nodriver ziniao
-"""
+"""RPA: [任务名] — 依赖: pip install nodriver ziniao"""
 
 import asyncio
 import logging
@@ -188,69 +143,46 @@ from ziniao_webdriver import ZiniaoClient
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
-# --- 紫鸟账号配置（按实际情况修改）---
-ZINIAO_CONFIG = {
-    "client_path": r"D:\ziniao\ziniao.exe",
-    "socket_port": 16851,
-    "user_info": {
-        "company": "企业名",
-        "username": "用户名",
-        "password": "密码",
-    },
-}
-STORE_ID = "目标店铺ID"
+ZINIAO_CONFIG = { ... }  # 与运行环境一致
+SESSION_ID = "<会话标识>"  # 任务给定
 
 
 def create_client() -> ZiniaoClient:
     return ZiniaoClient(**ZINIAO_CONFIG)
 
 
-def ensure_client_running(client: ZiniaoClient):
-    """确保紫鸟客户端在运行。"""
+def ensure_client_running(client: ZiniaoClient) -> None:
     if client.heartbeat():
-        logger.info("紫鸟客户端已在运行")
         return
-    logger.info("启动紫鸟客户端...")
     client.start_browser()
     if not client.heartbeat():
-        raise RuntimeError("紫鸟客户端启动失败")
-    logger.info("紫鸟客户端启动成功")
+        raise RuntimeError("客户端未就绪")
 
 
-def open_store(client: ZiniaoClient, store_id: str) -> int:
-    """打开店铺并返回 CDP 端口。"""
-    result = client.open_store(store_id)
-    if not result:
-        raise RuntimeError(f"打开店铺失败: {store_id}")
-    cdp_port = result.get("debuggingPort")
-    if not cdp_port:
-        raise RuntimeError("未获取到 CDP 端口")
-    logger.info("店铺已打开: %s, CDP 端口: %d", store_id, cdp_port)
-    return cdp_port
+def open_session(client: ZiniaoClient, session_id: str) -> int:
+    result = client.open_store(session_id)
+    if not result or not result.get("debuggingPort"):
+        raise RuntimeError("无法取得 CDP 端口")
+    return int(result["debuggingPort"])
 
 
-async def connect_browser(cdp_port: int) -> nodriver.Browser:
-    browser = await nodriver.Browser.create(host="127.0.0.1", port=cdp_port)
-    logger.info("已连接到 CDP 端口 %d", cdp_port)
-    return browser
+async def connect_browser(port: int) -> nodriver.Browser:
+    return await nodriver.Browser.create(host="127.0.0.1", port=port)
 
 
 async def do_task(tab):
-    """核心业务逻辑（由 Phase 2 步骤生成）。"""
-    # TODO: 实现具体操作步骤
-    pass
+    """由 Phase 2 步骤生成。"""
+    raise NotImplementedError
 
 
 async def run():
     client = create_client()
     ensure_client_running(client)
-    cdp_port = open_store(client, STORE_ID)
-    browser = await connect_browser(cdp_port)
+    port = open_session(client, SESSION_ID)
+    browser = await connect_browser(port)
     tab = browser.main_tab
-
     try:
         await do_task(tab)
-        logger.info("RPA 任务完成")
     finally:
         browser.stop()
 
@@ -259,180 +191,52 @@ if __name__ == "__main__":
     asyncio.run(run())
 ```
 
-### 多店铺批量模板
+**多会话循环**：与 Phase 1 的 `--store` 批量同构——`for id in ids: open → browser → do_task → stop`，单会话失败不拖死全集（记录 errors）。
 
-对多个店铺执行相同操作时：
+### 代码规范（与 CLI 映射）
 
-```python
-STORE_IDS = ["store_001", "store_002", "store_003"]
+- `tab.select(sel, timeout=秒)` 对应 `ziniao wait`；返回值必须判 `None`。
+- `tab.get(url)` 对应 `navigate`；`tab.evaluate` 对应 `eval`。
+- 截图：`cdp.page.capture_screenshot`；重试、CSV、批量汇总按需从 Phase 2 生成。
 
-async def run():
-    client = create_client()
-    ensure_client_running(client)
-    results = {"success": 0, "failed": 0, "errors": []}
+（完整片段模式见历史版本或 [examples.md](examples.md) 中的「代码模式」小节。）
 
-    for i, store_id in enumerate(STORE_IDS, 1):
-        logger.info("[%d/%d] 处理店铺: %s", i, len(STORE_IDS), store_id)
-        try:
-            cdp_port = open_store(client, store_id)
-            browser = await connect_browser(cdp_port)
-            tab = browser.main_tab
-            await do_task(tab)
-            browser.stop()
-            results["success"] += 1
-        except Exception as e:
-            logger.error("店铺 %s 失败: %s", store_id, e)
-            results["failed"] += 1
-            results["errors"].append({"store_id": store_id, "error": str(e)})
-        await asyncio.sleep(2)
+## Phase 4：交付文档
 
-    logger.info("完成: %d 成功, %d 失败", results["success"], results["failed"])
-```
+`rpa_[task].py` 配套 `rpa_[task]_doc.md`：
 
-### 代码生成规范
+1. 概述（目标一句话 + 日期）  
+2. 环境（CLI + 脚本依赖）  
+3. **探索记录**：真实 `ziniao` 命令与输出摘要  
+4. Phase 2 步骤表（复制）  
+5. 运行方式与配置项  
+6. 异常与排障  
+7. 维护（选择器/客户端变更注意点）  
 
-**元素操作（必须检查 None）**：
-
-```python
-elem = await tab.select("#btn", timeout=10)
-if not elem:
-    raise RuntimeError("未找到元素: #btn")
-await elem.click()
-```
-
-**操作后等待 + 结果校验**：
-
-```python
-await elem.click()
-result = await tab.select(".success-toast", timeout=10)
-if not result:
-    error = await tab.select(".error-message", timeout=3)
-    if error:
-        msg = await tab.evaluate("document.querySelector('.error-message')?.textContent")
-        raise RuntimeError(f"操作失败: {msg}")
-    raise RuntimeError("操作后未检测到成功或失败提示")
-```
-
-**导航后等待关键元素**：
-
-```python
-await tab.get("https://example.com/page")
-loaded = await tab.select(".main-content", timeout=15)
-if not loaded:
-    raise RuntimeError("页面加载超时")
-```
-
-**数据提取**：
-
-```python
-data = await tab.evaluate("""
-    Array.from(document.querySelectorAll('table tbody tr')).map(row => ({
-        col1: row.cells[0]?.textContent?.trim(),
-        col2: row.cells[1]?.textContent?.trim(),
-    }))
-""")
-```
-
-**重试机制**：
-
-```python
-async def retry(coro_fn, retries=3, delay=2):
-    for attempt in range(retries):
-        try:
-            return await coro_fn()
-        except Exception as e:
-            if attempt == retries - 1:
-                raise
-            logger.warning("第 %d 次重试: %s", attempt + 1, e)
-            await asyncio.sleep(delay)
-```
-
-**批量数据参数化（从 CSV 读取）**：
-
-```python
-import csv
-
-def load_tasks(path: str) -> list[dict]:
-    with open(path, encoding="utf-8") as f:
-        return list(csv.DictReader(f))
-
-async def do_task(tab):
-    tasks = load_tasks("tasks.csv")
-    results = {"success": 0, "failed": 0, "errors": []}
-    for i, task in enumerate(tasks, 1):
-        logger.info("[%d/%d] 处理: %s", i, len(tasks), task)
-        try:
-            await process_single(tab, task)
-            results["success"] += 1
-        except Exception as e:
-            logger.error("失败: %s", e)
-            results["failed"] += 1
-            results["errors"].append({"task": task, "error": str(e)})
-        await asyncio.sleep(1)
-    logger.info("完成: %d 成功, %d 失败", results["success"], results["failed"])
-```
-
-**截图存证**：
-
-```python
-import base64
-from pathlib import Path
-
-async def save_screenshot(tab, name: str):
-    result = await tab.send(cdp.page.capture_screenshot(format_="png"))
-    path = Path(f"screenshots/{name}.png")
-    path.parent.mkdir(exist_ok=True)
-    path.write_bytes(base64.b64decode(result.data))
-    logger.info("截图已保存: %s", path)
-```
-
-## Phase 4: 生成过程文档
-
-脚本生成后，**同时输出**一份完整的过程文档（Markdown），方便其他人复现整个流程。
-
-文档命名与脚本对应：`rpa_[task_name].py` → `rpa_[task_name]_doc.md`
-
-文档必须包含以下章节：
-1. **概述** — 目标、平台、店铺、日期
-2. **环境准备** — 依赖安装、客户端路径、账号配置、输入数据格式
-3. **探索记录** — Phase 1 中每步 MCP 工具调用和返回结果的完整记录
-4. **操作步骤详解** — Phase 2 确认的步骤表格
-5. **脚本使用** — 运行方式、配置项说明、输出说明
-6. **异常处理** — 常见问题和解决方式
-7. **维护说明** — 页面改版、选择器更新、客户端升级注意事项
-
-详细模板见 [doc-template.md](doc-template.md)，完整示例见 [examples.md](examples.md) 中示例 1 的 Phase 4。
-
-**关键要求**：
-- 探索记录要包含**实际的 MCP 工具调用和返回结果**，不是泛泛描述
-- 文档应足够详细，让不了解项目的人也能按文档独立复现整个流程
+模板：[doc-template.md](doc-template.md)。
 
 ## 质量检查
 
-### 脚本
-- [ ] 包含紫鸟账号配置（company/username/password/client_path）
-- [ ] 有客户端启动检查（heartbeat → start_browser）
-- [ ] 有店铺打开逻辑（open_store → 获取 CDP 端口）
-- [ ] 可通过 `python script.py` 独立运行，**不依赖 MCP**
-- [ ] 多店铺场景有循环切换和独立错误处理
-- [ ] 每个 `tab.select()` 都有 `timeout`，返回值都检查了 `None`
-- [ ] 每步操作后都有等待条件
-- [ ] 关键操作后有结果校验
-- [ ] 异常场景有处理（重试/跳过/记录/截图）
-- [ ] 敏感操作前有日志或确认
-- [ ] 批量操作有进度日志和汇总报告
-- [ ] finally 中调用 `browser.stop()` 断开连接
+### 工具链（Phase 1）
 
-### 过程文档
-- [ ] 包含完整的环境准备和配置说明
-- [ ] 包含 Phase 1 的探索记录（实际工具调用和返回结果）
-- [ ] 包含 Phase 2 的完整步骤表格
-- [ ] 包含脚本运行方式和配置项说明
-- [ ] 包含异常处理和故障排查指南
-- [ ] 不了解项目的人能按文档独立复现
+- [ ] 会话接入 → navigate → wait → snapshot 形成闭环  
+- [ ] 选择器经 snapshot/get count/eval 之一验证；未使用 `@eN` 作为 CSS  
+- [ ] 关键转折有 screenshot 或 snapshot 佐证  
+- [ ] 需要抓包时已用 network / HAR  
+
+### 实现（Phase 3）
+
+- [ ] 客户端 heartbeat / 启动与 CDP 连接完整  
+- [ ] 可脱离 CLI 守护进程单独 `python` 运行  
+- [ ] `select` 带 timeout；`finally` 中断开 browser  
+
+### 文档（Phase 4）
+
+- [ ] 探索记录为真实命令与摘要，非臆造页面结构  
 
 ## 补充资源
 
-- 工具速查表：[tools-reference.md](tools-reference.md)
-- 完整 RPA 示例：[examples.md](examples.md)
-- 过程文档模板：[doc-template.md](doc-template.md)
+- [tools-reference.md](tools-reference.md) — CLI ↔ Python 对照  
+- [doc-template.md](doc-template.md)  
+- [examples.md](examples.md) — 仅作格式参考，**不**当作业务真值  
+- 命令全集：**ziniao-cli** skill → `references/commands.md`

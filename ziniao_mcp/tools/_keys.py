@@ -5,6 +5,9 @@ KEY_MAP: dict[str, int] = {
     "Delete": 46, "ArrowUp": 38, "ArrowDown": 40,
     "ArrowLeft": 37, "ArrowRight": 39, "Space": 32,
     "Home": 36, "End": 35, "PageUp": 33, "PageDown": 34,
+    "F1": 112, "F2": 113, "F3": 114, "F4": 115,
+    "F5": 116, "F6": 117, "F7": 118, "F8": 119,
+    "F9": 120, "F10": 121, "F11": 122, "F12": 123,
 }
 
 _MODIFIER_BITS: dict[str, int] = {

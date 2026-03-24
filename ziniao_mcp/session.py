@@ -130,6 +130,7 @@ class StoreSession:
     recording_seq: int = 0
     recording_binding_name: str = ""
     recording_dom2_handlers: list = field(default_factory=list)
+    recording_dom2_frame_handlers: list = field(default_factory=list)
     recording_script_entries: list = field(default_factory=list)
     recording_poll_task: Any = None
     recording_scope: str = "active"

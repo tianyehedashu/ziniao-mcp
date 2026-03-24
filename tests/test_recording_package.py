@@ -5,7 +5,12 @@ from __future__ import annotations
 import pytest
 
 from ziniao_mcp.recording.buffer import RecordingBuffer
-from ziniao_mcp.recording.ir import actions_for_disk, compute_delay_ms, redact_actions_secrets
+from ziniao_mcp.recording.ir import (
+    _dedup_dblclick,
+    actions_for_disk,
+    compute_delay_ms,
+    redact_actions_secrets,
+)
 from ziniao_mcp.recording.locator import locator_to_css_selector, normalize_action_for_replay
 from ziniao_mcp.recording.ir import parse_emit
 
@@ -67,6 +72,59 @@ def test_actions_for_disk_uses_mono_ts_for_delay() -> None:
     assert out[1]["delay_ms"] == 1200
     assert "mono_ts" not in out[0]
     assert "mono_ts" not in out[1]
+
+
+def test_dedup_dblclick_keeps_click_when_timestamps_missing() -> None:
+    """No mono_ts / zero timestamps / zero delay sum: do not strip preceding click."""
+    raw = [
+        {"type": "click", "selector": "#x", "timestamp": 0},
+        {"type": "dblclick", "selector": "#x", "timestamp": 0},
+    ]
+    out = actions_for_disk(list(raw), record_secrets=True)
+    assert len(out) == 2
+    assert out[0]["type"] == "click"
+    assert out[1]["type"] == "dblclick"
+
+
+def test_dedup_dblclick_removes_click_when_mono_close() -> None:
+    raw = [
+        {"type": "click", "selector": "#x", "mono_ts": 0.0, "timestamp": 100},
+        {"type": "dblclick", "selector": "#x", "mono_ts": 0.2, "timestamp": 300},
+    ]
+    out = actions_for_disk(raw, record_secrets=True)
+    assert len(out) == 1
+    assert out[0]["type"] == "dblclick"
+
+
+def test_dedup_dblclick_uses_delay_ms_when_timestamps_zero_but_delays_positive() -> None:
+    raw = [
+        {"type": "click", "selector": "#x", "timestamp": 0},
+        {"type": "click", "selector": "#x", "timestamp": 0},
+        {"type": "dblclick", "selector": "#x", "timestamp": 0},
+    ]
+    compute_delay_ms(raw)
+    assert raw[1]["delay_ms"] == 0
+    assert raw[2]["delay_ms"] == 0
+    raw[1]["delay_ms"] = 50
+    raw[2]["delay_ms"] = 80
+    deduped = _dedup_dblclick(raw)
+    assert len(deduped) == 1
+    assert deduped[0]["type"] == "dblclick"
+
+
+def test_actions_for_disk_strips_drag_locators() -> None:
+    raw = [{
+        "type": "drag",
+        "sourceSelector": "#a",
+        "targetSelector": "#b",
+        "sourceLocator": {"strategy": "css", "value": "#a"},
+        "targetLocator": {"strategy": "css", "value": "#b"},
+        "timestamp": 1,
+    }]
+    out = actions_for_disk(raw, record_secrets=True)
+    assert "sourceLocator" not in out[0]
+    assert "targetLocator" not in out[0]
+    assert out[0]["sourceSelector"] == "#a"
 
 
 def test_actions_for_disk_strips_internal_fields() -> None:

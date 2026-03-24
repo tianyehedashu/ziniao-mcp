@@ -8,7 +8,7 @@
 
 | 能力 | 说明 |
 |------|------|
-| **录制** | 在真实浏览器里捕获点击、输入、下拉、特殊按键、部分导航事件 |
+| **录制** | 在真实浏览器里捕获点击、双击、悬停、输入（含 contenteditable）、下拉、键盘（含修饰键快捷键和 F1-F12）、滚动、导航、文件上传、对话框、拖拽 |
 | **持久化** | 写入 `~/.ziniao/recordings/<name>.json`（元数据 + 动作列表） |
 | **代码生成** | 可选生成独立 **`*.py`**（nodriver）与 **`*.spec.ts`**（Playwright 风格模板） |
 | **回放** | 通过 MCP / CLI 在当前 CDP 会话中按步骤重放（含 stealth 与人类行为模拟） |
@@ -79,6 +79,7 @@ ziniao_mcp/recording/
 | `recording_seq` | dom2：单调递增序号，写入每条事件的 `seq` |
 | `recording_binding_name` | dom2：当前 CDP binding 名（由 `store_id` 派生） |
 | `recording_dom2_handlers` | `(tab, handler)` 列表，用于 stop 时摘除 `BindingCalled` |
+| `recording_dom2_frame_handlers` | `(tab, handler)` 列表，用于 stop 时摘除 `FrameNavigated`（整页导航补录） |
 | `recording_script_entries` | `(tab, script_id)`，`add_script_to_evaluate_on_new_document` 的 identifier，stop 时移除 |
 | `recording_poll_task` | dom2：后台 `asyncio.Task`，轮询新标签并补挂桩 |
 | `recording_scope` | dom2：`"active"` \| `"all"` |
@@ -266,9 +267,11 @@ ziniao_mcp/recording/
 1. 动作来源：`actions_json` 优先，否则从磁盘 `name` 读 `meta["actions"]`。
 2. **`auto_session`**：若无活跃会话，可用 `recording_context.resolve_recording_browser_context` 根据元数据尝试 `attach_from_recording_context`（紫鸟 / Chrome 等）。
 3. 打开标签：`open_replay_tab(start_url)` 或 `reuse_tab` 时用当前活动标签。
-4. 逐步：`normalize_action_for_replay` → 按 `delay_ms` 与 `speed` 睡眠 → `find_element` / 人类行为 `human_click` / `human_fill`（Ziniao 或启用 stealth 时）→ `select` 用 `evaluate` 改 `value` 并 `dispatchEvent('change')` → `press_key` CDP → `navigate` `page.navigate`。
+4. 逐步：`normalize_action_for_replay` → 按 `delay_ms` 与 `speed` 睡眠 → **scrollIntoView** 自动滚动到目标元素 → `find_element` / 人类行为 `human_click` / `human_fill`（Ziniao 或启用 stealth 时）→ `select` 用 `evaluate` 改 `value` 并 `dispatchEvent('change')` → `press_key` CDP → `scroll` → `navigate` `page.navigate` → `dblclick` / `hover` / `upload` / `dialog` / `drag` 等。
+5. **对话框处理**：回放开始时注册 `Page.javascriptDialogOpening` CDP 处理器，按录制时的顺序自动 accept/dismiss 对话框。
+6. **多标签页**：通过 `target_id` 映射，当检测到目标标签页变化时自动切换到对应的标签页。
 
-失败步骤记日志并尽量继续后续步骤（计数仍递增）。
+失败步骤记日志并尽量继续后续步骤。
 
 ---
 
