@@ -4,6 +4,17 @@
 
 ## [Unreleased]
 
+## [0.2.20] - 2026-03-24
+
+### Changed
+
+- **`SessionManager`**：紫鸟 WebDriver 相关报错文案同时指向命令行 **`ziniao store start-client`**（与 MCP **`start_client`** 对照），避免误用不存在的顶层 **`ziniao start_client`**
+- **`skills/ziniao-cli`**：**`store start-client` / `stop-client`** 写入 **SKILL** 与 **`references/commands.md`**；故障排查补充 **`list-stores`** / WebDriver 端口场景
+
+### 工程
+
+- **`pyproject.toml` / `.cursor-plugin/plugin.json` / Git tag**：与 **`v0.2.20`** 对齐
+
 ## [0.2.19] - 2026-03-27
 
 ### Added

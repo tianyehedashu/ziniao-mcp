@@ -76,6 +76,8 @@ Setting `CHROME_USER_DATA` enables state reuse (cookies, localStorage, extension
 
 ```bash
 # Connect
+ziniao store start-client            # Ziniao desktop app (WebDriver HTTP); required for list/open store
+ziniao store stop-client             # Quit Ziniao client
 ziniao open-store <id>               # Open Ziniao store
 ziniao launch [--url u] [--name n]   # Launch Chrome (--headless for headless)
 ziniao connect <port>                # Connect to existing Chrome
@@ -233,6 +235,7 @@ If `ziniao` is not recognized: run `uv tool dir` to find the bin directory, add 
 | First time setup | `ziniao config init` |
 | Daemon won't start | Check `~/.ziniao/daemon.log` |
 | Connection refused | `ziniao quit` then retry |
+| `list-stores` / 店铺：WebDriver 端口未开放 | `ziniao store start-client` |
 | Store not found | `ziniao list-stores` to check IDs |
 | Timeout | `--timeout 120` or `ziniao wait` before next step |
 

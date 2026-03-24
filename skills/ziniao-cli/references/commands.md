@@ -10,6 +10,8 @@ Full command reference. For workflow and patterns see [SKILL.md](../SKILL.md).
 | `ziniao list-stores --opened-only` | Only opened stores |
 | `ziniao open-store <id>` | Open store and connect CDP |
 | `ziniao close-store <id>` | Close store |
+| `ziniao store start-client` | Start Ziniao client (WebDriver / HTTP) |
+| `ziniao store stop-client` | Stop Ziniao client |
 | `ziniao launch [--name n] [--url u]` | Launch Chrome |
 | `ziniao launch --headless` | Launch headless Chrome |
 | `ziniao connect <port> [--name n]` | Connect to Chrome by CDP port |

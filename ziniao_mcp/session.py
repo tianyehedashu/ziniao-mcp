@@ -566,7 +566,8 @@ class SessionManager:
                 f"1) 客户端已以 WebDriver 模式启动（需带 --port 参数）\n"
                 f"2) HTTP 端口 {client.socket_port} 与客户端实际端口一致\n"
                 "提示：通过桌面图标启动的客户端不支持 WebDriver 模式，"
-                "请使用 start_client 工具或手动添加 "
+                "请使用 MCP 的 start_client 工具、命令行 "
+                "`ziniao store start-client`，或手动添加 "
                 "--run_type=web_driver --ipc_type=http 参数启动。"
             ) from None
 
@@ -585,7 +586,8 @@ class SessionManager:
         if await asyncio.to_thread(client.is_process_running):
             raise RuntimeError(
                 "紫鸟客户端正在运行，但未启用 WebDriver 模式（HTTP 端口未开放）。\n"
-                "请先关闭客户端，然后使用 start_client 工具重新启动，"
+                "请先关闭客户端，然后使用 MCP 的 start_client 工具或 "
+                "命令行 `ziniao store start-client` 重新启动，"
                 f"或手动以 --run_type=web_driver --ipc_type=http "
                 f"--port={client.socket_port} 参数重启。"
             )
