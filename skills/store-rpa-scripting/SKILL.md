@@ -1,12 +1,12 @@
 ---
 name: store-rpa-scripting
-description: 以终端工具调用为主线，先调研页面与流程，再确认步骤并落地独立 Python 自动化脚本（ziniao_webdriver + nodriver + CDP）。默认 ziniao CLI 已就绪；不写具体店铺/平台业务细节，业务上下文由用户任务提供。触发词：RPA、自动化脚本、批量流程、定时任务、运营自动化、浏览器自动化落地。
+description: 用 ziniao CLI 完成页面与流程调研，确认步骤后生成可独立运行的 Python 自动化脚本（ziniao_webdriver + nodriver + CDP）。适用于 RPA、批量流程、定时任务、运营自动化、浏览器自动化落地。
 allowed-tools: Bash(ziniao:*), Bash(python:*)
 ---
 
 # 工具驱动的 RPA 落地流程
 
-本 skill 描述**怎么做**：用 CLI 调研与验证、结构化确认、生成可独立运行的脚本与文档。**不描述**具体站点、店铺名称、SKU、后台菜单等业务事实——这些一律来自用户输入或 Phase 1 工具输出，禁止臆造。
+本 skill 约定四阶段工作法：CLI 调研与验证 → 结构化确认 → 独立脚本实现 → 交付文档。URL、选择器、会话标识等以 Phase 1 命令输出与任务输入为准，与定稿步骤表保持一致。
 
 ## 核心工作流
 
@@ -27,10 +27,10 @@ Phase 4 交付文档（可复现：命令记录 + 步骤表 + 运行方式 + 排
 
 ## Agent 执行要点
 
-1. **工具优先**：每一步先有可执行命令或脚本动作，再写说明；能用 `ziniao snapshot`、`get count`、`eval`、`network list` 确认的不要猜 DOM。
-2. **调研再实现**：未在页面上用命令验证过的选择器与顺序，不写入 Phase 2 定稿表，更不直接写进 Phase 3。
+1. **工具优先**：先给出可执行的 `ziniao` 命令或可映射的脚本动作；结构用 `snapshot`、`get count`、`eval`、`network list` 等确认后再进入下一步交互。
+2. **调研再实现**：Phase 2 定稿与 Phase 3 实现只纳入已在页面上用命令验证过的选择器与操作顺序。
 3. **语义对齐**：Phase 3 的 `tab.get` / `tab.select` / `evaluate` 与 Phase 1 的 `navigate` / `wait` / `eval` 一一对应，仅替换为进程内 CDP 调用。
-4. **边界**：不展开「哪家店、哪个菜单、什么字段含义」；表格与模板里用占位符（`[入口URL]`、`[会话标识]`、`[选择器]`）即可。
+4. **一致性**：Phase 2 表格、脚本常量与 Phase 1 终端记录对齐；未定稿前用 `[入口URL]`、`[会话标识]`、`[选择器]` 等占位，定稿后替换为实测值。
 
 ## 默认环境（已配置）
 
@@ -97,13 +97,13 @@ ziniao navigate "<url>" && ziniao wait "<sel>" && ziniao screenshot done.png
 
 ## Phase 2：确认（输出给用户/任务方）
 
-用**抽象步骤表**冻结流程；具体 URL/选择器/参数来自 Phase 1 输出，不得编造。
+用步骤表冻结流程；URL、选择器、参数与 Phase 1 记录一致。
 
 ```markdown
 ## 自动化流程: [任务名]
 
 ### 前置条件
-- CLI / 配置：`ziniao config show` 已就绪（或说明等价配置）
+- CLI / 配置：`ziniao config show`（或当前环境等价说明）
 - 会话：[open-store | launch | connect] + [会话标识或说明]
 - 入口：[入口URL]
 - 外部输入：[数据文件/参数，无则写「无」]
@@ -199,7 +199,7 @@ if __name__ == "__main__":
 - `tab.get(url)` 对应 `navigate`；`tab.evaluate` 对应 `eval`。
 - 截图：`cdp.page.capture_screenshot`；重试、CSV、批量汇总按需从 Phase 2 生成。
 
-（完整片段模式见历史版本或 [examples.md](examples.md) 中的「代码模式」小节。）
+（重试、CSV 循环、截图等模式见 [examples.md](examples.md)。）
 
 ## Phase 4：交付文档
 
@@ -207,7 +207,7 @@ if __name__ == "__main__":
 
 1. 概述（目标一句话 + 日期）  
 2. 环境（CLI + 脚本依赖）  
-3. **探索记录**：真实 `ziniao` 命令与输出摘要  
+3. **探索记录**：Phase 1 的 `ziniao` 命令与输出摘要  
 4. Phase 2 步骤表（复制）  
 5. 运行方式与配置项  
 6. 异常与排障  
@@ -232,11 +232,11 @@ if __name__ == "__main__":
 
 ### 文档（Phase 4）
 
-- [ ] 探索记录为真实命令与摘要，非臆造页面结构  
+- [ ] 探索记录与 Phase 1 终端命令及输出一致  
 
 ## 补充资源
 
 - [tools-reference.md](tools-reference.md) — CLI ↔ Python 对照  
 - [doc-template.md](doc-template.md)  
-- [examples.md](examples.md) — 仅作格式参考，**不**当作业务真值  
+- [examples.md](examples.md) — 格式与代码模式参考  
 - 命令全集：**ziniao-cli** skill → `references/commands.md`
