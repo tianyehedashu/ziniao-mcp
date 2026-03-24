@@ -4,6 +4,22 @@
 
 ## [Unreleased]
 
+## [0.2.17] - 2026-03-25
+
+### Added
+
+- **文档**：**`docs/recording.md`** — 录制双引擎、IR、落盘、代码生成与回放实现说明
+
+### Changed
+
+- **`rec start` / `recorder(action=start)`**：`engine` 默认由 **`legacy` 改为 `dom2`**（CDP binding + 缓冲）；需旧行为时使用 **`--engine legacy`** 或 MCP **`engine=legacy`**
+- **回放**：单一路径，自动兼容 schema v1/v2（文档与 MCP 说明已同步）
+- **本机 Chrome `launch_chrome`**：若 **`user_data_dir`** 下 **`DevToolsActivePort`** 可读且 CDP 可用，**直接连接已有进程**、不重复启动；抽取 **`_finalize_launched_chrome`**；profile 冲突时对端口探测增加短重试；**`_try_connect_existing_chrome`** 支持 **`relaxed_probe`**，优先信任 profile 内端口以降低误连
+
+### 工程
+
+- **`pyproject.toml` / `.cursor-plugin/plugin.json` / Git tag**：与 **`v0.2.17`** 对齐
+
 ## [0.2.16] - 2026-03-24
 
 ### Added

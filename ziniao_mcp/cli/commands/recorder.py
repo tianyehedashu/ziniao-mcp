@@ -41,9 +41,9 @@ def start(
         help="Shorthand for --engine dom2 (CDP binding, multi-tab, structured locators).",
     ),
     engine: str = typer.Option(
-        "legacy",
+        "dom2",
         "--engine",
-        help="Recording engine: legacy (page buffer) or dom2 (CDP binding + multi-tab).",
+        help="Recording engine: dom2 (CDP binding + multi-tab, default) or legacy (page Symbol buffer).",
     ),
     scope: str = typer.Option(
         "active",
@@ -60,9 +60,9 @@ def start(
 
     Examples:
 
-        ziniao rec start --codegen          # dom2 engine, recommended
-        ziniao rec start --engine dom2      # equivalent to above
-        ziniao rec start                    # legacy engine (single-tab)
+        ziniao rec start                    # dom2 (default)
+        ziniao rec start --codegen          # explicit dom2 (same as default)
+        ziniao rec start --engine legacy    # old single-tab Symbol buffer
     """
     if codegen:
         engine = "dom2"

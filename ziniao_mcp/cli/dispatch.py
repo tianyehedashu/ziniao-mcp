@@ -614,7 +614,7 @@ async def _recorder(sm: Any, args: dict) -> dict:
     auto_session = args.get("auto_session", True)
     if not isinstance(auto_session, bool):
         auto_session = bool(auto_session)
-    engine = str(args.get("engine", "legacy") or "legacy")
+    engine = str(args.get("engine", "dom2") or "dom2")
     scope = str(args.get("scope", "active") or "active")
     try:
         max_tabs = int(args.get("max_tabs", 20))

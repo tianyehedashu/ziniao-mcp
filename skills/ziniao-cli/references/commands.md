@@ -133,7 +133,7 @@ Full command reference. For workflow and patterns see [SKILL.md](../SKILL.md).
 |---------|-------------|
 | `echo '[{"command":...,"args":...}]' \| ziniao batch run` | Run batch JSON |
 | `ziniao batch run --bail` | Stop on first error |
-| `ziniao rec start [--engine legacy\|dom2] [--scope active\|all] [--max-tabs N]` | Start recording |
+| `ziniao rec start [--engine dom2\|legacy] …` (default **dom2**) | Start recording |
 | `ziniao rec stop [--name <name>] [--emit nodriver,playwright] [--redact-secrets]` | Stop and save |
 | `ziniao rec status` | Show engine, scope, buffer size while recording |
 | `ziniao rec replay <name>` | Replay |

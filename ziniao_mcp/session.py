@@ -256,6 +256,26 @@ async def _is_cdp_alive(port: int, timeout: float = 2.0) -> bool:
         return False
 
 
+async def _cdp_port_from_profile(user_data_dir: str) -> int | None:
+    """读取该 user-data-dir 下 Chrome 写入的 DevToolsActivePort，并确认 CDP 可用。
+
+    仅信任 profile 目录内的端口，避免误连其他 Chrome 实例。
+    """
+    debug_port_file = Path(user_data_dir) / "DevToolsActivePort"
+    if not debug_port_file.is_file():
+        return None
+    try:
+        raw = debug_port_file.read_text(encoding="utf-8", errors="replace").strip()
+        port = int(raw.splitlines()[0].strip())
+    except (ValueError, OSError, IndexError):
+        return None
+    if port <= 0 or port > 65535:
+        return None
+    if await _is_cdp_alive(port):
+        return port
+    return None
+
+
 async def _wait_cdp_ready(port: int, timeout_sec: float = 30.0, interval: float = 2.0) -> bool:
     """轮询直到 CDP 端口可用或超时。返回是否就绪。"""
     deadline = time.monotonic() + timeout_sec
@@ -958,19 +978,19 @@ class SessionManager:
 
         return executable_path, user_data_dir, cdp_port, headless
 
-    async def _try_connect_existing_chrome(self, user_data_dir: str) -> int | None:
-        """Try to find the CDP port of a Chrome already using this profile.
+    async def _try_connect_existing_chrome(
+        self, user_data_dir: str, *, relaxed_probe: bool = True,
+    ) -> int | None:
+        """查找已占用该 profile 的 Chrome 的 CDP 端口。
 
-        Checks DevToolsActivePort file first, then probes common CDP ports.
+        优先 DevToolsActivePort（与目录绑定）。若 ``relaxed_probe`` 为真，再探测常见端口
+        （仅在已确认新进程因 profile 冲突退出等场景使用，降低误连概率）。
         """
-        debug_port_file = Path(user_data_dir) / "DevToolsActivePort"
-        if debug_port_file.exists():
-            try:
-                port = int(debug_port_file.read_text().strip().splitlines()[0])
-                if await _is_cdp_alive(port):
-                    return port
-            except (ValueError, OSError, IndexError):
-                pass
+        port = await _cdp_port_from_profile(user_data_dir)
+        if port is not None:
+            return port
+        if not relaxed_probe:
+            return None
 
         probe_ports: list[int] = []
         cfg_port = int(self._chrome_config.get("default_cdp_port") or 0)
@@ -978,11 +998,70 @@ class SessionManager:
             probe_ports.append(cfg_port)
         probe_ports.extend([9222, 9333, 9515])
 
-        for port in probe_ports:
-            if await _is_cdp_alive(port):
-                return port
+        for p in probe_ports:
+            if await _is_cdp_alive(p):
+                return p
 
         return None
+
+    async def _finalize_launched_chrome(
+        self,
+        session_id: str,
+        store_display_name: str,
+        connected_port: int,
+        url: str,
+        chrome_process: Any,
+    ) -> StoreSession:
+        """在已知 CDP 端口就绪后完成 stealth、会话对象构建与导航。"""
+        browser = await _connect_cdp(connected_port)
+        await self._apply_stealth_to_browser(browser)
+        tabs = _filter_tabs(browser.tabs)
+
+        if not tabs:
+            target = url or "about:blank"
+            try:
+                await browser.get(target, new_tab=True)
+                await asyncio.sleep(0.5)
+                tabs = _filter_tabs(browser.tabs)
+                url = ""
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                _logger.warning("自动创建新标签页失败（tabs 为空）: %s", exc)
+
+        session = StoreSession(
+            store_id=session_id,
+            store_name=store_display_name,
+            cdp_port=connected_port,
+            browser=browser,
+            tabs=tabs,
+            active_tab_index=0,
+            backend_type="chrome",
+            chrome_process=chrome_process,
+        )
+
+        if session.tabs:
+            active_tab = session.tabs[session.active_tab_index]
+            await self.setup_tab_listeners(session, active_tab)
+
+        self._stores[session_id] = session
+        self._active_store_id = session_id
+
+        if url and session.tabs:
+            try:
+                from nodriver import cdp as _cdp  # pylint: disable=import-outside-toplevel
+                active_tab = session.tabs[session.active_tab_index]
+                await active_tab.send(_cdp.page.navigate(url=url))
+                await active_tab.sleep(0.5)
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                _logger.warning("导航到目标 URL 失败 (%s): %s", url, exc)
+
+        await self._sync_viewport_to_window(session)
+
+        self._save_store_state(
+            session_id, session.store_name, connected_port, session_id,
+            backend_type="chrome",
+        )
+
+        return session
 
     async def launch_chrome(
         self,
@@ -1001,6 +1080,24 @@ class SessionManager:
         executable_path, user_data_dir, cdp_port, headless = self._resolve_chrome_defaults(
             executable_path, user_data_dir, cdp_port, headless,
         )
+
+        profile_port = await _cdp_port_from_profile(user_data_dir)
+        if profile_port is not None:
+            pre_sid = name or f"chrome-{profile_port}"
+            if pre_sid in self._stores:
+                self._active_store_id = pre_sid
+                return self._stores[pre_sid]
+            _logger.info(
+                "检测到该 user_data_dir 已有开启远程调试的 Chrome（端口 %d），直接连接，不启动新进程",
+                profile_port,
+            )
+            return await self._finalize_launched_chrome(
+                pre_sid,
+                name or f"Chrome ({profile_port})",
+                profile_port,
+                url,
+                None,
+            )
 
         session_id = name or f"chrome-{cdp_port}"
         if session_id in self._stores:
@@ -1036,11 +1133,16 @@ class SessionManager:
                 break
             if proc.poll() is not None:
                 if proc.returncode == 0:
-                    existing_port = await self._try_connect_existing_chrome(user_data_dir)
+                    existing_port: int | None = None
+                    for _ in range(6):
+                        existing_port = await self._try_connect_existing_chrome(user_data_dir)
+                        if existing_port:
+                            break
+                        await asyncio.sleep(0.35)
                     if existing_port:
                         _logger.info(
-                            "Profile locked, auto-connecting to existing Chrome on port %d "
-                            "(close will NOT terminate this Chrome)",
+                            "Profile 已被占用，已自动连接到已有 Chrome（端口 %d）；"
+                            "关闭会话不会结束该 Chrome 进程",
                             existing_port,
                         )
                         connected_port = existing_port
@@ -1051,9 +1153,10 @@ class SessionManager:
                             return self._stores[session_id]
                         break
                     raise RuntimeError(
-                        f"Chrome 进程已退出 (exit code 0)。"
-                        f"该 user_data_dir 已被另一个 Chrome 实例占用: {user_data_dir}。"
-                        f"请关闭已有 Chrome 或设置 CHROME_USER_DATA 指定其他 profile 目录。"
+                        "该 user_data_dir 已被其他 Chrome 占用，且未检测到可连接的远程调试端口 "
+                        f"（{user_data_dir}）。若占用该 profile 的窗口不是通过 ziniao launch 打开的，"
+                        "请关闭后重试；或为本机 Chrome 添加 --remote-debugging-port 后使用 "
+                        "`ziniao connect <端口>`；也可设置 CHROME_USER_DATA 使用其他 profile 目录。"
                     )
                 raise RuntimeError(
                     f"Chrome 进程已退出 (exit code {proc.returncode})。"
@@ -1066,56 +1169,14 @@ class SessionManager:
                 f"Chrome CDP 端口 {cdp_port} 在 15 秒内未就绪"
             )
 
-        browser = await _connect_cdp(connected_port)
-        await self._apply_stealth_to_browser(browser)
-        tabs = _filter_tabs(browser.tabs)
-
-        if not tabs:
-            target = url or "about:blank"
-            try:
-                await browser.get(target, new_tab=True)
-                await asyncio.sleep(0.5)
-                tabs = _filter_tabs(browser.tabs)
-                url = ""
-            except Exception as exc:  # pylint: disable=broad-exception-caught
-                _logger.warning("自动创建新标签页失败（tabs 为空）: %s", exc)
-
-        session = StoreSession(
-            store_id=session_id,
-            store_name=name or f"Chrome ({connected_port})",
-            cdp_port=connected_port,
-            browser=browser,
-            tabs=tabs,
-            active_tab_index=0,
-            backend_type="chrome",
-            chrome_process=proc if owns_process else None,
+        assert connected_port is not None
+        return await self._finalize_launched_chrome(
+            session_id,
+            name or f"Chrome ({connected_port})",
+            connected_port,
+            url,
+            proc if owns_process else None,
         )
-
-        if session.tabs:
-            active_tab = session.tabs[session.active_tab_index]
-            await self.setup_tab_listeners(session, active_tab)
-
-        self._stores[session_id] = session
-        self._active_store_id = session_id
-
-        if url and session.tabs:
-            try:
-                from nodriver import cdp as _cdp  # pylint: disable=import-outside-toplevel
-                active_tab = session.tabs[session.active_tab_index]
-                await active_tab.send(_cdp.page.navigate(url=url))
-                await active_tab
-                await active_tab.sleep(0.5)
-            except Exception as exc:  # pylint: disable=broad-exception-caught
-                _logger.warning("导航到目标 URL 失败 (%s): %s", url, exc)
-
-        await self._sync_viewport_to_window(session)
-
-        self._save_store_state(
-            session_id, session.store_name, cdp_port, session_id,
-            backend_type="chrome",
-        )
-
-        return session
 
     async def connect_chrome(
         self, cdp_port: int, name: str = "",

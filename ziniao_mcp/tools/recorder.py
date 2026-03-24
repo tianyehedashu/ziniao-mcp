@@ -377,7 +377,7 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
         force: bool = False,
         reuse_tab: bool = False,
         auto_session: bool = True,
-        engine: str = "legacy",
+        engine: str = "dom2",
         scope: str = "active",
         max_tabs: int = 20,
         emit: str = "nodriver",
@@ -387,7 +387,8 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
 
         This tool records interactions such as click, fill, key press, and
         navigation. On stop, it saves JSON metadata and generates a standalone
-        Python script based on nodriver.
+        Python script based on nodriver. Recording defaults to engine dom2;
+        replay accepts both schema v1 (legacy) and v2 (dom2) action lists.
 
         Args:
             action: The recorder action ("start" | "stop" | "replay" |
@@ -404,7 +405,7 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
                 opening a new tab. Default False (always new tab for replay).
             auto_session: For action "replay", when no daemon session exists, try to
                 connect using session_id/backend_type saved in the recording (default True).
-            engine: For "start": "legacy" (page Symbol buffer) or "dom2" (CDP binding + buffer).
+            engine: For "start": "dom2" (CDP binding + buffer, default) or "legacy" (page Symbol buffer).
             scope: For "start" with dom2: "active" (current tab + poll new) or "all" (cap max_tabs).
             max_tabs: For dom2 scope=all, max pages to instrument (0 = unlimited).
             emit: For "stop": comma-separated "nodriver" and/or "playwright".
@@ -444,7 +445,7 @@ async def _do_start(
     inject_fn,
     nav_setup_fn,
     *,
-    engine: str = "legacy",
+    engine: str = "dom2",
     scope: str = "active",
     max_tabs: int = 20,
 ) -> str:
@@ -452,7 +453,7 @@ async def _do_start(
     if store.recording:
         return json.dumps({"status": "already_recording", "message": "Recording is already in progress."}, ensure_ascii=False)
 
-    eng = (engine or "legacy").strip().lower()
+    eng = (engine or "dom2").strip().lower()
     sc = (scope or "active").strip().lower()
     if sc not in ("active", "all"):
         sc = "active"

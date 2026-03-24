@@ -529,7 +529,7 @@
 | `name` | `string` | 否 | 录制名称（`stop` 时保存用，`replay`/`delete` 时指定目标） |
 | `actions_json` | `string` | 否 | 回放时可直接传入 JSON 动作列表（优先级高于 `name`） |
 | `speed` | `float` | 否 | 回放速度倍率（默认 `1.0`，`2.0` 表示双倍速） |
-| `engine` | `string` | 否 | `start`：`legacy`（页内 Symbol 缓冲，默认）或 `dom2`（`Runtime.addBinding` + 守护进程缓冲，多标签） |
+| `engine` | `string` | 否 | `start`：`dom2`（`Runtime.addBinding` + 守护进程缓冲，多标签，默认）或 `legacy`（页内 Symbol 缓冲） |
 | `scope` | `string` | 否 | `start` 且 `dom2`：`active`（当前活动标签 + 轮询新标签）或 `all`（最多 `max_tabs` 个页面） |
 | `max_tabs` | `int` | 否 | `start` 且 `dom2` 且 `scope=all` 时上限；`0` 表示不限制 |
 | `emit` | `string` | 否 | `stop`：逗号分隔 `nodriver`、`playwright`（生成 `.py` 与/或 `.spec.ts`），默认 `nodriver` |
@@ -543,7 +543,7 @@
 
 | action | 说明 |
 |--------|------|
-| `start` | 开始录制：向当前页面注入 JS 事件监听器，绑定跨页面导航重注入 |
+| `start` | 开始录制：默认 `dom2`（binding + 缓冲）；`legacy` 时为页内 Symbol 缓冲并绑定主帧导航重注入 |
 | `stop` | 停止录制：提取操作序列，生成 Python 脚本并保存到 `~/.ziniao/recordings/` |
 | `replay` | 回放录制：通过 `name` 加载已保存的录制，或传入 `actions_json` 直接回放 |
 | `list` | 列出所有已保存的录制 |
