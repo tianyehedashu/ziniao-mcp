@@ -529,6 +529,15 @@
 | `name` | `string` | 否 | 录制名称（`stop` 时保存用，`replay`/`delete` 时指定目标） |
 | `actions_json` | `string` | 否 | 回放时可直接传入 JSON 动作列表（优先级高于 `name`） |
 | `speed` | `float` | 否 | 回放速度倍率（默认 `1.0`，`2.0` 表示双倍速） |
+| `engine` | `string` | 否 | `start`：`legacy`（页内 Symbol 缓冲，默认）或 `dom2`（`Runtime.addBinding` + 守护进程缓冲，多标签） |
+| `scope` | `string` | 否 | `start` 且 `dom2`：`active`（当前活动标签 + 轮询新标签）或 `all`（最多 `max_tabs` 个页面） |
+| `max_tabs` | `int` | 否 | `start` 且 `dom2` 且 `scope=all` 时上限；`0` 表示不限制 |
+| `emit` | `string` | 否 | `stop`：逗号分隔 `nodriver`、`playwright`（生成 `.py` 与/或 `.spec.ts`），默认 `nodriver` |
+| `record_secrets` | `bool` | 否 | `stop`：为 `false` 时对 `fill` 的 `value` 做脱敏后再写入 JSON（默认 `true` 保持明文以兼容旧行为） |
+| `metadata_only` | `bool` | 否 | `view`：仅元数据 |
+| `force` | `bool` | 否 | `stop`：覆盖同名文件 |
+| `reuse_tab` | `bool` | 否 | `replay`：在当前标签回放 |
+| `auto_session` | `bool` | 否 | `replay`：无会话时按元数据自动连接 |
 
 **action 取值**：
 
@@ -563,8 +572,11 @@
 #### action = `"stop"`
 
 停止录制，提取操作序列，同时生成：
-- `.json` 文件 — 元数据 + 动作序列（供 MCP 回放）
-- `.py` 文件 — 可独立运行的 Python 脚本（基于 nodriver）
+- `.json` 文件 — 元数据 + 动作序列（含 `schema_version`；`dom2` 含结构化 `locator` 字段）
+- `.py` 文件 — 可独立运行的 Python 脚本（基于 nodriver，`emit` 含 `nodriver` 时）
+- `.spec.ts` — Playwright 风格模板（`emit` 含 `playwright` 时，需自行接 `connectOverCDP`）
+
+**stealth**：`dom2` 与反检测脚本均通过 `Page.addScriptToEvaluateOnNewDocument` 注入；勿在页面侧依赖可枚举的录制状态。
 
 **返回**：`string` — JSON 对象：
 

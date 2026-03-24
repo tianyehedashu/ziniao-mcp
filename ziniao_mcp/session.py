@@ -125,6 +125,18 @@ class StoreSession:
     iframe_context: Optional["IFrameContext"] = None
     recording: bool = False
     recording_start_url: str = ""
+    recording_engine: str = "legacy"  # legacy | dom2
+    recording_ring_buffer: Any = None
+    recording_seq: int = 0
+    recording_binding_name: str = ""
+    recording_dom2_handlers: list = field(default_factory=list)
+    recording_script_entries: list = field(default_factory=list)
+    recording_poll_task: Any = None
+    recording_scope: str = "active"
+    recording_max_tabs: int = 20
+    recording_monotonic_t0: float = 0.0
+    recording_attached_targets: set = field(default_factory=set)
+    recording_dropped_events: int = 0
     _msg_counter: int = 0
     _req_counter: int = 0
     _listened_tab_ids: set = field(default_factory=set)

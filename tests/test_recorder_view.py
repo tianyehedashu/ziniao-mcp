@@ -43,10 +43,10 @@ def test_do_view_requires_name() -> None:
 
 
 def test_generate_python_script_opens_new_tab_not_tabs_zero() -> None:
-    from ziniao_mcp.tools import recorder as rec
+    from ziniao_mcp.recording.emit_nodriver import generate_nodriver_script
 
-    actions = [{"type": "click", "selector": "#x", "timestamp": 0}]
-    py = rec._generate_python_script(
+    actions = [{"type": "click", "selector": "#x", "timestamp": 0, "delay_ms": 0}]
+    py = generate_nodriver_script(
         actions, 9222, "https://example.com/start", "r1",
         session_id="shop-1", backend_type="ziniao", store_name="A",
     )
@@ -57,6 +57,6 @@ def test_generate_python_script_opens_new_tab_not_tabs_zero() -> None:
     assert "shop-1" in py
     assert "ziniao" in py
 
-    py_blank = rec._generate_python_script(actions, 9222, "", "r2")
+    py_blank = generate_nodriver_script(actions, 9222, "", "r2")
     assert "about:blank" in py_blank
     assert "new_tab=True" in py_blank

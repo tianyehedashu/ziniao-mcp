@@ -34,9 +34,44 @@ app = typer.Typer(
 
 
 @app.command("start")
-def start() -> None:
-    """Inject recorder into the page and begin capturing actions until `rec stop`."""
-    result = run_command("recorder", {"action": "start"})
+def start(
+    codegen: bool = typer.Option(
+        False,
+        "--codegen",
+        help="Shorthand for --engine dom2 (CDP binding, multi-tab, structured locators).",
+    ),
+    engine: str = typer.Option(
+        "legacy",
+        "--engine",
+        help="Recording engine: legacy (page buffer) or dom2 (CDP binding + multi-tab).",
+    ),
+    scope: str = typer.Option(
+        "active",
+        "--scope",
+        help="dom2 only: attach to active tab only, or all pages (capped by --max-tabs).",
+    ),
+    max_tabs: int = typer.Option(
+        20,
+        "--max-tabs",
+        help="dom2 scope=all: maximum tabs to instrument (0 = no limit).",
+    ),
+) -> None:
+    """Inject recorder into the page and begin capturing actions until `rec stop`.
+
+    Examples:
+
+        ziniao rec start --codegen          # dom2 engine, recommended
+        ziniao rec start --engine dom2      # equivalent to above
+        ziniao rec start                    # legacy engine (single-tab)
+    """
+    if codegen:
+        engine = "dom2"
+    result = run_command("recorder", {
+        "action": "start",
+        "engine": engine,
+        "scope": scope,
+        "max_tabs": max_tabs,
+    })
     print_result(result, json_mode=get_json_mode())
 
 
@@ -44,9 +79,42 @@ def start() -> None:
 def stop(
     name: Optional[str] = typer.Option(None, "--name", help="Save under this name; omit for auto `rec_YYYYMMDD_HHMMSS`."),
     force: bool = typer.Option(False, "--force", help="Overwrite existing file if --name matches a saved recording."),
+    all_emit: bool = typer.Option(
+        False,
+        "--all",
+        "-a",
+        help="Shorthand for --emit nodriver,playwright --redact-secrets.",
+    ),
+    emit: str = typer.Option(
+        "nodriver",
+        "--emit",
+        help="Comma-separated: nodriver, playwright (both to write .py and .spec.ts).",
+    ),
+    redact_secrets: bool = typer.Option(
+        False,
+        "--redact-secrets",
+        help="Replace fill values in saved JSON with redacted placeholders.",
+    ),
 ) -> None:
-    """Stop capture, write recording files, and clear injected recorder state."""
-    result = run_command("recorder", {"action": "stop", "name": name or "", "force": force})
+    """Stop capture, write recording files, and clear injected recorder state.
+
+    Examples:
+
+        ziniao rec stop                             # nodriver .py only
+        ziniao rec stop -a                          # both .py + .spec.ts, redact secrets
+        ziniao rec stop --emit nodriver,playwright  # both emitters, keep secrets
+        ziniao rec stop --name login --force -a     # overwrite, full codegen output
+    """
+    if all_emit:
+        emit = "nodriver,playwright"
+        redact_secrets = True
+    result = run_command("recorder", {
+        "action": "stop",
+        "name": name or "",
+        "force": force,
+        "emit": emit,
+        "record_secrets": not redact_secrets,
+    })
     print_result(result, json_mode=get_json_mode())
 
 

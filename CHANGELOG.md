@@ -4,6 +4,25 @@
 
 ## [Unreleased]
 
+## [0.2.16] - 2026-03-24
+
+### Added
+
+- **Codegen 级录制（`dom2`）**：`Runtime.addBinding` + daemon 侧 `RecordingBuffer`，`rec start --engine dom2`，`--scope active|all`、`--max-tabs`；轮询为新 Target 补挂桩；`rec status` 展示 `buffered_events` / `attached_targets`
+- **`ziniao_mcp/recording/`**：IR（`schema_version`）、`emit_nodriver`、`emit_playwright`、locator 解析与回放归一化；**`parse_emit`** 置于 **`recording/ir.py`**
+- **`rec stop --emit nodriver,playwright`**、MCP `emit`；**`--redact-secrets`** / `record_secrets=false` 脱敏 `fill`；可选生成 **`NAME.spec.ts`**
+- **CLI 快捷**：**`rec start --codegen`**（等同 `dom2`）；**`rec stop -a` / `--all`**（等同双 emit + 脱敏）
+- **单元测试**：`tests/test_recording_package.py`
+
+### Fixed
+
+- **`actions_for_disk`**：先依据 **`mono_ts`** 计算 **`delay_ms`** 再剥离内部字段，dom2 步间延时正确
+- **`rec list`**：仅当 **`.py`** 存在时返回 **`py_file`**（与 **`ts_file`** 一致）；磁盘 JSON 不再泄漏 **`target_id` / `frameUrl` / `perfTs`** 等内部字段
+
+### 工程
+
+- **`pyproject.toml` / `.cursor-plugin/plugin.json` / Git tag**：与 **`v0.2.16`** 对齐
+
 ## [0.2.15] - 2026-03-23
 
 ### Added

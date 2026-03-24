@@ -362,12 +362,16 @@ ziniao network har-stop [<file>]         # 停止并保存 HAR
 #### 录制回放 `rec`
 
 ```bash
-ziniao rec start                         # 开始录制
-ziniao rec stop [--name <名称>]          # 停止并保存
+ziniao rec start [--engine legacy|dom2] [--scope active|all] [--max-tabs N]
+ziniao rec stop [--name <名称>] [--emit nodriver,playwright] [--redact-secrets]
 ziniao rec replay <名称> [--speed 1.0]   # 回放
 ziniao rec list                          # 列出录制
 ziniao rec delete <名称>                 # 删除录制
+ziniao rec status                        # 录制中引擎、scope、缓冲条数等
 ```
+
+- **legacy**（默认）：与原先一致，页内 Symbol 缓冲，`stop` 时从当前活动页读取。
+- **dom2**：CDP `Runtime.addBinding` 将事件送入 daemon 缓冲，避免切错标签导致空录；`scope=all` 可挂多个标签（受 `--max-tabs` 限制）；轮询会为新开页面补挂桩。
 
 #### 批量执行 `batch`
 

@@ -133,8 +133,9 @@ Full command reference. For workflow and patterns see [SKILL.md](../SKILL.md).
 |---------|-------------|
 | `echo '[{"command":...,"args":...}]' \| ziniao batch run` | Run batch JSON |
 | `ziniao batch run --bail` | Stop on first error |
-| `ziniao rec start` | Start recording |
-| `ziniao rec stop --name <name>` | Stop and save |
+| `ziniao rec start [--engine legacy\|dom2] [--scope active\|all] [--max-tabs N]` | Start recording |
+| `ziniao rec stop [--name <name>] [--emit nodriver,playwright] [--redact-secrets]` | Stop and save |
+| `ziniao rec status` | Show engine, scope, buffer size while recording |
 | `ziniao rec replay <name>` | Replay |
 | `ziniao rec list` | List recordings |
 | `ziniao emulate --device "iPhone 14"` | Device emulation |

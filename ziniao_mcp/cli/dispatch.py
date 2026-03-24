@@ -614,6 +614,16 @@ async def _recorder(sm: Any, args: dict) -> dict:
     auto_session = args.get("auto_session", True)
     if not isinstance(auto_session, bool):
         auto_session = bool(auto_session)
+    engine = str(args.get("engine", "legacy") or "legacy")
+    scope = str(args.get("scope", "active") or "active")
+    try:
+        max_tabs = int(args.get("max_tabs", 20))
+    except (TypeError, ValueError):
+        max_tabs = 20
+    emit = str(args.get("emit", "nodriver") or "nodriver")
+    record_secrets = args.get("record_secrets", True)
+    if not isinstance(record_secrets, bool):
+        record_secrets = bool(record_secrets)
 
     async def _inject(tab):
         from ..tools.recorder import _RECORDER_JS  # pylint: disable=import-outside-toplevel
@@ -636,10 +646,19 @@ async def _recorder(sm: Any, args: dict) -> dict:
         _setup_navigation_reinjection(store, tab, _inject)
 
     if action == "start":
-        raw_result = await _do_start(sm, _inject, _nav_setup)
+        raw_result = await _do_start(
+            sm, _inject, _nav_setup,
+            engine=engine, scope=scope, max_tabs=max_tabs,
+        )
         return json.loads(raw_result)
     if action == "stop":
-        raw_result = await _do_stop(sm, name, _collect, _clear, force)
+        from ..recording.ir import parse_emit  # pylint: disable=import-outside-toplevel
+
+        raw_result = await _do_stop(
+            sm, name, _collect, _clear, force,
+            emit=parse_emit(emit),
+            record_secrets=record_secrets,
+        )
         return json.loads(raw_result)
     if action == "replay":
         raw_result = await _do_replay(
