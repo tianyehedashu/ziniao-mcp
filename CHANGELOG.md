@@ -4,6 +4,22 @@
 
 ## [Unreleased]
 
+## [0.2.15] - 2026-03-23
+
+### Added
+
+- **录制 JSON / 生成脚本**：保存 **`session_id`**、**`backend_type`**、**`store_name`**；**`NAME.py`** 模块 docstring 同步会话说明
+- **`rec replay` 自动恢复会话**：daemon 无活跃会话时，按录制元数据（或旧文件 **`cdp_port`** + **`~/.ziniao/sessions.json`**）调用 **`connect_store` / `connect_chrome`**；**`--no-auto-session`** / MCP **`auto_session=false`** 可关闭
+- **`ziniao_mcp/recording_context.py`**：`RecordingBrowserContext`、`resolve_recording_browser_context`；**`SessionManager`**：`has_active_session`、`attach_from_recording_context`
+
+### Changed
+
+- **`rec list` / `rec view`**（human）：展示会话相关列与字段
+
+### 工程
+
+- **`pyproject.toml` / `.cursor-plugin/plugin.json` / Git tag**：与 **`v0.2.15`** 对齐
+
 ## [0.2.14] - 2026-03-23
 
 ### Changed

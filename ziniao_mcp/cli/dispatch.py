@@ -611,6 +611,9 @@ async def _recorder(sm: Any, args: dict) -> dict:
     metadata_only = bool(args.get("metadata_only", False))
     force = bool(args.get("force", False))
     reuse_tab = bool(args.get("reuse_tab", False))
+    auto_session = args.get("auto_session", True)
+    if not isinstance(auto_session, bool):
+        auto_session = bool(auto_session)
 
     async def _inject(tab):
         from ..tools.recorder import _RECORDER_JS  # pylint: disable=import-outside-toplevel
@@ -639,7 +642,10 @@ async def _recorder(sm: Any, args: dict) -> dict:
         raw_result = await _do_stop(sm, name, _collect, _clear, force)
         return json.loads(raw_result)
     if action == "replay":
-        raw_result = await _do_replay(sm, name, actions_json, speed, reuse_tab=reuse_tab)
+        raw_result = await _do_replay(
+            sm, name, actions_json, speed,
+            reuse_tab=reuse_tab, auto_session=auto_session,
+        )
         return json.loads(raw_result)
     if action == "list":
         return json.loads(_do_list())

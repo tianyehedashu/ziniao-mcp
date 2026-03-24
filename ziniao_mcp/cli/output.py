@@ -324,14 +324,21 @@ def _print_rich(data: dict) -> None:
         table.add_column("Name", style="cyan")
         table.add_column("Created", style="dim")
         table.add_column("#", justify="right")
+        table.add_column("Session", style="yellow")
         table.add_column("Start URL", style="green")
         for r in data["recordings"]:
             surl = r.get("start_url") or ""
             url_cell = surl if len(surl) <= 40 else surl[:37] + "…"
+            sid = (r.get("session_id") or "").strip()
+            bt = (r.get("backend_type") or "").strip()
+            sess_cell = f"{bt}:{sid}" if sid and bt else (sid or bt or "—")
+            if len(sess_cell) > 28:
+                sess_cell = sess_cell[:25] + "…"
             table.add_row(
                 r.get("name", ""),
                 (r.get("created_at") or "")[:22],
                 str(r.get("action_count", "")),
+                sess_cell,
                 url_cell or "—",
             )
         console.print(table)
@@ -353,6 +360,9 @@ def _print_rich(data: dict) -> None:
         meta_tbl.add_row("path", path)
         meta_tbl.add_row("created_at", str(rec.get("created_at", "")))
         meta_tbl.add_row("start_url", (rec.get("start_url") or "")[:120] or "—")
+        meta_tbl.add_row("session_id", (rec.get("session_id") or "")[:120] or "—")
+        meta_tbl.add_row("backend_type", (rec.get("backend_type") or "") or "—")
+        meta_tbl.add_row("store_name", (rec.get("store_name") or "")[:120] or "—")
         meta_tbl.add_row("action_count", str(rec.get("action_count", "")))
         meta_tbl.add_row("cdp_port", str(rec.get("cdp_port", "")))
         console.print(meta_tbl)

@@ -17,6 +17,8 @@ from typing import TYPE_CHECKING, Any, Optional
 
 import httpx
 
+from .recording_context import RecordingBrowserContext
+
 if os.name == "nt":
     import msvcrt
 else:
@@ -31,6 +33,13 @@ if TYPE_CHECKING:
     from .iframe import IFrameContext
 
 _logger = logging.getLogger("ziniao-debug")
+
+
+def _chrome_connect_name(session_id: str, cdp_port: int) -> str:
+    """connect_chrome `name` so session key matches StoreSession.store_id."""
+    if session_id == f"chrome-{cdp_port}":
+        return ""
+    return session_id
 
 _ZINIAO_NOT_CONFIGURED = (
     "紫鸟客户端未配置。如需使用紫鸟店铺功能，请设置环境变量 "
@@ -799,6 +808,20 @@ class SessionManager:
         if self._active_store_id == store_id:
             self._active_store_id = next(iter(self._stores), None)
         self._remove_store_state(store_id)
+
+    def has_active_session(self) -> bool:
+        """daemon 内存中是否已有可操作的浏览器会话。"""
+        return bool(self._active_store_id and self._active_store_id in self._stores)
+
+    async def attach_from_recording_context(self, ctx: RecordingBrowserContext) -> None:
+        """按录制保存的会话信息连接浏览器（connect_store / connect_chrome）。"""
+        if ctx.backend_type == "chrome":
+            if ctx.cdp_port <= 0:
+                raise RuntimeError("录制上下文缺少有效的 CDP 端口，无法连接 Chrome。")
+            nm = _chrome_connect_name(ctx.session_id, ctx.cdp_port)
+            await self.connect_chrome(ctx.cdp_port, name=nm)
+        else:
+            await self.connect_store(ctx.session_id)
 
     def get_active_session(self) -> StoreSession:
         """返回当前活跃的浏览器会话。"""
