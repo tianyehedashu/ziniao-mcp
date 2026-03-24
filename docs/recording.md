@@ -29,7 +29,7 @@
 
 **回放**只有一条实现路径：`_do_replay` 对磁盘/内联动作统一做 **`normalize_action_for_replay`**，兼容 **`schema_version` 1（legacy 录制）与 2（dom2）**，无需再选引擎。
 
-| 维度 | `legacy`（`--engine legacy`） | `dom2`（默认；CLI 亦可写 `--codegen` 显式指定） |
+| 维度 | `legacy`（`--engine legacy`） | `dom2`（默认；CLI **`--codegen`** 为兼容旧脚本的空操作，不覆盖 **`--engine`**） |
 |------|------------------------------|---------------------------------------------|
 | **事件存放位置** | 页面内 JS：不可枚举的 `Symbol.for('__ev_d')` 数组 | 守护进程内存：`RecordingBuffer`（环形缓冲） |
 | **事件如何到 Python** | `stop` 时对**当前活动标签**执行 `evaluate`，`JSON.stringify` 该数组 | 页面通过 CDP **`Runtime.addBinding`** 暴露的函数，触发 **`BindingCalled`**，异步 handler 写入 buffer |
@@ -40,7 +40,7 @@
 
 **CLI 快捷**：
 
-- `ziniao rec start` 默认已为 `dom2`；`--codegen` 与默认等价（显式写法）
+- `ziniao rec start` 默认已为 `dom2`；`--codegen` 不改写 `engine`（与默认效果相同，兼容旧命令）
 - `ziniao rec stop -a` / `--all` ⇔ `--emit nodriver,playwright` 且 `--redact-secrets`（与引擎无关）
 
 ---

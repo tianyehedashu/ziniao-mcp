@@ -38,7 +38,7 @@ def start(
     codegen: bool = typer.Option(
         False,
         "--codegen",
-        help="Shorthand for --engine dom2 (CDP binding, multi-tab, structured locators).",
+        help="Backward-compat flag (default engine is already dom2). Does not override --engine.",
     ),
     engine: str = typer.Option(
         "dom2",
@@ -61,11 +61,9 @@ def start(
     Examples:
 
         ziniao rec start                    # dom2 (default)
-        ziniao rec start --codegen          # explicit dom2 (same as default)
+        ziniao rec start --codegen          # compat no-op (still dom2 by default)
         ziniao rec start --engine legacy    # old single-tab Symbol buffer
     """
-    if codegen:
-        engine = "dom2"
     result = run_command("recorder", {
         "action": "start",
         "engine": engine,

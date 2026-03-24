@@ -4,6 +4,16 @@
 
 ## [Unreleased]
 
+## [0.2.18] - 2026-03-26
+
+### Fixed
+
+- **CLI `rec start`**：**`--codegen`** 不再覆盖显式的 **`--engine`**（例如 **`--engine legacy --codegen`** 正确使用 legacy）；**`--codegen`** 保留为兼容旧脚本的空操作（默认已是 **`dom2`**）
+
+### 工程
+
+- **`pyproject.toml` / `.cursor-plugin/plugin.json` / Git tag**：与 **`v0.2.18`** 对齐
+
 ## [0.2.17] - 2026-03-25
 
 ### Added
