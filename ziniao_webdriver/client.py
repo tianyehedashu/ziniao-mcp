@@ -319,19 +319,32 @@ class ZiniaoClient:
     # ------------------------------------------------------------------
 
     def get_browser_list(self, timeout: int = 15) -> list[dict]:
-        """获取店铺列表。timeout 过短时若客户端启动慢可能返回空，默认 15 秒避免长时间阻塞。"""
+        """获取店铺列表。
+
+        认证失败或连接异常时抛出 :class:`RuntimeError`，避免静默返回空列表。
+        """
         status, r = self._request(
             {"action": "getBrowserList"}, "获取店铺列表", timeout=timeout
         )
         if status == "ok" and r is not None:
             return r.get("browserList") or []
-        return []
+        if status == "auth_error":
+            err_msg = (r or {}).get("err", "认证失败")
+            raise RuntimeError(f"紫鸟登录失败: {err_msg}")
+        if status == "none":
+            raise RuntimeError(
+                f"无法连接紫鸟客户端 (127.0.0.1:{self.socket_port})，"
+                "请确认客户端已启动且端口配置正确。"
+            )
+        err_msg = (r or {}).get("err") or f"statusCode={(r or {}).get('statusCode', 'N/A')}"
+        raise RuntimeError(f"获取店铺列表失败: {err_msg}")
 
     def get_store_info(self, store_id: str, timeout: int = 15) -> Optional[dict]:
         """从店铺列表中查找指定店铺，返回其详细信息（含 isExpired 等）。
 
         匹配规则：store_id 与 browserId 或 browserOauth 任一匹配即命中。
         :return: 匹配到的店铺 dict，未找到返回 None
+        :raises RuntimeError: 认证失败或无法连接客户端（来自 :meth:`get_browser_list`）
         """
         for s in self.get_browser_list(timeout=timeout):
             if store_id in (str(s.get("browserId", "")), s.get("browserOauth", "")):

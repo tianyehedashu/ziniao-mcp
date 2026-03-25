@@ -45,40 +45,18 @@ uv tool install ziniao
 }
 ```
 
-如需指定 Chrome 路径或复用浏览器状态（登录态、Cookie 等），可添加环境变量：
-
-```json
-{
-  "mcpServers": {
-    "ziniao": {
-      "command": "ziniao",
-      "args": ["serve"],
-      "env": {
-        "CHROME_PATH": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-        "CHROME_USER_DATA": "E:/my-project/.chrome-profile"
-      }
-    }
-  }
-}
-```
+**Chrome 路径与用户数据目录**（登录态、Cookie 等）：用 `ziniao config init` 或 `ziniao config set chrome.executable_path` / `chrome.user_data_dir` 写入 `~/.ziniao/config.yaml`（亦可用 `~/.ziniao/.env` 中的 `CHROME_PATH`、`CHROME_USER_DATA`，见下表），MCP 与 CLI 共用。仅在 IDE 内覆盖时，再在 `mcp.json` 增加 `env`。
 
 配置完成后即可使用 `launch_chrome`、`connect_chrome` 及所有页面操作、录制回放等工具。
 
-**紫鸟店铺 + Chrome 浏览器**（完整功能）：
+**紫鸟店铺 + Chrome 浏览器**（完整功能）：MCP 配置与上方「仅 Chrome」相同，**紫鸟账号与客户端路径**请用 `ziniao config init` 写入 `~/.ziniao/.env`（或 `config.yaml`），启动 MCP 时会自动加载，并与终端 CLI 共用。若仅在 IDE 内覆盖，可在 `mcp.json` 增加 `env` 块，键名见下表；也可用 `ziniao config env --shell mcp` 导出后粘贴。
 
 ```json
 {
   "mcpServers": {
     "ziniao": {
       "command": "ziniao",
-      "args": ["serve"],
-      "env": {
-        "ZINIAO_COMPANY": "你的企业名",
-        "ZINIAO_USERNAME": "你的用户名",
-        "ZINIAO_PASSWORD": "你的密码",
-        "ZINIAO_CLIENT_PATH": "D:\\soft\\ziniao-v6\\ziniao.exe",
-        "ZINIAO_VERSION": "v6"
-      }
+      "args": ["serve"]
     }
   }
 }
@@ -100,6 +78,8 @@ uv tool install ziniao
 | `CHROME_PATH` | Chrome 可执行文件路径。不设置时自动检测（注册表 > 常见路径 > PATH） |
 | `CHROME_USER_DATA` | Chrome 用户数据目录（profile）。设置后可复用登录态、Cookie、扩展等状态。不设置时使用 `~/.ziniao/chrome-profile` |
 | `CHROME_CDP_PORT` | （可选）Chrome CDP 调试端口，不设置时自动分配 |
+
+> **MCP `env` 与终端 CLI**：`mcp.json` 里的 `env` 只注入 **Cursor 启动的 MCP 服务进程**，会参与配置解析；与 `~/.ziniao/.env` 并存时，**进程里已有的变量不会被 .env 覆盖**。终端执行 `ziniao …` 时走**独立的后台 daemon**，不读取 mcp.json。需要 IDE 与命令行行为一致时，优先用 `ziniao config init` 写入 `~/.ziniao/.env` / `config.yaml`，或用 `ziniao config env --shell mcp` 导出后粘贴到 MCP 配置。
 
 配置完成后，在 Cursor 对话框中试试：
 

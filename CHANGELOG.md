@@ -4,6 +4,21 @@
 
 ## [Unreleased]
 
+## [0.2.21] - 2026-03-25
+
+### Fixed
+
+- **`ZiniaoClient.get_browser_list`**：认证失败（如 `-10003`）、无法连接本地客户端或其他非成功响应时抛出 **`RuntimeError`**，不再静默返回空列表，避免 **`ziniao store list`** / MCP **`list_stores`** 误显示空表
+- **`get_store_info`**：文档补充 **`RuntimeError`** 说明（委托 **`get_browser_list`**）
+
+### Changed
+
+- **`README.md`**：Chrome / 紫鸟凭据优先 **`ziniao config init`** 与 **`~/.ziniao`**；说明 MCP **`env`** 与终端 CLI daemon 的差异
+
+### 工程
+
+- **`pyproject.toml` / `.cursor-plugin/plugin.json` / Git tag**：与 **`v0.2.21`** 对齐
+
 ## [0.2.20] - 2026-03-24
 
 ### Changed

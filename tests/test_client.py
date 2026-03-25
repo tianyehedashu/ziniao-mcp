@@ -227,13 +227,17 @@ class TestGetBrowserList:
         )
         assert client_v5.get_browser_list() == stores
 
-    def test_empty_list_on_failure(self, client_v6):
+    def test_connection_failure_raises(self, client_v6):
         client_v6._send_http = MagicMock(return_value=None)
-        assert client_v6.get_browser_list() == []
+        with pytest.raises(RuntimeError, match="无法连接紫鸟客户端"):
+            client_v6.get_browser_list()
 
-    def test_auth_error_returns_empty(self, client_v6):
-        client_v6._send_http = MagicMock(return_value={"statusCode": "-10003"})
-        assert client_v6.get_browser_list() == []
+    def test_auth_error_raises(self, client_v6):
+        client_v6._send_http = MagicMock(
+            return_value={"statusCode": "-10003", "err": "用户名或者密码错误"}
+        )
+        with pytest.raises(RuntimeError, match="紫鸟登录失败"):
+            client_v6.get_browser_list()
 
     def test_missing_browser_list_key(self, client_v6):
         client_v6._send_http = MagicMock(return_value={"statusCode": "0"})
