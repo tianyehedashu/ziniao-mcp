@@ -217,7 +217,7 @@ async def _navigate(sm: Any, args: dict) -> dict:
 
 
 async def _tab(sm: Any, args: dict) -> dict:
-    from ..session import _filter_tabs  # pylint: disable=import-outside-toplevel
+    from ziniao_webdriver.cdp_tabs import filter_tabs as _filter_tabs  # pylint: disable=import-outside-toplevel
     action = args.get("action", "list")
     store = sm.get_active_session()
 

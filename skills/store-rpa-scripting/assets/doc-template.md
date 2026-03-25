@@ -20,8 +20,9 @@ Phase 4 生成的过程文档应遵循以下模板。文件命名与脚本对应
 
 ### 2.2 独立脚本依赖（Phase 3）
 ```bash
-pip install nodriver ziniao
-# 或与项目一致：uv add nodriver ziniao
+pip install ziniao
+# ziniao 包内含 ziniao_webdriver（紫鸟 HTTP 客户端）并声明了 nodriver 依赖，
+# 一条命令即可；不必克隆 ziniao 源码仓库，也不需要 CLI 守护进程常驻。
 ```
 
 ### 2.3 紫鸟客户端（脚本内 ZiniaoClient）

@@ -100,9 +100,9 @@ async def apply_stealth(
 
     script = build_stealth_js(webgl_vendor=webgl_vendor)
 
-    from ..session import _filter_tabs  # pylint: disable=import-outside-toplevel
+    from ziniao_webdriver.cdp_tabs import filter_tabs  # pylint: disable=import-outside-toplevel
 
-    for tab in _filter_tabs(browser.tabs):
+    for tab in filter_tabs(browser.tabs):
         try:
             await tab.send(
                 cdp.page.add_script_to_evaluate_on_new_document(source=script)

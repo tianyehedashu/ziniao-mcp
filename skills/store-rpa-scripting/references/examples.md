@@ -30,13 +30,13 @@ ziniao screenshot step-a.png
 ### Phase 3 — 脚本骨架（与 CLI 语义对齐）
 
 ```python
-"""RPA: [任务名] — 依赖: pip install nodriver ziniao"""
+"""RPA: [任务名] — 依赖: pip install ziniao"""
 
 import asyncio
 import logging
 
 import nodriver
-from ziniao_webdriver import ZiniaoClient
+from ziniao_webdriver import ZiniaoClient, ensure_http_ready, open_store_cdp_port
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -61,12 +61,9 @@ async def do_task(tab):
 
 async def run():
     client = ZiniaoClient(**ZINIAO_CONFIG)
-    if not client.heartbeat():
-        client.start_browser()
-    r = client.open_store(SESSION_ID)
-    if not r or not r.get("debuggingPort"):
-        raise RuntimeError("无 CDP 端口")
-    browser = await nodriver.Browser.create(host="127.0.0.1", port=r["debuggingPort"])
+    ensure_http_ready(client, update_core_max_retries=30)
+    port = open_store_cdp_port(client, SESSION_ID)
+    browser = await nodriver.Browser.create(host="127.0.0.1", port=port)
     try:
         await do_task(browser.main_tab)
     finally:
@@ -79,7 +76,7 @@ if __name__ == "__main__":
 
 ### Phase 4
 
-按 [doc-template.md](doc-template.md) 填写；第 3 节粘贴**真实**命令与输出摘要。
+按 [../assets/doc-template.md](../assets/doc-template.md) 填写；第 3 节粘贴**真实**命令与输出摘要。
 
 ---
 

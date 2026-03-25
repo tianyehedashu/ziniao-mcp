@@ -350,11 +350,11 @@ def _tabs_to_attach(
     scope: str,
     max_tabs: int,
 ) -> list:
-    from ziniao_mcp.session import _filter_tabs  # pylint: disable=import-outside-toplevel
+    from ziniao_webdriver.cdp_tabs import filter_tabs  # pylint: disable=import-outside-toplevel
 
     _ = session
     store.browser  # noqa: B018  # ensure exists
-    tabs = _filter_tabs(list(store.browser.tabs))
+    tabs = filter_tabs(list(store.browser.tabs))
     if not tabs:
         return []
     if scope == "all":
@@ -374,7 +374,7 @@ async def start_dom2_capture(
     scope: str,
     max_tabs: int,
 ) -> dict[str, Any]:
-    from ziniao_mcp.session import _filter_tabs  # pylint: disable=import-outside-toplevel
+    from ziniao_webdriver.cdp_tabs import filter_tabs  # pylint: disable=import-outside-toplevel
 
     binding_name = make_binding_name(store.store_id)
     store.recording_binding_name = binding_name
@@ -413,7 +413,7 @@ async def start_dom2_capture(
                     continue
                 if not store.recording:
                     break
-                tabs = _filter_tabs(list(store.browser.tabs))
+                tabs = filter_tabs(list(store.browser.tabs))
                 candidates: list = tabs if scope == "all" else (
                     [tabs[min(store.active_tab_index, len(tabs) - 1)]] if tabs else []
                 )

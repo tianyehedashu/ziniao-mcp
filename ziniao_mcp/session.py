@@ -16,6 +16,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
 import httpx
+from ziniao_webdriver.cdp_tabs import filter_tabs as _filter_tabs
+from ziniao_webdriver.cdp_tabs import is_regular_tab as _is_regular_tab
 
 from .recording_context import RecordingBrowserContext
 
@@ -300,20 +302,6 @@ def _format_cdp_connection_error(port: int, exc: Exception) -> str:
     if "1225" in err or "拒绝" in err or "refused" in err.lower():
         msg += " （当前错误通常表示端口未监听或被拒绝连接。）"
     return msg
-
-
-_INTERNAL_URL_PREFIXES = ("chrome-extension://", "devtools://", "chrome://")
-
-
-def _is_regular_tab(tab: "Tab") -> bool:
-    """判断 tab 是否为普通网页（过滤掉扩展 offscreen、devtools 等内部页面）。"""
-    url = getattr(getattr(tab, "target", None), "url", "") or ""
-    return not any(url.startswith(p) for p in _INTERNAL_URL_PREFIXES)
-
-
-def _filter_tabs(tabs: list) -> list:
-    """从 browser.tabs 中过滤出普通网页标签。"""
-    return [t for t in tabs if _is_regular_tab(t)]
 
 
 async def _connect_cdp(port: int, timeout: float = 30.0) -> "Browser":

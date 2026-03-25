@@ -1,12 +1,15 @@
 ---
 name: store-rpa-scripting
-description: 用 ziniao CLI 完成页面与流程调研，确认步骤后生成可独立运行的 Python 自动化脚本（ziniao_webdriver + nodriver + CDP）。适用于 RPA、批量流程、定时任务、运营自动化、浏览器自动化落地。
-allowed-tools: Bash(ziniao:*), Bash(python:*)
+description: 用四步法把浏览器流程做成可复现脚本：终端 ziniao CLI 调研与验证 → 步骤表定稿 → ziniao_webdriver 与 nodriver 经 CDP 写独立 Python（运行时不依赖 CLI 守护进程）→ 按模板交付过程文档。适用于 RPA、批量/定时任务、多店运营自动化。用户提到 RPA 落地、流程脚本、先 CLI 探索再写代码、独立自动化脚本时使用。
+compatibility: Phase 1 需本机已安装并配置 ziniao CLI；Phase 3 需 Python 环境含 nodriver 与 ziniao（或同仓 ziniao_webdriver）。
+allowed-tools: Bash(ziniao:*) Bash(python:*)
 ---
 
 # 工具驱动的 RPA 落地流程
 
-本 skill 约定四阶段工作法：CLI 调研与验证 → 结构化确认 → 独立脚本实现 → 交付文档。URL、选择器、会话标识等以 Phase 1 命令输出与任务输入为准，与定稿步骤表保持一致。
+本 skill 只做一件事：**把「在浏览器里能稳定重复的操作」从临时命令，收敛成可交接的步骤表和可单独运行的脚本**。不替代 ziniao 产品文档；反检测、命令全集等见本 skill 内 `references/` 与 `assets/`。安装 `pip install ziniao` 即同时获得 `ziniao_webdriver`（紫鸟 HTTP 客户端）与 `nodriver`（CDP）——一个发行包、两个 Python 包名，详见仓库 `docs/architecture-packages.md`。
+
+约定四阶段：CLI 调研与验证 → 结构化确认 → 独立 Python 实现 → 交付文档。URL、选择器、会话标识以 Phase 1 输出与任务输入为准，与定稿步骤表一致。
 
 ## 核心工作流
 
@@ -23,7 +26,7 @@ Phase 3 实现（独立 Python，不依赖 CLI 守护进程）
 Phase 4 交付文档（可复现：命令记录 + 步骤表 + 运行方式 + 排障）
 ```
 
-**接入会话**（按任务环境选一，细节查 **ziniao-cli** skill）：紫鸟店铺 `open-store` / 纯 Chrome `launch` / 已有进程 `connect`。
+**接入会话**（按任务环境选一）：紫鸟须 **WebDriver 模式客户端**（HTTP 口可用）→ `open-store` 取得 CDP → 再 `navigate` 等。细节与最小脚本见 **[references/lifecycle.md](references/lifecycle.md)**、**[scripts/minimal_store_cdp.py](scripts/minimal_store_cdp.py)**。非紫鸟：`ziniao launch` / `ziniao connect <port>`。
 
 ## Agent 执行要点
 
@@ -36,7 +39,7 @@ Phase 4 交付文档（可复现：命令记录 + 步骤表 + 运行方式 + 排
 
 - CLI 在 PATH；配置已通过 `ziniao config show` 或等价方式就绪。
 - 守护进程与日志：`~/.ziniao/daemon.log`；异常时 `ziniao quit` 重试。
-- 命令全集、flag、`--json` 用法以 **ziniao-cli** skill / `references/commands.md` 为准。
+- 子命令速查见 [references/tools-reference.md](references/tools-reference.md)；完整命令表见 `ziniao --help` 或同仓 `skills/ziniao-cli/references/commands.md`。
 
 ## Phase 1：调研（终端）
 
@@ -51,6 +54,7 @@ Phase 4 交付文档（可复现：命令记录 + 步骤表 + 运行方式 + 排
 
 ```bash
 # 紫鸟店铺示例（会话标识以任务为准）
+# 若 HTTP 未就绪：ziniao store start-client
 ziniao list-stores
 ziniao open-store "<会话标识>"
 # 或：ziniao launch --url "<入口URL>"  /  ziniao connect <port>
@@ -131,14 +135,14 @@ ziniao navigate "<url>" && ziniao wait "<sel>" && ziniao screenshot done.png
 ### 生命周期模板
 
 ```python
-"""RPA: [任务名] — 依赖: pip install nodriver ziniao"""
+"""RPA: [任务名] — 依赖: pip install ziniao"""
 
 import asyncio
 import logging
 
 import nodriver
 from nodriver import cdp
-from ziniao_webdriver import ZiniaoClient
+from ziniao_webdriver import ZiniaoClient, ensure_http_ready, open_store_cdp_port
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -149,21 +153,6 @@ SESSION_ID = "<会话标识>"  # 任务给定
 
 def create_client() -> ZiniaoClient:
     return ZiniaoClient(**ZINIAO_CONFIG)
-
-
-def ensure_client_running(client: ZiniaoClient) -> None:
-    if client.heartbeat():
-        return
-    client.start_browser()
-    if not client.heartbeat():
-        raise RuntimeError("客户端未就绪")
-
-
-def open_session(client: ZiniaoClient, session_id: str) -> int:
-    result = client.open_store(session_id)
-    if not result or not result.get("debuggingPort"):
-        raise RuntimeError("无法取得 CDP 端口")
-    return int(result["debuggingPort"])
 
 
 async def connect_browser(port: int) -> nodriver.Browser:
@@ -177,8 +166,8 @@ async def do_task(tab):
 
 async def run():
     client = create_client()
-    ensure_client_running(client)
-    port = open_session(client, SESSION_ID)
+    ensure_http_ready(client, update_core_max_retries=30)
+    port = open_store_cdp_port(client, SESSION_ID)
     browser = await connect_browser(port)
     tab = browser.main_tab
     try:
@@ -199,7 +188,7 @@ if __name__ == "__main__":
 - `tab.get(url)` 对应 `navigate`；`tab.evaluate` 对应 `eval`。
 - 截图：`cdp.page.capture_screenshot`；重试、CSV、批量汇总按需从 Phase 2 生成。
 
-（重试、CSV 循环、截图等模式见 [examples.md](examples.md)。）
+（重试、CSV 循环、截图等模式见 [references/examples.md](references/examples.md)。）
 
 ## Phase 4：交付文档
 
@@ -213,7 +202,7 @@ if __name__ == "__main__":
 6. 异常与排障  
 7. 维护（选择器/客户端变更注意点）  
 
-模板：[doc-template.md](doc-template.md)。
+模板：[assets/doc-template.md](assets/doc-template.md)。
 
 ## 质量检查
 
@@ -234,9 +223,21 @@ if __name__ == "__main__":
 
 - [ ] 探索记录与 Phase 1 终端命令及输出一致  
 
+## 目录说明（符合 Agent Skills 惯例）
+
+| 路径 | 用途 |
+|------|------|
+| `SKILL.md` | 主流程与本页 |
+| `references/` | 按需阅读的参考：生命周期、CLI 对照、示例模式、反自动化索引 |
+| `scripts/` | 可执行示例脚本 |
+| `assets/` | Phase 4 文档模板 |
+
 ## 补充资源
 
-- [tools-reference.md](tools-reference.md) — CLI ↔ Python 对照  
-- [doc-template.md](doc-template.md)  
-- [examples.md](examples.md) — 格式与代码模式参考  
-- 命令全集：**ziniao-cli** skill → `references/commands.md`
+- [references/lifecycle.md](references/lifecycle.md) — 紫鸟启动、`open_store`、CDP 与源码索引  
+- [references/tools-reference.md](references/tools-reference.md) — CLI ↔ Python  
+- [references/examples.md](references/examples.md) — 格式与代码模式  
+- [references/anti-automation.md](references/anti-automation.md) — 与 RPA 相关的反检测与 `ziniao.stealth` 配置（自包含）  
+- [scripts/minimal_store_cdp.py](scripts/minimal_store_cdp.py) — 无守护进程的最小连接示例  
+- [assets/doc-template.md](assets/doc-template.md) — 过程文档模板  
+- 命令全集：`ziniao --help` 或同仓 `skills/ziniao-cli/references/commands.md`

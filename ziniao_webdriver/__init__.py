@@ -5,6 +5,15 @@
 参考: https://open.ziniao.com/docSupport?docId=98
 """
 
+from .cdp_tabs import filter_tabs, is_regular_tab
 from .client import ZiniaoClient, detect_ziniao_port
+from .lifecycle import ensure_http_ready, open_store_cdp_port
 
-__all__ = ["ZiniaoClient", "detect_ziniao_port"]
+__all__ = [
+    "ZiniaoClient",
+    "detect_ziniao_port",
+    "ensure_http_ready",
+    "filter_tabs",
+    "is_regular_tab",
+    "open_store_cdp_port",
+]

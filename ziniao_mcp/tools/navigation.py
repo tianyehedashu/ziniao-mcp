@@ -5,7 +5,9 @@ import json
 
 from mcp.server.fastmcp import FastMCP
 
-from ..session import SessionManager, _filter_tabs
+from ziniao_webdriver.cdp_tabs import filter_tabs as _filter_tabs
+
+from ..session import SessionManager
 
 
 def register_tools(mcp: FastMCP, session: SessionManager) -> None:
