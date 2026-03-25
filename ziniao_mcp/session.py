@@ -440,12 +440,32 @@ class SessionManager:
             raise RuntimeError(_ZINIAO_NOT_CONFIGURED)
         return self.client
 
-    async def _apply_stealth_to_browser(self, browser: "Browser") -> None:
-        """向 Browser 的所有 tab 注入反检测脚本（若启用）。"""
+    async def _apply_stealth_to_browser(
+        self,
+        browser: "Browser",
+        *,
+        evaluate_existing_documents: bool = True,
+    ) -> None:
+        """向 Browser 的 tab 注入反检测脚本（若启用）。
+
+        *evaluate_existing_documents=False* 时仅注册 addScriptToEvaluateOnNewDocument，
+        不对每个已有页面 evaluate（tab 很多时更快）；调用方应对当前操作页再补一次 evaluate。
+        """
         if not self.stealth_config.enabled:
             return
         from .stealth import apply_stealth  # pylint: disable=import-outside-toplevel
-        await apply_stealth(browser, config=self.stealth_config)
+        await apply_stealth(
+            browser,
+            config=self.stealth_config,
+            evaluate_existing_documents=evaluate_existing_documents,
+        )
+
+    async def _evaluate_stealth_on_tab(self, tab: "Tab") -> None:
+        """对单个 tab 的当前文档执行 stealth（与 apply_stealth 的 evaluate 段一致）。"""
+        if not self.stealth_config.enabled or not self.stealth_config.js_patches:
+            return
+        from .stealth import evaluate_stealth_existing_document  # pylint: disable=import-outside-toplevel
+        await evaluate_stealth_existing_document(tab, config=self.stealth_config)
 
     async def _sync_viewport_to_window(self, store: StoreSession) -> None:
         """将 CDP 视口同步为当前窗口内容区尺寸，避免连接后出现右侧/底部大片空白。"""
@@ -1005,7 +1025,6 @@ class SessionManager:
     ) -> StoreSession:
         """在已知 CDP 端口就绪后完成 stealth、会话对象构建与导航。"""
         browser = await _connect_cdp(connected_port)
-        await self._apply_stealth_to_browser(browser)
         tabs = _filter_tabs(browser.tabs)
 
         if not tabs:
@@ -1017,6 +1036,9 @@ class SessionManager:
                 url = ""
             except Exception as exc:  # pylint: disable=broad-exception-caught
                 _logger.warning("自动创建新标签页失败（tabs 为空）: %s", exc)
+
+        # Stealth 必须在「至少已有 tab」之后注入，否则 addScript 不会挂到新开的页面上。
+        await self._apply_stealth_to_browser(browser)
 
         session = StoreSession(
             store_id=session_id,
@@ -1172,7 +1194,12 @@ class SessionManager:
     async def connect_chrome(
         self, cdp_port: int, name: str = "",
     ) -> StoreSession:
-        """连接到一个已运行的 Chrome 实例（通过 CDP 端口）。"""
+        """连接到一个已运行的 Chrome 实例（通过 CDP 端口）。
+
+        与 ``launch_chrome`` / ``open_store`` 一致：按配置注入 stealth（若启用）。
+        外部 Chrome 往往已有大量 tab：仅对每个 tab 注册 *addScriptToEvaluateOnNewDocument*，
+        再对**当前活跃 tab** evaluate 一次，避免对每个页面跑大脚本导致极慢。
+        """
         session_id = name or f"chrome-{cdp_port}"
         if session_id in self._stores:
             self._active_store_id = session_id
@@ -1195,6 +1222,11 @@ class SessionManager:
             except Exception as exc:  # pylint: disable=broad-exception-caught
                 _logger.warning("自动创建新标签页失败（tabs 为空）: %s", exc)
 
+        # 先保证 tab 列表就绪再注册 addScript；否则后续新建的 tab 没有 OnNewDocument 钩子。
+        await self._apply_stealth_to_browser(
+            browser, evaluate_existing_documents=False,
+        )
+
         session = StoreSession(
             store_id=session_id,
             store_name=name or f"Chrome ({cdp_port})",
@@ -1208,6 +1240,7 @@ class SessionManager:
         if session.tabs:
             active_tab = session.tabs[session.active_tab_index]
             await self.setup_tab_listeners(session, active_tab)
+            await self._evaluate_stealth_on_tab(active_tab)
 
         self._stores[session_id] = session
         self._active_store_id = session_id

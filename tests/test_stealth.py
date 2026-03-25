@@ -5,7 +5,12 @@ from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
 
 import pytest
 
-from ziniao_mcp.stealth import StealthConfig, apply_stealth, BehaviorConfig
+from ziniao_mcp.stealth import (
+    StealthConfig,
+    apply_stealth,
+    evaluate_stealth_existing_document,
+    BehaviorConfig,
+)
 from ziniao_mcp.stealth.js_patches import (
     STEALTH_JS,
     STEALTH_JS_MINIMAL,
@@ -213,6 +218,30 @@ class TestApplyStealth:
         await apply_stealth(browser)
         assert tab1.send.await_count >= 1
         assert tab2.send.await_count >= 1
+
+    @pytest.mark.asyncio
+    async def test_skips_evaluate_when_evaluate_existing_documents_false(self):
+        tab1 = AsyncMock()
+        tab1.target = MagicMock()
+        tab1.target.url = "https://a.com"
+        tab2 = AsyncMock()
+        tab2.target = MagicMock()
+        tab2.target.url = "https://b.com"
+        browser = MagicMock()
+        browser.tabs = [tab1, tab2]
+        await apply_stealth(browser, evaluate_existing_documents=False)
+        tab1.send.assert_awaited()
+        tab2.send.assert_awaited()
+        tab1.evaluate.assert_not_awaited()
+        tab2.evaluate.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_evaluate_stealth_existing_document(self):
+        tab = AsyncMock()
+        tab.target = MagicMock()
+        tab.target.url = "https://example.com"
+        await evaluate_stealth_existing_document(tab)
+        tab.evaluate.assert_awaited()
 
     @pytest.mark.asyncio
     async def test_skips_when_disabled(self):

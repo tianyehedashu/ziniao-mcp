@@ -4,6 +4,24 @@
 
 ## [Unreleased]
 
+## [0.2.25] - 2026-03-25
+
+### Changed
+
+- **`connect_chrome`**：stealth 在**至少已有一个 tab**（含必要时新建的 `about:blank`）之后再注册 **`addScriptToEvaluateOnNewDocument`**，避免先注入 0 个 tab、后开页导致新页无 OnNewDocument 钩子
+- **`connect_chrome`**：对已有 tab 仅注册 OnNewDocument，**不对每个页面**执行大脚本 **`evaluate`**；仅对**当前活跃 tab** 补一次 **`evaluate`**，减轻多标签外部 Chrome 的卡顿
+- **`apply_stealth`**：新增参数 **`evaluate_existing_documents`**；新增 **`evaluate_stealth_existing_document(tab)`** 供单页补 evaluate
+
+### Fixed
+
+- **`_finalize_launched_chrome`**：与 **`connect_chrome`** 相同顺序——先保证 tab 存在再 **`_apply_stealth_to_browser`**，避免 launch 时初始无 tab 导致新开页未挂 stealth
+
+### 工程 / 文档
+
+- **`skills/ziniao-cli/SKILL.md`**：补充 CDP / session、**`connect`** 与 **`launch` / `open-store`** 的 stealth 差异说明
+- **测试**：`test_stealth`、`test_session`（含 connect 与 stealth 顺序用例）
+- **`pyproject.toml` / `.cursor-plugin/plugin.json` / Git tag**：与 **`v0.2.25`** 对齐
+
 ## [0.2.24] - 2026-03-25
 
 ### Changed

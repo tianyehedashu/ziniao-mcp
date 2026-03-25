@@ -66,9 +66,11 @@ ziniao fill "#email" "user@test.com" && ziniao fill "#pass" "secret" && ziniao c
 |---------|---------|----------|
 | **Ziniao store** | `ziniao open-store <id>` | Multi-store seller workflows, anti-detection |
 | **Chrome (launch)** | `ziniao launch` | New Chrome, ziniao owns the process |
-| **Chrome (connect)** | `ziniao connect <port>` | Existing Chrome, disconnect only on close |
+| **Chrome (connect)** | `ziniao connect <port>` | Chrome already running with `--remote-debugging-port`; `chrome close` detaches ziniao only |
 
 Setting `CHROME_USER_DATA` enables state reuse (cookies, localStorage, extensions persist).
+
+Control is **CDP** on **127.0.0.1** (remote browser → port-forward first). Commands hit the **active session** and **active tab** unless you use **`session list|switch`**, **`tab list|switch -i N`**, or one-shot **`--store` / `--session`**. For Ziniao shops—even if the window was opened in the desktop app—use **`open-store <id>`**, not **`connect`**. **Stealth** (when enabled): **`launch`** / **`open-store`** patch every open tab’s current document; **`connect`** registers the script on all tabs but only runs the heavy **evaluate** on the **active** tab (others pick it up on next navigation).
 
 ## Key Commands
 

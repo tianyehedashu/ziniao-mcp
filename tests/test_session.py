@@ -1,6 +1,6 @@
 """SessionManager unit tests — 覆盖客户端生命周期管理和 heartbeat 委托。"""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -225,3 +225,54 @@ class TestStopClient:
         await session.stop_client()
         mock_client.get_exit.assert_called_once()
         assert session._client_started is False
+
+
+# ------------------------------------------------------------------ #
+#  connect_chrome: stealth 须在「已有 tab」之后（含 about:blank 新建）
+# ------------------------------------------------------------------ #
+
+
+class TestConnectChromeStealthOrder:
+
+    @pytest.mark.asyncio
+    @patch.object(SessionManager, "_save_store_state")
+    @patch.object(SessionManager, "_sync_viewport_to_window", new_callable=AsyncMock)
+    @patch.object(SessionManager, "setup_tab_listeners", new_callable=AsyncMock)
+    @patch.object(SessionManager, "_evaluate_stealth_on_tab", new_callable=AsyncMock)
+    @patch.object(SessionManager, "_apply_stealth_to_browser", new_callable=AsyncMock)
+    @patch("ziniao_mcp.session._filter_tabs")
+    @patch("ziniao_mcp.session._is_cdp_alive", new_callable=AsyncMock)
+    @patch("ziniao_mcp.session._connect_cdp", new_callable=AsyncMock)
+    async def test_apply_stealth_after_blank_tab_when_initially_empty(
+        self,
+        mock_connect_cdp,
+        mock_alive,
+        mock_filter_tabs,
+        mock_apply_stealth,
+        _mock_eval_tab,
+        _mock_setup,
+        _mock_sync,
+        _mock_save,
+        mock_client,
+    ):
+        """避免先 apply_stealth（0 个 tab）再 get：新建页无 OnNewDocument 注册。"""
+        mock_alive.return_value = True
+        tab_obj = MagicMock()
+        browser = MagicMock()
+        browser.tabs = []
+
+        async def _fill_tabs(*_a, **_k):
+            browser.tabs = [tab_obj]
+
+        browser.get = AsyncMock(side_effect=_fill_tabs)
+        mock_connect_cdp.return_value = browser
+        mock_filter_tabs.side_effect = [[], [tab_obj]]
+
+        sm = SessionManager(mock_client)
+        await sm.connect_chrome(9222)
+
+        browser.get.assert_awaited()
+        mock_apply_stealth.assert_awaited_once()
+        assert mock_apply_stealth.await_args.kwargs.get("evaluate_existing_documents") is False
+        assert mock_apply_stealth.await_args.args[0] is browser
+        assert browser.tabs, "stealth 应在 browser.get 填充 tabs 之后执行"

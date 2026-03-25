@@ -28,6 +28,7 @@ if TYPE_CHECKING:
 __all__ = [
     "StealthConfig",
     "apply_stealth",
+    "evaluate_stealth_existing_document",
     "BehaviorConfig",
     "human_click",
     "human_fill",
@@ -80,16 +81,36 @@ class StealthConfig:
         )
 
 
+async def evaluate_stealth_existing_document(
+    tab: "Tab",
+    *,
+    config: StealthConfig | None = None,
+    webgl_vendor: bool = False,
+) -> None:
+    """对当前文档执行一次 stealth 脚本（不注册 addScriptToEvaluateOnNewDocument）。"""
+    cfg = config or StealthConfig()
+    if not cfg.enabled or not cfg.js_patches:
+        return
+    script = build_stealth_js(webgl_vendor=webgl_vendor)
+    try:
+        await tab.evaluate(script)
+        _logger.debug("stealth 已 evaluate 到已有 tab: %s", tab.target.url)
+    except Exception:  # pylint: disable=broad-exception-caught
+        _logger.debug("evaluate stealth 到 tab 失败（tab 可能已关闭）")
+
+
 async def apply_stealth(
     browser: "Browser",
     *,
     config: StealthConfig | None = None,
     webgl_vendor: bool = False,
+    evaluate_existing_documents: bool = True,
 ) -> None:
     """为 Browser 的所有 tab 注入反检测脚本。
 
     通过 CDP Page.addScriptToEvaluateOnNewDocument 注入，
-    确保后续新页面自动继承。同时对已有页面执行 evaluate 立即生效。
+    确保后续新页面自动继承。若 *evaluate_existing_documents* 为 True，
+    还对每个已有页面执行 evaluate 立即生效（tab 很多时较慢）。
     """
     from nodriver import cdp  # pylint: disable=import-outside-toplevel
 
@@ -110,6 +131,9 @@ async def apply_stealth(
             _logger.debug("stealth init_script 已注入到 tab: %s", tab.target.url)
         except Exception:  # pylint: disable=broad-exception-caught
             _logger.debug("注入 init_script 到 tab 失败（tab 可能已关闭）")
+
+        if not evaluate_existing_documents:
+            continue
 
         try:
             await tab.evaluate(script)
