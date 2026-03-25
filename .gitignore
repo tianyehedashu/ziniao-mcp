@@ -26,6 +26,9 @@ uv.lock
 .DS_Store
 Thumbs.db
 
+# 误用未展开的 Windows 路径（如把 %SystemDrive%\... 当相对路径）时会在仓库根下生成此目录名
+%SystemDrive%/
+
 # Logs
 *.log
 mcp_debug.log

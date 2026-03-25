@@ -18,6 +18,21 @@ import typer
 
 ZINIAO_GIT_URL = "git+https://github.com/tianyehedashu/ziniao-mcp.git@main"
 
+# Windows: START 的首个引号参数为控制台窗口标题（任务栏/Alt+Tab 可辨），与常见安装程序一致。
+_WIN_UPDATE_CONSOLE_TITLE = "Ziniao CLI - upgrade"
+
+
+def _windows_update_skip_final_pause() -> bool:
+    """非交互/CI 下不在 .cmd 末尾 pause，避免脚本挂死（与 GitHub Actions、通用 CI 约定一致）。"""
+    if os.environ.get("ZINIAO_UPDATE_NO_PAUSE", "").strip().lower() in ("1", "true", "yes"):
+        return True
+    if os.environ.get("CI", "").strip().lower() in ("1", "true", "yes"):
+        return True
+    if os.environ.get("GITHUB_ACTIONS", "").strip().lower() == "true":
+        return True
+    return False
+
+
 # PowerShell snippet: kill processes whose path matches the uv-installed ziniao
 # entrypoint (~/.local/bin/ziniao.exe) or anything under uv/tools/ziniao/.
 _PS_KILL_LOCKING = (
@@ -217,6 +232,66 @@ def _no_uv_message() -> None:
     typer.echo(f"  {_format_cmd(_argv_git('uv'))}", err=True)
 
 
+def _windows_update_cmd_body(*, uv_line: str, no_kill: bool) -> str:
+    """Inner .cmd content (kill / delay / uv / optional pause / self-delete)."""
+    if _windows_update_skip_final_pause():
+        pause_block = "\r\n".join([
+            "echo.",
+            "echo [ziniao] 非交互环境（CI 等）：已跳过 pause，约 2 秒后关闭窗口。",
+            "timeout /t 2 /nobreak >nul",
+        ])
+    else:
+        pause_block = "\r\n".join([
+            "echo.",
+            "echo [ziniao] 按任意键关闭本窗口 ...",
+            "pause >nul",
+        ])
+    if no_kill:
+        head = [
+            "@echo off",
+            "setlocal",
+            "chcp 65001 >nul",
+            "echo [ziniao] 已跳过自动终止进程（与 --no-kill 一致）。",
+            "echo [ziniao] 等待约 2 秒以释放当前 ziniao.exe 占用，然后执行 uv ...",
+            "timeout /t 2 /nobreak >nul",
+            uv_line,
+            "if errorlevel 1 (",
+            "  echo.",
+            "  echo [ziniao] uv 失败。若仍报文件被占用，请手动关闭相关进程后重试。",
+            ") else (",
+            "  echo.",
+            "  echo [ziniao] 升级完成。请新开终端使用 ziniao；Cursor MCP 会自动重连。",
+            ")",
+        ]
+    else:
+        ps_encoded = _ps_encoded_command(_PS_KILL_LOCKING)
+        head = [
+            "@echo off",
+            "setlocal",
+            "chcp 65001 >nul",
+            "echo [ziniao] 正在终止占用文件的进程 (MCP / daemon / CLI) ...",
+            f"powershell -NoProfile -EncodedCommand {ps_encoded}",
+            "echo [ziniao] 等待约 2 秒以释放文件占用 ...",
+            "timeout /t 2 /nobreak >nul",
+            uv_line,
+            "if errorlevel 1 (",
+            "  echo.",
+            "  echo [ziniao] uv 失败。若仍报文件被占用，请手动关闭所有 ziniao 相关进程后重试。",
+            ") else (",
+            "  echo.",
+            "  echo [ziniao] 升级完成。请新开终端使用 ziniao；Cursor MCP 会自动重连。",
+            ")",
+        ]
+    tail = [
+        pause_block,
+        'del "%~f0" 2>nul',
+        "endlocal",
+        "exit /b 0",
+        "",
+    ]
+    return "\r\n".join(head + tail)
+
+
 def _windows_spawn_uv_tool_install(uv_exe: str, git: bool, *, no_kill: bool = False) -> None:
     """Avoid Windows exe self-lock: exit this process before uv replaces ziniao.exe.
 
@@ -224,58 +299,13 @@ def _windows_spawn_uv_tool_install(uv_exe: str, git: bool, *, no_kill: bool = Fa
     1. (Unless ``no_kill``) Kills processes locking ziniao files (MCP, daemon, other CLI)
     2. Waits briefly for file handles to release
     3. Runs ``uv tool install ...`` in a new console
+
+    Spawns via ``start "<title>" cmd /c ...`` so the upgrade window has a recognizable
+    taskbar title (same idea as many Windows installers / updaters).
     """
     argv = _argv_git(uv_exe) if git else _argv_pypi(uv_exe)
     uv_line = subprocess.list2cmdline(argv)
-
-    if no_kill:
-        script = "\r\n".join(
-            [
-                "@echo off",
-                "chcp 65001 >nul",
-                "echo [ziniao] 已跳过自动终止进程（与 --no-kill 一致）。",
-                "echo [ziniao] 等待约 2 秒以释放当前 ziniao.exe 占用，然后执行 uv ...",
-                "timeout /t 2 /nobreak >nul",
-                uv_line,
-                "if errorlevel 1 (",
-                "  echo.",
-                "  echo [ziniao] uv 失败。若仍报文件被占用，请手动关闭相关进程后重试。",
-                ") else (",
-                "  echo.",
-                "  echo [ziniao] 升级完成。请新开终端使用 ziniao；Cursor MCP 会自动重连。",
-                ")",
-                "echo.",
-                "pause",
-                'del "%~f0" 2>nul',
-                "exit /b 0",
-                "",
-            ]
-        )
-    else:
-        ps_encoded = _ps_encoded_command(_PS_KILL_LOCKING)
-        script = "\r\n".join(
-            [
-                "@echo off",
-                "chcp 65001 >nul",
-                "echo [ziniao] 正在终止占用文件的进程 (MCP / daemon / CLI) ...",
-                f"powershell -NoProfile -EncodedCommand {ps_encoded}",
-                "echo [ziniao] 等待约 2 秒以释放文件占用 ...",
-                "timeout /t 2 /nobreak >nul",
-                uv_line,
-                "if errorlevel 1 (",
-                "  echo.",
-                "  echo [ziniao] uv 失败。若仍报文件被占用，请手动关闭所有 ziniao 相关进程后重试。",
-                ") else (",
-                "  echo.",
-                "  echo [ziniao] 升级完成。请新开终端使用 ziniao；Cursor MCP 会自动重连。",
-                ")",
-                "echo.",
-                "pause",
-                'del "%~f0" 2>nul',
-                "exit /b 0",
-                "",
-            ]
-        )
+    script = _windows_update_cmd_body(uv_line=uv_line, no_kill=no_kill)
     fd, path = tempfile.mkstemp(prefix="ziniao-update-", suffix=".cmd", text=False)
     try:
         os.write(fd, script.encode("utf-8"))
@@ -283,12 +313,15 @@ def _windows_spawn_uv_tool_install(uv_exe: str, git: bool, *, no_kill: bool = Fa
         os.close(fd)
 
     bat = Path(path)
-    creationflags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
+    bat_resolved = str(bat.resolve())
+    inner = subprocess.list2cmdline(["cmd.exe", "/c", bat_resolved])
+    # start 的首个引号串为窗口标题；路径经 list2cmdline 转义，避免空格/特殊字符拆参。
+    start_cmdline = f'start "{_WIN_UPDATE_CONSOLE_TITLE}" {inner}'
     try:
         subprocess.Popen(
-            ["cmd.exe", "/c", str(bat)],
+            start_cmdline,
+            shell=True,
             close_fds=True,
-            creationflags=creationflags,
         )
     except OSError as exc:
         typer.echo(f"无法启动升级子进程: {exc}", err=True)
@@ -300,15 +333,21 @@ def _windows_spawn_uv_tool_install(uv_exe: str, git: bool, *, no_kill: bool = Fa
         raise typer.Exit(1) from exc
 
     if no_kill:
-        typer.echo(
-            "已在新控制台窗口启动升级（--no-kill：未自动终止其它进程，约 2 秒后执行 uv）。"
-            "本进程立即退出以解除 ziniao.exe 自身占用，请在新窗口查看结果。",
+        head = (
+            "[ziniao] 已在新控制台启动升级（--no-kill：未自动终止其它进程，约 2 秒后执行 uv）。"
         )
     else:
-        typer.echo(
-            "已在新控制台窗口启动升级（先终止占用进程，约 2 秒后执行 uv）。"
-            "本进程立即退出以解除 ziniao.exe 自身占用，请在新窗口查看结果。",
-        )
+        head = "[ziniao] 已在新控制台启动升级（先终止占用进程，约 2 秒后执行 uv）。"
+    # stderr + flush：避免 Windows 上父进程很快 Exit(0) 时 stdout 提示未刷出、看起来像「无输出」
+    for part in (
+        head,
+        f"  uv 的下载与安装日志在任务栏标题为「{_WIN_UPDATE_CONSOLE_TITLE}」的新窗口，请 Alt+Tab 查找。",
+        "  本窗口即将退出；升级窗口结束前可按提示按键关窗（CI 下自动省略 pause）。",
+        "  若要在当前窗口看完整过程，请使用: ziniao update --sync",
+    ):
+        typer.echo(part, err=True)
+    sys.stdout.flush()
+    sys.stderr.flush()
     raise typer.Exit(0)
 
 
@@ -323,7 +362,10 @@ def update_cli(
     ),
     sync: bool = typer.Option(
         False, "--sync",
-        help="Run uv in-process (default on Windows: new console + exit to avoid exe self-replace error 32).",
+        help=(
+            "Run uv in this terminal with live output (default on Windows: new console + exit "
+            "to avoid exe self-replace error 32)."
+        ),
     ),
     no_kill: bool = typer.Option(
         False, "--no-kill",
@@ -343,7 +385,8 @@ def update_cli(
         typer.echo(f"[dry-run] {line}")
         if os.name == "nt" and not sync:
             msg = (
-                "[dry-run] Windows 默认：先终止占用进程 → 写入临时 .cmd → 新控制台延迟 2s 后执行，"
+                "[dry-run] Windows 默认：临时 .cmd → start "
+                f'"{_WIN_UPDATE_CONSOLE_TITLE}" 独立控制台跑 uv（延迟 2s），'
                 "当前进程立即退出。同步执行请加 --sync。"
             )
             if no_kill:
@@ -365,28 +408,36 @@ def update_cli(
 
     typer.echo(f"Running: {line}")
     try:
-        proc = subprocess.run(
-            argv,
-            check=False,
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-        )
+        if sync:
+            # 同步模式：不捕获输出，便于看到 uv 实时进度（此前 capture 会导致结束前一屏空白）
+            proc = subprocess.run(argv, check=False, stdin=subprocess.DEVNULL)
+            out_tail = ""
+            err_tail = ""
+        else:
+            proc = subprocess.run(
+                argv,
+                check=False,
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+            out_tail = proc.stdout or ""
+            err_tail = proc.stderr or ""
     except OSError as exc:
         typer.echo(f"无法启动 uv: {exc}", err=True)
         _print_copy_hints(uv_exe=uv_exe)
         raise typer.Exit(1) from exc
 
-    if proc.stdout:
-        sys.stdout.write(proc.stdout)
-    if proc.stderr:
-        sys.stderr.write(proc.stderr)
+    if out_tail:
+        sys.stdout.write(out_tail)
+    if err_tail:
+        sys.stderr.write(err_tail)
 
     if proc.returncode != 0:
         typer.echo(f"uv 退出码: {proc.returncode}", err=True)
-        combined_err = (proc.stderr or "") + (proc.stdout or "")
+        combined_err = err_tail + out_tail
         _print_copy_hints(uv_exe=uv_exe, stderr_text=combined_err)
         raise typer.Exit(proc.returncode)
 

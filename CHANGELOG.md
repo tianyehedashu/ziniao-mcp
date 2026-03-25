@@ -4,6 +4,23 @@
 
 ## [Unreleased]
 
+## [0.2.24] - 2026-03-25
+
+### Changed
+
+- **`ziniao update`（Windows）**：通过 **`start "Ziniao CLI - upgrade"`** 启动独立控制台，任务栏可识别升级窗口；临时 **`.cmd`** 使用 **`setlocal`/`endlocal`**；路径经 **`list2cmdline`** 拼接，减少空格路径拆参问题
+- **`ziniao update --sync`**：当前终端内 **`uv`** 不再捕获输出，便于查看实时进度
+- **非交互 / CI**：识别 **`CI`**、**`GITHUB_ACTIONS`**、**`ZINIAO_UPDATE_NO_PAUSE`**，升级脚本末尾跳过 **`pause`**，避免无人值守挂死
+
+### Fixed
+
+- **Windows 默认升级**：父进程提示改为 **stderr** 并 **flush**，减少「命令无输出」的误判
+
+### 工程
+
+- **`.gitignore`**：忽略误生成的 **`%SystemDrive%/`** 目录名
+- **`pyproject.toml` / `.cursor-plugin/plugin.json` / Git tag**：与 **`v0.2.24`** 对齐
+
 ## [0.2.22] - 2026-03-25
 
 ### Added
