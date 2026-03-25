@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import base64
+import json
 import os
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -13,8 +16,17 @@ from typing import List
 
 import typer
 
-# Same repo as README GitHub link
 ZINIAO_GIT_URL = "git+https://github.com/tianyehedashu/ziniao-mcp.git@main"
+
+# PowerShell snippet: kill processes whose path matches the uv-installed ziniao
+# entrypoint (~/.local/bin/ziniao.exe) or anything under uv/tools/ziniao/.
+_PS_KILL_LOCKING = (
+    "Get-Process -ErrorAction SilentlyContinue | "
+    "Where-Object { $_.Path -ne $null -and ("
+    "$_.Path -like '*\\.local\\bin\\ziniao.exe' -or "
+    "$_.Path -like '*\\uv\\tools\\ziniao\\*'"
+    ")} | Stop-Process -Force -ErrorAction SilentlyContinue"
+)
 
 
 def _argv_pypi(uv_exe: str) -> List[str]:
@@ -28,6 +40,121 @@ def _argv_git(uv_exe: str) -> List[str]:
 def _format_cmd(argv: List[str]) -> str:
     """Single line for copy-paste (POSIX-style quoting; good enough for docs and bash)."""
     return shlex.join(argv)
+
+
+def _ps_encoded_command(script: str) -> str:
+    """Encode a PowerShell script for ``-EncodedCommand`` (avoids CMD quoting pitfalls)."""
+    return base64.b64encode(script.encode("utf-16-le")).decode("ascii")
+
+
+def _kill_blocking_processes() -> List[str]:
+    """Kill processes that may lock or use ziniao's uv-managed files.
+
+    Windows: resolves file-lock (error 32) that blocks ``uv tool install``.
+    Unix:    stops old-version processes so the new binary takes effect immediately.
+
+    Targets on all platforms:
+      - ziniao binary at ``~/.local/bin/`` (uv-installed CLI entrypoint)
+      - Executables under ``uv/tools/ziniao/`` (MCP server, daemon)
+
+    Skips the current process.  Returns descriptions of killed processes.
+    """
+    if os.name == "nt":
+        return _kill_blocking_nt()
+    return _kill_blocking_unix()
+
+
+def _kill_blocking_nt() -> List[str]:
+    killed: List[str] = []
+    current_pid = os.getpid()
+
+    ps_cmd = (
+        "Get-Process -ErrorAction SilentlyContinue | "
+        "Where-Object { $_.Path -ne $null -and ("
+        "$_.Path -like '*\\.local\\bin\\ziniao.exe' -or "
+        "$_.Path -like '*\\uv\\tools\\ziniao\\*'"
+        ")} | Select-Object Id, Path | ConvertTo-Json -Compress"
+    )
+
+    try:
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", ps_cmd],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=15,
+        )
+        if result.returncode != 0 or not result.stdout.strip():
+            return []
+
+        data = json.loads(result.stdout)
+        if isinstance(data, dict):
+            data = [data]
+
+        for proc in data:
+            pid = proc.get("Id")
+            path_str = proc.get("Path", "")
+            if not pid or pid == current_pid:
+                continue
+            try:
+                tk = subprocess.run(
+                    ["taskkill", "/F", "/PID", str(pid)],
+                    capture_output=True,
+                    timeout=5,
+                )
+                if tk.returncode == 0:
+                    killed.append(f"PID {pid} ({Path(path_str).name})")
+            except (subprocess.TimeoutExpired, OSError):
+                pass
+    except (subprocess.TimeoutExpired, OSError, json.JSONDecodeError, ValueError):
+        pass
+
+    return killed
+
+
+def _kill_blocking_unix() -> List[str]:
+    killed: List[str] = []
+    current_pid = os.getpid()
+
+    try:
+        result = subprocess.run(
+            ["ps", "-eo", "pid,args"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            return []
+
+        for line in result.stdout.splitlines()[1:]:
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split(None, 1)
+            if len(parts) < 2:
+                continue
+            try:
+                pid = int(parts[0])
+            except ValueError:
+                continue
+            if pid == current_pid:
+                continue
+
+            cmd = parts[1]
+            if "/.local/bin/ziniao" not in cmd and "/uv/tools/ziniao/" not in cmd:
+                continue
+
+            try:
+                os.kill(pid, signal.SIGTERM)
+                name = Path(cmd.split()[0]).name
+                killed.append(f"PID {pid} ({name})")
+            except OSError:
+                pass
+    except (subprocess.TimeoutExpired, OSError):
+        pass
+
+    return killed
 
 
 def _stderr_suggests_file_lock(stderr: str) -> bool:
@@ -45,29 +172,25 @@ def _print_copy_hints(*, uv_exe: str, stderr_text: str = "") -> None:
     typer.echo("", err=True)
     if os.name == "nt" and stderr_text and _stderr_suggests_file_lock(stderr_text):
         typer.echo(
-            "检测到可能是 Windows 文件占用（如错误 32）。请按顺序尝试：",
+            "检测到 Windows 文件占用（错误 32）。自动终止未能完全解除锁定，请手动排查：",
             err=True,
         )
         typer.echo("  1. 执行 `ziniao quit`（用过 CLI 自动化时）", err=True)
         typer.echo(
-            "  2. 在 Cursor 中暂时禁用或移除 ziniao MCP，或退出 Cursor（MCP 用 uv run / python -m 时也会占用环境）",
+            "  2. 在 Cursor 中暂时禁用 ziniao MCP，或退出 Cursor",
             err=True,
         )
-        typer.echo("  3. 关闭所有已打开、可能跑过 ziniao 的终端", err=True)
+        typer.echo("  3. 关闭所有可能跑过 ziniao 的终端", err=True)
         typer.echo(
-            "  4. 任务管理器中结束残留的 ziniao.exe、python.exe（紫鸟/工具目录相关）",
+            "  4. 任务管理器中结束残留的 ziniao.exe / python.exe（uv 工具目录相关）",
             err=True,
         )
-        typer.echo(
-            "  5. 新开 PowerShell（或 CMD）窗口，在「无 ziniao 在跑」的情况下执行下方命令",
-            err=True,
-        )
+        typer.echo("  5. 新开 PowerShell 窗口执行下方命令", err=True)
         typer.echo("", err=True)
     typer.echo(
-        "请在「新的」终端中手动执行（PowerShell 推荐，整行复制；CMD 请去掉开头的 & 与外层引号，直接运行 uv 路径）：",
+        "手动执行（PowerShell 推荐，整行复制）：",
         err=True,
     )
-    # shlex.join 在 CMD 中不便粘贴；PowerShell 用 & "path" 最稳
     typer.echo(
         f'  PyPI: & "{uv_exe}" tool install ziniao --upgrade --force --reinstall',
         err=True,
@@ -77,11 +200,11 @@ def _print_copy_hints(*, uv_exe: str, stderr_text: str = "") -> None:
         err=True,
     )
     typer.echo(
-        f"  （Bash/WSL/Git Bash 可用）PyPI: {_format_cmd(_argv_pypi(uv_exe))}",
+        f"  （Bash/WSL）PyPI: {_format_cmd(_argv_pypi(uv_exe))}",
         err=True,
     )
     typer.echo(
-        f"  （Bash/WSL/Git Bash 可用）Git:  {_format_cmd(_argv_git(uv_exe))}",
+        f"  （Bash/WSL）Git:  {_format_cmd(_argv_git(uv_exe))}",
         err=True,
     )
 
@@ -89,40 +212,70 @@ def _print_copy_hints(*, uv_exe: str, stderr_text: str = "") -> None:
 def _no_uv_message() -> None:
     typer.echo("错误：未在 PATH 中找到 uv。", err=True)
     typer.echo("请先安装 uv：https://docs.astral.sh/uv/", err=True)
-    typer.echo("然后手动执行：", err=True)
+    typer.echo("手动执行：", err=True)
     typer.echo(f"  {_format_cmd(_argv_pypi('uv'))}", err=True)
     typer.echo(f"  {_format_cmd(_argv_git('uv'))}", err=True)
 
 
-def _windows_spawn_uv_tool_install(uv_exe: str, git: bool) -> None:
+def _windows_spawn_uv_tool_install(uv_exe: str, git: bool, *, no_kill: bool = False) -> None:
     """Avoid Windows exe self-lock: exit this process before uv replaces ziniao.exe.
 
-    Writes a temp .cmd that waits briefly, then runs ``uv tool install ...`` in a new console.
+    Writes a temp .cmd that:
+    1. (Unless ``no_kill``) Kills processes locking ziniao files (MCP, daemon, other CLI)
+    2. Waits briefly for file handles to release
+    3. Runs ``uv tool install ...`` in a new console
     """
     argv = _argv_git(uv_exe) if git else _argv_pypi(uv_exe)
     uv_line = subprocess.list2cmdline(argv)
-    # Delay lets this ziniao.exe process terminate and release the file mapping lock.
-    script = "\r\n".join(
-        [
-            "@echo off",
-            "chcp 65001 >nul",
-            "echo [ziniao] 等待约 2 秒以释放当前 ziniao.exe 占用，然后执行 uv ...",
-            "timeout /t 2 /nobreak >nul",
-            uv_line,
-            "if errorlevel 1 (",
-            "  echo.",
-            "  echo [ziniao] uv 失败。若仍报「文件被占用」，请关闭其它 ziniao 终端 / Cursor MCP 后重试。",
-            ") else (",
-            "  echo.",
-            "  echo [ziniao] 升级完成。请新开终端使用 ziniao；必要时 ziniao quit 并重启 Cursor MCP。",
-            ")",
-            "echo.",
-            "pause",
-            "del \"%~f0\" 2>nul",
-            "exit /b 0",
-            "",
-        ]
-    )
+
+    if no_kill:
+        script = "\r\n".join(
+            [
+                "@echo off",
+                "chcp 65001 >nul",
+                "echo [ziniao] 已跳过自动终止进程（与 --no-kill 一致）。",
+                "echo [ziniao] 等待约 2 秒以释放当前 ziniao.exe 占用，然后执行 uv ...",
+                "timeout /t 2 /nobreak >nul",
+                uv_line,
+                "if errorlevel 1 (",
+                "  echo.",
+                "  echo [ziniao] uv 失败。若仍报文件被占用，请手动关闭相关进程后重试。",
+                ") else (",
+                "  echo.",
+                "  echo [ziniao] 升级完成。请新开终端使用 ziniao；Cursor MCP 会自动重连。",
+                ")",
+                "echo.",
+                "pause",
+                'del "%~f0" 2>nul',
+                "exit /b 0",
+                "",
+            ]
+        )
+    else:
+        ps_encoded = _ps_encoded_command(_PS_KILL_LOCKING)
+        script = "\r\n".join(
+            [
+                "@echo off",
+                "chcp 65001 >nul",
+                "echo [ziniao] 正在终止占用文件的进程 (MCP / daemon / CLI) ...",
+                f"powershell -NoProfile -EncodedCommand {ps_encoded}",
+                "echo [ziniao] 等待约 2 秒以释放文件占用 ...",
+                "timeout /t 2 /nobreak >nul",
+                uv_line,
+                "if errorlevel 1 (",
+                "  echo.",
+                "  echo [ziniao] uv 失败。若仍报文件被占用，请手动关闭所有 ziniao 相关进程后重试。",
+                ") else (",
+                "  echo.",
+                "  echo [ziniao] 升级完成。请新开终端使用 ziniao；Cursor MCP 会自动重连。",
+                ")",
+                "echo.",
+                "pause",
+                'del "%~f0" 2>nul',
+                "exit /b 0",
+                "",
+            ]
+        )
     fd, path = tempfile.mkstemp(prefix="ziniao-update-", suffix=".cmd", text=False)
     try:
         os.write(fd, script.encode("utf-8"))
@@ -146,10 +299,16 @@ def _windows_spawn_uv_tool_install(uv_exe: str, git: bool) -> None:
         _print_copy_hints(uv_exe=uv_exe)
         raise typer.Exit(1) from exc
 
-    typer.echo(
-        "已在新控制台窗口启动升级（约 2 秒后执行 uv）。"
-        "本进程立即退出以解除对 ziniao.exe 的占用，请在新窗口查看结果。",
-    )
+    if no_kill:
+        typer.echo(
+            "已在新控制台窗口启动升级（--no-kill：未自动终止其它进程，约 2 秒后执行 uv）。"
+            "本进程立即退出以解除 ziniao.exe 自身占用，请在新窗口查看结果。",
+        )
+    else:
+        typer.echo(
+            "已在新控制台窗口启动升级（先终止占用进程，约 2 秒后执行 uv）。"
+            "本进程立即退出以解除 ziniao.exe 自身占用，请在新窗口查看结果。",
+        )
     raise typer.Exit(0)
 
 
@@ -166,6 +325,10 @@ def update_cli(
         False, "--sync",
         help="Run uv in-process (default on Windows: new console + exit to avoid exe self-replace error 32).",
     ),
+    no_kill: bool = typer.Option(
+        False, "--no-kill",
+        help="Skip auto-killing (in-process + Windows upgrade .cmd PowerShell step).",
+    ),
 ) -> None:
     """Upgrade ziniao CLI to latest via uv (PyPI or GitHub)."""
     uv_exe = shutil.which("uv")
@@ -179,16 +342,26 @@ def update_cli(
     if dry_run:
         typer.echo(f"[dry-run] {line}")
         if os.name == "nt" and not sync:
-            typer.echo(
-                "[dry-run] Windows 默认：写入临时 .cmd → 新控制台延迟 2s 后执行上述命令，"
-                "当前进程立即退出。需要同步执行与退出码请加 --sync。",
+            msg = (
+                "[dry-run] Windows 默认：先终止占用进程 → 写入临时 .cmd → 新控制台延迟 2s 后执行，"
+                "当前进程立即退出。同步执行请加 --sync。"
             )
+            if no_kill:
+                msg += " 使用 --no-kill 时 .cmd 内不会执行 PowerShell 终止逻辑。"
+            typer.echo(msg)
         else:
             typer.echo("在第二个终端执行上述命令可避免「自替换」顾虑。")
         raise typer.Exit(0)
 
+    if not no_kill:
+        killed = _kill_blocking_processes()
+        if killed:
+            typer.echo(f"已终止 {len(killed)} 个占用进程：")
+            for desc in killed:
+                typer.echo(f"  - {desc}")
+
     if os.name == "nt" and not sync:
-        _windows_spawn_uv_tool_install(uv_exe, git)
+        _windows_spawn_uv_tool_install(uv_exe, git, no_kill=no_kill)
 
     typer.echo(f"Running: {line}")
     try:
@@ -217,8 +390,7 @@ def update_cli(
         _print_copy_hints(uv_exe=uv_exe, stderr_text=combined_err)
         raise typer.Exit(proc.returncode)
 
-    typer.echo("升级完成。")
-    typer.echo("请执行 `ziniao quit` 结束旧 daemon，然后新开终端再使用；使用 Cursor MCP 时请重启 MCP。")
+    typer.echo("升级完成。请执行 `ziniao quit` 结束旧 daemon；Cursor MCP 会自动重连。")
 
 
 def register(app: typer.Typer) -> None:

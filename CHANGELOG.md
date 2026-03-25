@@ -4,6 +4,21 @@
 
 ## [Unreleased]
 
+## [0.2.22] - 2026-03-25
+
+### Added
+
+- **`ziniao update`**：Windows / Unix 下在升级前尝试终止占用 **`uv` 工具目录** 的进程（MCP、daemon、其它 CLI 实例）；**`--no-kill`** 跳过（含 Windows 升级 **`.cmd`** 内 PowerShell 终止步骤）
+
+### Fixed
+
+- **`ziniao update`（Windows）**：仅在 **`taskkill` 成功**（退出码 0）时计入「已终止」列表，避免误报
+- **`ziniao update --no-kill`（Windows）**：升级辅助 **`.cmd`** 不再无条件嵌入 PowerShell 杀进程逻辑，与 **`--no-kill`** 语义一致
+
+### 工程
+
+- **`pyproject.toml` / `.cursor-plugin/plugin.json` / Git tag**：与 **`v0.2.22`** 对齐
+
 ## [0.2.21] - 2026-03-25
 
 ### Fixed
