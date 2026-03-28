@@ -1,7 +1,6 @@
 """Stealth 模块单元测试 — 覆盖 JS 脚本构建、配置解析、行为模拟和 session 集成。"""
 
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -15,15 +14,6 @@ from ziniao_mcp.stealth.js_patches import (
     STEALTH_JS,
     STEALTH_JS_MINIMAL,
     build_stealth_js,
-    PATCH_NATIVE_TOSTRING,
-    PATCH_NAVIGATOR_WEBDRIVER,
-    PATCH_NAVIGATOR_PLUGINS,
-    PATCH_WINDOW_CHROME,
-    PATCH_WEBGL_VENDOR,
-    PATCH_CANVAS_FINGERPRINT,
-    PATCH_AUDIO_FINGERPRINT,
-    PATCH_WEBRTC_LEAK,
-    PATCH_STEALTH_CLEANUP,
 )
 from ziniao_mcp.stealth.human_behavior import (
     random_delay,
@@ -351,10 +341,24 @@ def _make_tab(**overrides):
 class TestHumanClick:
 
     @pytest.mark.asyncio
-    async def test_clicks_with_mouse(self):
+    async def test_clicks_with_dom_click_on_element(self):
         tab = _make_tab()
         cfg = BehaviorConfig(mouse_movement=False, delay_min_ms=1, delay_max_ms=2)
+        elem = tab.select.return_value
         await human_click(tab, "#btn", cfg=cfg)
+        elem.click.assert_awaited_once()
+        tab.mouse_click.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_iframe_element_uses_protocol_mouse(self):
+        from ziniao_mcp.iframe import IFrameElement
+
+        tab = _make_tab()
+        cfg = BehaviorConfig(mouse_movement=False, delay_min_ms=1, delay_max_ms=2)
+        iframe_el = IFrameElement(
+            tab=tab, abs_x=100, abs_y=200, width=50, height=30, context_id=1,
+        )
+        await human_click(tab, "#btn", cfg=cfg, element=iframe_el)
         tab.mouse_click.assert_awaited_once()
 
     @pytest.mark.asyncio
@@ -363,7 +367,8 @@ class TestHumanClick:
         cfg = BehaviorConfig(mouse_movement=False, delay_min_ms=1, delay_max_ms=2)
         await human_click(tab, "#btn", cfg=cfg)
         elem = await tab.select("#btn", timeout=5)
-        elem.mouse_click.assert_awaited()
+        elem.click.assert_awaited()
+        elem.mouse_click.assert_not_awaited()
 
 
 # ------------------------------------------------------------------ #
@@ -387,8 +392,9 @@ class TestHumanType:
         cfg = BehaviorConfig(typing_min_ms=1, typing_max_ms=2,
                              delay_min_ms=1, delay_max_ms=2,
                              mouse_movement=False)
+        elem = tab.select.return_value
         await human_type(tab, "a", selector="#input", cfg=cfg)
-        tab.mouse_click.assert_awaited()
+        elem.click.assert_awaited()
 
 
 # ------------------------------------------------------------------ #

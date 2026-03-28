@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import secrets
 import sys
@@ -161,12 +162,9 @@ def print_result(data: dict[str, Any], *, json_mode: bool = False) -> None:
         _print_error(data["error"])
         return
 
-    try:
-        from rich.console import Console  # pylint: disable=import-outside-toplevel
-        from rich.table import Table  # pylint: disable=import-outside-toplevel
-        from rich.panel import Panel  # pylint: disable=import-outside-toplevel
+    if importlib.util.find_spec("rich") is not None:
         _print_rich(data)
-    except ImportError:
+    else:
         print(json.dumps(data, ensure_ascii=False, indent=2))
 
 
@@ -188,7 +186,6 @@ def _emit_large_text(*, origin: str, text: str, console: Any) -> None:
 
 def _print_rich(data: dict) -> None:
     from rich.console import Console  # pylint: disable=import-outside-toplevel
-    from rich.table import Table  # pylint: disable=import-outside-toplevel
     console = Console()
 
     if "sessions" in data and isinstance(data["sessions"], list):
@@ -436,7 +433,7 @@ def _print_rich(data: dict) -> None:
             if data.get("ok"):
                 msg = data.get("message", "")
                 extra = {k: v for k, v in data.items() if k not in ("ok", "message")}
-                parts = [f"[green]OK[/]"]
+                parts = ["[green]OK[/]"]
                 if msg:
                     parts.append(msg)
                 for k, v in extra.items():
@@ -514,10 +511,22 @@ def _print_requests(console: Any, data: dict) -> None:
     table.add_column("URL")
     table.add_column("Status", justify="right")
     table.add_column("Type")
+    table.add_column("Body", justify="center")
     for r in data["requests"]:
+        hp = r.get("has_post_data")
+        hr = r.get("has_response_body")
+        body_cell = "—"
+        if hp is not None or hr is not None:
+            parts = []
+            if hp:
+                parts.append("req")
+            if hr:
+                parts.append("res")
+            body_cell = "+".join(parts) if parts else "—"
         table.add_row(
             str(r.get("id", "")), r.get("method", ""),
             r.get("url", "")[:80], str(r.get("status", "")), r.get("resource_type", ""),
+            body_cell,
         )
     console.print(table)
 

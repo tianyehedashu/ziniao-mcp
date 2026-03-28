@@ -39,7 +39,7 @@ env = {
 }
 
 print(f"Starting with minimal env: {sorted(env.keys())}", flush=True)
-proc = subprocess.Popen(
+proc = subprocess.Popen(  # pylint: disable=consider-using-with
     cmd,
     stdin=subprocess.PIPE,
     stdout=subprocess.PIPE,

@@ -4,7 +4,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from ziniao_webdriver.client import ZiniaoClient, _STATUS_OK, _STATUS_AUTH_ERROR, detect_ziniao_port
+from ziniao_webdriver.client import ZiniaoClient, detect_ziniao_port
 
 
 # ------------------------------------------------------------------ #
@@ -322,6 +322,7 @@ class TestKillProcess:
         assert client_v5.kill_process(skip_confirm=True) is True
         mock_run.assert_called_once()
         assert mock_run.call_args[0][0] == ["taskkill", "/f", "/t", "/im", "SuperBrowser.exe"]
+        assert mock_run.call_args.kwargs.get("check") is False
 
     @patch("ziniao_webdriver.client.time.sleep")
     @patch("ziniao_webdriver.client.subprocess.run")
@@ -331,6 +332,7 @@ class TestKillProcess:
         assert client_v6.kill_process(skip_confirm=True) is True
         mock_run.assert_called_once()
         assert mock_run.call_args[0][0] == ["taskkill", "/f", "/t", "/im", "ziniao.exe"]
+        assert mock_run.call_args.kwargs.get("check") is False
 
     @patch("ziniao_webdriver.client.time.sleep")
     @patch("ziniao_webdriver.client.subprocess.run")
@@ -338,7 +340,12 @@ class TestKillProcess:
         mock_run.return_value = MagicMock(returncode=0)
         client_v5._is_windows, client_v5._is_mac, client_v5._is_linux = False, True, False
         client_v5.kill_process(skip_confirm=True)
-        mock_run.assert_called_once_with(["killall", "SuperBrowser"], capture_output=True, timeout=10)
+        mock_run.assert_called_once_with(
+            ["killall", "SuperBrowser"],
+            capture_output=True,
+            timeout=10,
+            check=False,
+        )
 
     @patch("ziniao_webdriver.client.time.sleep")
     @patch("ziniao_webdriver.client.subprocess.run")
@@ -346,7 +353,12 @@ class TestKillProcess:
         mock_run.return_value = MagicMock(returncode=0)
         client_v6._is_windows, client_v6._is_mac, client_v6._is_linux = False, True, False
         client_v6.kill_process(skip_confirm=True)
-        mock_run.assert_called_once_with(["killall", "ziniao"], capture_output=True, timeout=10)
+        mock_run.assert_called_once_with(
+            ["killall", "ziniao"],
+            capture_output=True,
+            timeout=10,
+            check=False,
+        )
 
     @patch("ziniao_webdriver.client.time.sleep")
     @patch("ziniao_webdriver.client.subprocess.run")
@@ -354,7 +366,12 @@ class TestKillProcess:
         mock_run.return_value = MagicMock(returncode=0)
         client_v6._is_windows, client_v6._is_mac, client_v6._is_linux = False, False, True
         client_v6.kill_process(skip_confirm=True)
-        mock_run.assert_called_once_with(["killall", "ziniaobrowser"], capture_output=True, timeout=10)
+        mock_run.assert_called_once_with(
+            ["killall", "ziniaobrowser"],
+            capture_output=True,
+            timeout=10,
+            check=False,
+        )
 
 
 # ------------------------------------------------------------------ #

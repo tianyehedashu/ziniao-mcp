@@ -41,15 +41,21 @@ async def dispatch_click(
         await random_delay(cfg=cfg)
         await human_click(tab, selector, cfg=cfg, element=elem)
     elif is_zn:
+        # 主文档：CDP Input 合成坐标在紫鸟/缩放等环境下易偏离可视命中区，导致「像点了但页面无反应」。
+        # iframe 内仍用协议级坐标（无独立 backend DOM click 路径）。
+        from .iframe import IFrameElement  # pylint: disable=import-outside-toplevel
         from .stealth.human_behavior import _move_mouse_humanlike, _get_box_from_element  # pylint: disable=import-outside-toplevel
-        box = await _get_box_from_element(elem)
-        if box:
-            cx = box["x"] + box["width"] / 2
-            cy = box["y"] + box["height"] / 2
-            await _move_mouse_humanlike(tab, cx, cy)
-            await tab.mouse_click(cx, cy)
+        if isinstance(elem, IFrameElement):
+            box = await _get_box_from_element(elem)
+            if box:
+                cx = box["x"] + box["width"] / 2
+                cy = box["y"] + box["height"] / 2
+                await _move_mouse_humanlike(tab, cx, cy)
+                await tab.mouse_click(cx, cy)
+            else:
+                await elem.click()
         else:
-            await elem.mouse_click()
+            await elem.click()
     else:
         await elem.click()
 

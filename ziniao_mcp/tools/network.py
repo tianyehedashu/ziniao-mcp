@@ -1,7 +1,6 @@
 """Network tools: request monitoring, route interception, and HAR recording."""
 
 import json
-from typing import Optional
 
 from mcp.server.fastmcp import FastMCP
 

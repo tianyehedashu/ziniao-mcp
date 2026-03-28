@@ -9,7 +9,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 _STATE_DIR = Path.home() / ".ziniao"
 _PID_FILE = _STATE_DIR / "daemon.pid"
@@ -88,7 +88,7 @@ def ensure_daemon(timeout: float = 15.0) -> int:
         if pythonw.is_file():
             exe = str(pythonw)
         creation_flags = subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS
-        subprocess.Popen(
+        subprocess.Popen(  # pylint: disable=consider-using-with
             [exe, "-m", daemon_module],
             env=env,
             stdin=subprocess.DEVNULL,
@@ -97,7 +97,7 @@ def ensure_daemon(timeout: float = 15.0) -> int:
             creationflags=creation_flags,
         )
     else:
-        subprocess.Popen(
+        subprocess.Popen(  # pylint: disable=consider-using-with
             [sys.executable, "-m", daemon_module],
             env=env,
             stdin=subprocess.DEVNULL,

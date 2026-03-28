@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import collections
 import json
 import logging
@@ -56,9 +57,11 @@ _DEFAULT_CHROME_USER_DATA_DIR = _STATE_DIR / "chrome-profile"
 
 _MAX_CONSOLE_MESSAGES = 1000
 _MAX_NETWORK_REQUESTS = 1000
+# 单条请求在内存 / HAR 中保留的正文上限（UTF-8 字节近似按字符截断）
+_MAX_NETWORK_POST_STORE = 1_048_576
+_MAX_NETWORK_RESPONSE_STORE = 5_242_880
 
 if TYPE_CHECKING:
-    import nodriver
     from nodriver import Browser, Tab
 
     from .stealth import StealthConfig
@@ -90,6 +93,8 @@ class NetworkRequest:
     finished_timestamp: float = 0.0
     encoded_data_length: int = 0
     cdp_request_id: str = ""
+    post_data: str = ""
+    response_body: str = ""
 
 
 @dataclass
@@ -414,6 +419,64 @@ def _find_free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("127.0.0.1", 0))
         return s.getsockname()[1]
+
+
+def _truncate_network_store(text: str, max_len: int) -> str:
+    if len(text) <= max_len:
+        return text
+    return text[:max_len] + "\n...[truncated]"
+
+
+async def _network_attach_response_body(
+    tab: Any,
+    store: StoreSession,
+    request_id: str,
+) -> None:
+    """LoadingFinished 后拉取响应正文（需先 Network.enable 且缓冲区足够）。"""
+    from nodriver import cdp  # pylint: disable=import-outside-toplevel
+
+    try:
+        rid = cdp.network.RequestId(request_id)
+        result = await tab.send(cdp.network.get_response_body(request_id=rid))
+        if not result:
+            return
+        body, b64 = result[0], result[1]
+        if b64:
+            raw = base64.b64decode(body)
+            text = raw.decode("utf-8", errors="replace")
+        else:
+            text = body if isinstance(body, str) else str(body)
+        text = _truncate_network_store(text, _MAX_NETWORK_RESPONSE_STORE)
+        for req in reversed(store.network_requests):
+            if req.cdp_request_id == request_id:
+                req.response_body = text
+                break
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        _logger.debug("Network.getResponseBody failed for %s: %s", request_id, exc)
+
+
+async def _network_attach_request_post_data(
+    tab: Any,
+    store: StoreSession,
+    request_id: str,
+) -> None:
+    """部分 POST 仅在 RequestWillBeSent 中带 has_post_data，正文需单独拉取。"""
+    from nodriver import cdp  # pylint: disable=import-outside-toplevel
+
+    try:
+        rid = cdp.network.RequestId(request_id)
+        data = await tab.send(cdp.network.get_request_post_data(request_id=rid))
+        if data is None:
+            return
+        s = data if isinstance(data, str) else str(data)
+        s = _truncate_network_store(s, _MAX_NETWORK_POST_STORE)
+        for req in reversed(store.network_requests):
+            if req.cdp_request_id == request_id:
+                if not req.post_data:
+                    req.post_data = s
+                break
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        _logger.debug("Network.getRequestPostData failed for %s: %s", request_id, exc)
 
 
 class SessionManager:
@@ -1129,14 +1192,17 @@ class SessionManager:
         if url:
             args.append(url)
 
-        popen_kwargs: dict[str, Any] = dict(
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        )
+        popen_kwargs: dict[str, Any] = {
+            "stdout": subprocess.DEVNULL,
+            "stderr": subprocess.DEVNULL,
+        }
         if os.name == "nt":
             popen_kwargs["creationflags"] = (
                 subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS
             )
-        proc = subprocess.Popen(args, **popen_kwargs)
+        proc = subprocess.Popen(  # pylint: disable=consider-using-with
+            args, **popen_kwargs,
+        )
 
         connected_port: int | None = None
         owns_process = True
@@ -1334,7 +1400,15 @@ class SessionManager:
             return
         store._listened_tab_ids.add(tab_id)
 
-        await tab.send(cdp.network.enable())
+        try:
+            await tab.send(
+                cdp.network.enable(
+                    max_post_data_size=_MAX_NETWORK_POST_STORE,
+                    max_resource_buffer_size=50 * 1024 * 1024,
+                )
+            )
+        except Exception:  # pylint: disable=broad-exception-caught
+            await tab.send(cdp.network.enable())
         await tab.send(cdp.page.enable())
         await tab.send(cdp.runtime.enable())
 
@@ -1359,17 +1433,30 @@ class SessionManager:
 
         def on_request(event: cdp.network.RequestWillBeSent):
             store._req_counter += 1
+            rq = event.request
+            pd = ""
+            if rq and rq.post_data:
+                pd = _truncate_network_store(rq.post_data, _MAX_NETWORK_POST_STORE)
+            rid = str(event.request_id)
             store.network_requests.append(
                 NetworkRequest(
                     id=store._req_counter,
-                    url=event.request.url,
-                    method=event.request.method,
+                    url=rq.url if rq else "",
+                    method=rq.method if rq else "",
                     resource_type=event.type_.value if event.type_ else "",
-                    request_headers=dict(event.request.headers) if event.request.headers else {},
+                    request_headers=dict(rq.headers) if rq and rq.headers else {},
                     timestamp=time.time(),
-                    cdp_request_id=str(event.request_id),
+                    cdp_request_id=rid,
+                    post_data=pd,
                 )
             )
+            if rq and getattr(rq, "has_post_data", None) and not pd:
+                try:
+                    asyncio.get_running_loop().create_task(
+                        _network_attach_request_post_data(tab, store, rid)
+                    )
+                except RuntimeError:
+                    pass
 
         def on_response(event: cdp.network.ResponseReceived):
             rid = str(event.request_id)
@@ -1389,6 +1476,12 @@ class SessionManager:
                     req.finished_timestamp = time.time()
                     req.encoded_data_length = int(event.encoded_data_length) if event.encoded_data_length else 0
                     break
+            try:
+                asyncio.get_running_loop().create_task(
+                    _network_attach_response_body(tab, store, rid)
+                )
+            except RuntimeError:
+                pass
 
         async def on_dialog(event: cdp.page.JavascriptDialogOpening):
             accept = store.dialog_action == "accept"

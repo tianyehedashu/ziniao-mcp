@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import pytest
 
 from ziniao_mcp.recording.buffer import RecordingBuffer
 from ziniao_mcp.recording.ir import (
     _dedup_dblclick,
     actions_for_disk,
     compute_delay_ms,
-    redact_actions_secrets,
 )
 from ziniao_mcp.recording.locator import locator_to_css_selector, normalize_action_for_replay
 from ziniao_mcp.recording.ir import parse_emit

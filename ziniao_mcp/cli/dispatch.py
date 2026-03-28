@@ -539,6 +539,8 @@ async def _network(sm: Any, args: dict) -> dict:
                     "resource_type": req.resource_type,
                     "request_headers": req.request_headers,
                     "response_headers": req.response_headers,
+                    "post_data": getattr(req, "post_data", "") or "",
+                    "response_body": getattr(req, "response_body", "") or "",
                 }
         return {"error": f"Request ID not found: {request_id}"}
 
@@ -546,7 +548,12 @@ async def _network(sm: Any, args: dict) -> dict:
     if url_pattern:
         reqs = [r for r in reqs if url_pattern in r.url]
     return {"requests": [
-        {"id": r.id, "method": r.method, "url": r.url[:200], "status": r.status, "resource_type": r.resource_type}
+        {
+            "id": r.id, "method": r.method, "url": r.url[:200], "status": r.status,
+            "resource_type": r.resource_type,
+            "has_post_data": bool(getattr(r, "post_data", None)),
+            "has_response_body": bool(getattr(r, "response_body", None)),
+        }
         for r in list(reqs)[-limit:]
     ]}
 

@@ -274,7 +274,7 @@ def _show_rich(global_cfg: dict, project_cfg: dict, chrome_yaml: dict, ziniao_ya
         ("chrome.default_cdp_port", "CHROME_CDP_PORT"),
     ]
     for display_key, env_var in entries:
-        yaml_key = display_key.split(".")[-1]
+        yaml_key = display_key.rsplit(".", maxsplit=1)[-1]
         val, src = _source_of(yaml_key, env_var, chrome_yaml, ziniao_yaml, global_cfg, project_cfg)
         table.add_row(display_key, val or "[dim]-", src)
 
@@ -309,7 +309,7 @@ def _show_plain(global_cfg: dict, project_cfg: dict, chrome_yaml: dict, ziniao_y
         ("ziniao.version", "ZINIAO_VERSION"),
     ]
     for display_key, env_var in entries:
-        yaml_key = display_key.split(".")[-1]
+        yaml_key = display_key.rsplit(".", maxsplit=1)[-1]
         val, src = _source_of(yaml_key, env_var, chrome_yaml, ziniao_yaml, global_cfg, project_cfg)
         typer.echo(f"  {display_key}: {val or '-'} ({src})")
 

@@ -47,5 +47,8 @@ scripts/test_spawn.py
 # Test artifacts
 test_*.png
 
+# Local capture exports (HAR may contain tokens / PII)
+out/
+
 # Local Chrome profile (e.g. README / MCP examples)
 .chrome-test-profile/

@@ -1,7 +1,7 @@
 # 紫鸟 MCP 项目任务脚本（使用 uv）
 # 用法: make [目标]  或  make help
 
-.PHONY: help install run test test-all test-integration upgrade lock check
+.PHONY: help install run test test-all test-integration upgrade lock check lint lint-fix pylint
 .DEFAULT_GOAL := help
 
 help:
@@ -14,6 +14,9 @@ help:
 	@echo "  make upgrade         - 升级依赖并更新 lock 后同步安装"
 	@echo "  make lock            - 仅更新 lock 文件 (uv.lock)"
 	@echo "  make check           - 检查 lock 是否与 pyproject 一致"
+	@echo "  make lint            - Ruff + Pylint（同上路径）"
+	@echo "  make lint-fix        - Ruff 检查并自动修复可修复项"
+	@echo "  make pylint          - 仅运行 Pylint"
 
 install:
 	uv sync
@@ -39,3 +42,15 @@ lock:
 
 check:
 	uv lock --check
+
+LINT_PATHS := ziniao ziniao_mcp ziniao_webdriver tests scripts
+
+lint:
+	uv run ruff check $(LINT_PATHS)
+	uv run pylint $(LINT_PATHS)
+
+lint-fix:
+	uv run ruff check --fix $(LINT_PATHS)
+
+pylint:
+	uv run pylint $(LINT_PATHS)

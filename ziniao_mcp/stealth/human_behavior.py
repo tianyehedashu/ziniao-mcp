@@ -157,17 +157,27 @@ async def human_click(
     """拟人化点击：鼠标轨迹移动 -> 随机偏移 -> 点击。
 
     当 element 已提供（如 IFrameElement）时直接使用，跳过 tab.select。
+    主文档 nodriver Element 最终用 DOM ``click()``（CDP callFunctionOn），避免仅合成鼠标事件在部分环境下不命中。
+    iframe 内仍用 ``Input.dispatchMouseEvent`` 坐标点击。
     """
+    from ..iframe import IFrameElement  # pylint: disable=import-outside-toplevel
+
     c = cfg or _DEFAULT_CFG
     if element:
+        elem_ref: Optional[Union["Element", "IFrameElement"]] = element
         box = await _get_box_from_element(element)
     else:
-        box = await _get_element_box(tab, selector)
+        elem_ref = await tab.select(selector, timeout=5)
+        box = await _get_box_from_element(elem_ref) if elem_ref else None
 
     if not box:
-        target = element or await tab.select(selector, timeout=5)
-        if target:
-            await target.mouse_click()
+        if not elem_ref:
+            elem_ref = await tab.select(selector, timeout=5)
+        if elem_ref:
+            if isinstance(elem_ref, IFrameElement):
+                await elem_ref.mouse_click()
+            else:
+                await elem_ref.click()
         return
 
     offset_x = random.uniform(box["width"] * 0.2, box["width"] * 0.8)
@@ -177,7 +187,10 @@ async def human_click(
 
     if c.mouse_movement:
         await _move_mouse_humanlike(tab, target_x, target_y, cfg=c)
-    await tab.mouse_click(target_x, target_y)
+    if isinstance(elem_ref, IFrameElement):
+        await tab.mouse_click(target_x, target_y)
+    else:
+        await elem_ref.click()
 
 
 async def human_type(

@@ -20,7 +20,7 @@ from .human_behavior import (
     human_type,
     random_delay,
 )
-from .js_patches import STEALTH_JS, build_stealth_js
+from .js_patches import build_stealth_js
 
 if TYPE_CHECKING:
     from nodriver import Browser, Tab

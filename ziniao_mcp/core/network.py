@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from ..session import RouteEntry, StoreSession
+    from ..session import StoreSession
 
 _logger = logging.getLogger("ziniao-network")
 
@@ -244,29 +244,47 @@ def _build_har_entries(store: "StoreSession") -> list[dict]:
         req_headers = [{"name": k, "value": v} for k, v in req.request_headers.items()]
         resp_headers = [{"name": k, "value": v} for k, v in req.response_headers.items()]
 
+        req_ct = ""
+        for h in req_headers:
+            if h.get("name", "").lower() == "content-type":
+                req_ct = str(h.get("value") or "")
+                break
+        if not req_ct:
+            req_ct = "application/octet-stream"
+
+        req_obj: dict = {
+            "method": req.method,
+            "url": req.url,
+            "httpVersion": "HTTP/1.1",
+            "cookies": [],
+            "headers": req_headers,
+            "queryString": [],
+            "headersSize": -1,
+            "bodySize": -1,
+        }
+        if getattr(req, "post_data", None):
+            req_obj["postData"] = {"mimeType": req_ct, "text": req.post_data}
+            req_obj["bodySize"] = len(req.post_data.encode("utf-8", errors="replace"))
+
+        resp_mime = req.response_headers.get("content-type", "")
+        content_obj: dict = {
+            "size": req.encoded_data_length,
+            "mimeType": resp_mime,
+        }
+        if getattr(req, "response_body", None):
+            content_obj["text"] = req.response_body
+
         entry = {
             "startedDateTime": started,
             "time": total_time,
-            "request": {
-                "method": req.method,
-                "url": req.url,
-                "httpVersion": "HTTP/1.1",
-                "cookies": [],
-                "headers": req_headers,
-                "queryString": [],
-                "headersSize": -1,
-                "bodySize": -1,
-            },
+            "request": req_obj,
             "response": {
                 "status": req.status or 0,
                 "statusText": req.status_text or "",
                 "httpVersion": "HTTP/1.1",
                 "cookies": [],
                 "headers": resp_headers,
-                "content": {
-                    "size": req.encoded_data_length,
-                    "mimeType": req.response_headers.get("content-type", ""),
-                },
+                "content": content_obj,
                 "redirectURL": "",
                 "headersSize": -1,
                 "bodySize": req.encoded_data_length,

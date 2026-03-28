@@ -353,7 +353,7 @@ def _tabs_to_attach(
     from ziniao_webdriver.cdp_tabs import filter_tabs  # pylint: disable=import-outside-toplevel
 
     _ = session
-    store.browser  # noqa: B018  # ensure exists
+    store.browser  # noqa: B018  # pylint: disable=pointless-statement  # ensure exists
     tabs = filter_tabs(list(store.browser.tabs))
     if not tabs:
         return []
@@ -362,9 +362,7 @@ def _tabs_to_attach(
             return tabs[:max_tabs]
         return tabs
     # active: current index only
-    idx = min(store.active_tab_index, len(tabs) - 1)
-    if idx < 0:
-        idx = 0
+    idx = max(min(store.active_tab_index, len(tabs) - 1), 0)
     return [tabs[idx]]
 
 

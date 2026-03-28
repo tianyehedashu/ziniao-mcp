@@ -99,6 +99,7 @@ def _kill_blocking_nt() -> List[str]:
             encoding="utf-8",
             errors="replace",
             timeout=15,
+            check=False,
         )
         if result.returncode != 0 or not result.stdout.strip():
             return []
@@ -117,6 +118,7 @@ def _kill_blocking_nt() -> List[str]:
                     ["taskkill", "/F", "/PID", str(pid)],
                     capture_output=True,
                     timeout=5,
+                    check=False,
                 )
                 if tk.returncode == 0:
                     killed.append(f"PID {pid} ({Path(path_str).name})")
@@ -138,6 +140,7 @@ def _kill_blocking_unix() -> List[str]:
             capture_output=True,
             text=True,
             timeout=10,
+            check=False,
         )
         if result.returncode != 0:
             return []
@@ -318,7 +321,7 @@ def _windows_spawn_uv_tool_install(uv_exe: str, git: bool, *, no_kill: bool = Fa
     # start 的首个引号串为窗口标题；路径经 list2cmdline 转义，避免空格/特殊字符拆参。
     start_cmdline = f'start "{_WIN_UPDATE_CONSOLE_TITLE}" {inner}'
     try:
-        subprocess.Popen(
+        subprocess.Popen(  # pylint: disable=consider-using-with
             start_cmdline,
             shell=True,
             close_fds=True,

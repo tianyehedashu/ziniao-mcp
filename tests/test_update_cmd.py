@@ -131,7 +131,7 @@ def test_kill_blocking_nt_does_not_report_failed_taskkill(
         raise AssertionError(cmd)
 
     mock_run.side_effect = side_effect
-    assert _kill_blocking_nt() == []
+    assert not _kill_blocking_nt()
 
 
 @patch("ziniao_mcp.cli.commands.update_cmd.subprocess.run")
@@ -224,5 +224,5 @@ def test_kill_blocking_unix_skips_unrelated(
 
     killed = _kill_blocking_unix()
 
-    assert killed == []
+    assert not killed
     mock_kill.assert_not_called()

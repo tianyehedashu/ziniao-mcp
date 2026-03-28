@@ -231,8 +231,8 @@ def _register_commands() -> None:
         All MCP server flags are forwarded as-is, e.g.:
             ziniao serve --config config.yaml --company myco
         """
-        import sys as _sys  # pylint: disable=import-outside-toplevel
-        _sys.argv = ["ziniao", "serve"] + ctx.args
+        # 使用模块级 sys，避免嵌套函数内再次 import sys 触发 reimported
+        sys.argv = ["ziniao", "serve"] + ctx.args
         from ..server import main as _serve_main  # pylint: disable=import-outside-toplevel
         _serve_main()
 
@@ -253,8 +253,8 @@ def main() -> None:
             pass
     try:
         app()
-    except KeyboardInterrupt:
-        raise typer.Exit(130)
+    except KeyboardInterrupt as exc:
+        raise typer.Exit(130) from exc
     except Exception as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1)

@@ -1,6 +1,6 @@
 [project]
 name = "ziniao"
-version = "0.2.25"
+version = "0.2.26"
 description = "紫鸟与 Chrome 浏览器 AI 自动化 — 让 AI Agent 操控紫鸟店铺与本地 Chrome"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -39,7 +39,58 @@ packages = ["ziniao", "ziniao_mcp", "ziniao_webdriver"]
 
 [dependency-groups]
 dev = [
+    "pylint>=4.0.5",
     "pytest>=9.0.2",
     "pytest-asyncio>=1.3.0",
     "python-dotenv>=1.2.2",
+    "ruff>=0.9.0",
+]
+
+[tool.ruff]
+target-version = "py310"
+extend-exclude = ["skills"]
+
+[tool.ruff.lint]
+ignore = ["PLC0415", "BLE001"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/integration_test.py" = ["E402"]
+
+# Pylint 与 Ruff 分工：风格/格式以 Ruff 为主；关闭与项目习惯冲突或噪声大的规则。
+# 保留「写法更优雅简洁」类检查：use-implicit-booleaness-not-comparison、use-dict-literal、use-maxsplit-arg、reimported 等不设为全局 disable。
+# undefined-all-variable：相对导入 + __all__ 在整包扫描时 astroid 误报。
+[tool.pylint.main]
+py-version = "3.10"
+jobs = 0
+
+[tool.pylint."messages control"]
+disable = [
+    "undefined-all-variable",
+    "import-outside-toplevel",
+    "broad-exception-caught",
+    "duplicate-code",
+    "cyclic-import",
+    "missing-module-docstring",
+    "missing-class-docstring",
+    "missing-function-docstring",
+    "invalid-name",
+    "too-few-public-methods",
+    "too-many-lines",
+    "too-many-branches",
+    "too-many-locals",
+    "too-many-statements",
+    "too-many-arguments",
+    "too-many-positional-arguments",
+    "too-many-return-statements",
+    "too-many-nested-blocks",
+    "too-many-instance-attributes",
+    "redefined-outer-name",
+    "protected-access",
+    "unsubscriptable-object",
+    "unused-argument",
+    "unused-variable",
+    "line-too-long",
+    "wrong-import-position",
+    "global-statement",
+    "too-many-public-methods",
 ]

@@ -240,7 +240,7 @@ class ZiniaoClient:
             else:
                 return
             _logger.info("启动客户端: %s (cwd=%s)", cmd, popen_kwargs.get("cwd"))
-            subprocess.Popen(cmd, **popen_kwargs)
+            subprocess.Popen(cmd, **popen_kwargs)  # pylint: disable=consider-using-with
             time.sleep(8)
         except Exception as e:
             _logger.error("启动客户端失败: %s", e)
@@ -268,12 +268,14 @@ class ZiniaoClient:
                     capture_output=True,
                     timeout=10,
                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                    check=False,
                 )
             elif self._is_mac or self._is_linux:
                 ret = subprocess.run(
                     ["killall", name],
                     capture_output=True,
                     timeout=10,
+                    check=False,
                 )
             else:
                 return False
@@ -403,4 +405,3 @@ class ZiniaoClient:
     def get_exit(self) -> None:
         """关闭紫鸟客户端。"""
         self._request({"action": "exit"}, "退出客户端", timeout=10)
-

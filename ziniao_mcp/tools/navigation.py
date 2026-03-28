@@ -173,7 +173,7 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
                 if elem:
                     return f"Element {selector} reached state: {state}."
                 raise RuntimeError(f"Timeout waiting for element: {selector}.")
-            elif state in ("hidden", "detached"):
+            if state in ("hidden", "detached"):
                 deadline = asyncio.get_event_loop().time() + timeout_sec
                 while asyncio.get_event_loop().time() < deadline:
                     try:

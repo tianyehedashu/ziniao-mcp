@@ -4,6 +4,24 @@
 
 ## [Unreleased]
 
+## [0.2.26] - 2026-03-28
+
+### Added
+
+- **CDP 网络**：在 `RequestWillBeSent` / `LoadingFinished` 后拉取 **POST 正文**（`post_data` / `getRequestPostData`）与 **响应正文**（`getResponseBody`），写入 `NetworkRequest`；**`ziniao network list --id`**（`--json`）返回 **`post_data`**、**`response_body`**
+- **HAR**：有正文时导出 **`request.postData.text`**、**`response.content.text`**；`Network.enable` 尽量带上 **`max_post_data_size`** 与 **`max_resource_buffer_size`**
+- **`network list` 表格**：增加 **Body** 列（`req` / `res` 表示是否已抓到正文）
+
+### Changed
+
+- **紫鸟主文档点击**：`dispatch_click` 对 **nodriver `Element`** 使用 **`DOM click()`**，避免仅协议级鼠标坐标在部分环境下不命中；**`IFrameElement`** 仍用坐标点击
+- **`human_click`**：主文档 **`Element`** 在拟人移动后以 **`element.click()`** 完成激活；**`IFrameElement`** 仍以 **`dispatchMouseEvent`** 坐标点击
+
+### 工程
+
+- **`.gitignore`**：忽略 **`out/`**（本地 HAR/抓包易含敏感信息）
+- **`pyproject.toml` / `.cursor-plugin/plugin.json` / Git tag**：与 **`v0.2.26`** 对齐
+
 ## [0.2.25] - 2026-03-25
 
 ### Changed
