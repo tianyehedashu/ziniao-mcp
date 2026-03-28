@@ -496,13 +496,16 @@ async def _eval(sm: Any, args: dict) -> dict:
     script = args.get("script", "")
     if not script:
         return {"error": "script is required"}
+    await_promise = args.get("await_promise", False)
     tab = sm.get_active_tab()
     store = sm.get_active_session()
     if store.iframe_context:
         from ..iframe import eval_in_frame  # pylint: disable=import-outside-toplevel
-        result = await eval_in_frame(tab, store.iframe_context.context_id, script)
+        result = await eval_in_frame(
+            tab, store.iframe_context.context_id, script, await_promise=await_promise,
+        )
     else:
-        result = await tab.evaluate(script, return_by_value=True)
+        result = await tab.evaluate(script, return_by_value=True, await_promise=await_promise)
     return {"ok": True, "result": result}
 
 
@@ -1273,6 +1276,85 @@ async def _clipboard(sm: Any, args: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Page fetch (fetch / js modes)
+# ---------------------------------------------------------------------------
+
+async def _page_fetch(sm: Any, args: dict) -> dict:
+    mode = args.get("mode", "fetch")
+    navigate_url = args.get("navigate_url", "")
+    tab = sm.get_active_tab()
+
+    if navigate_url:
+        current = tab.target.url or ""
+        if not current.startswith(navigate_url.split("?")[0].split("#")[0]):
+            from nodriver import cdp  # pylint: disable=import-outside-toplevel
+            await tab.send(cdp.page.navigate(url=navigate_url))
+            await tab.sleep(2.0)
+
+    if mode == "js":
+        return await _page_fetch_js(tab, args)
+    return await _page_fetch_fetch(tab, args)
+
+
+async def _page_fetch_fetch(tab: Any, args: dict) -> dict:
+    url = args.get("url", "")
+    if not url:
+        return {"error": "url is required for fetch mode"}
+    method = args.get("method", "GET")
+    body = args.get("body", "")
+    headers = args.get("headers") or {}
+    xsrf_cookie = args.get("xsrf_cookie", "")
+
+    headers_js = json.dumps(headers, ensure_ascii=False)
+    body_js = json.dumps(body, ensure_ascii=False) if body else "null"
+    url_js = json.dumps(url)
+    xsrf_js = json.dumps(xsrf_cookie)
+
+    js = f"""(async () => {{
+  const h = {headers_js};
+  const xc = {xsrf_js};
+  if (xc) {{
+    const m = document.cookie.match(new RegExp(xc + '=([^;]+)'));
+    if (m) h['X-XSRF-TOKEN'] = decodeURIComponent(m[1]);
+  }}
+  const opts = {{ method: {json.dumps(method)}, headers: h, credentials: 'include' }};
+  const body = {body_js};
+  if (body) opts.body = typeof body === 'string' ? body : JSON.stringify(body);
+  const resp = await fetch({url_js}, opts);
+  const text = await resp.text();
+  return JSON.stringify({{ status: resp.status, statusText: resp.statusText, body: text }});
+}})()"""
+
+    result = await tab.evaluate(js, await_promise=True, return_by_value=True)
+    if isinstance(result, str):
+        try:
+            return {"ok": True, **json.loads(result)}
+        except (json.JSONDecodeError, TypeError):
+            pass
+    return {"ok": True, "body": str(result) if result else ""}
+
+
+async def _page_fetch_js(tab: Any, args: dict) -> dict:
+    script = args.get("script", "")
+    if not script:
+        return {"error": "script is required for js mode"}
+    body = args.get("body", "")
+    body_obj_js = json.dumps(body, ensure_ascii=False) if body else "null"
+    body_str_js = json.dumps(json.dumps(body, ensure_ascii=False) if body else "")
+
+    js = f"""(async () => {{
+  const __BODY__ = {body_obj_js};
+  const __BODY_STR__ = {body_str_js};
+  let result = await ({script});
+  if (typeof result !== 'string') result = JSON.stringify(result);
+  return result;
+}})()"""
+
+    result = await tab.evaluate(js, await_promise=True, return_by_value=True)
+    return {"ok": True, "body": str(result) if result else ""}
+
+
+# ---------------------------------------------------------------------------
 # Command registry
 # ---------------------------------------------------------------------------
 
@@ -1365,4 +1447,6 @@ _COMMANDS: dict[str, Any] = {
     "recorder": _recorder,
     # Emulation
     "emulate": _emulate,
+    # Page fetch
+    "page_fetch": _page_fetch,
 }

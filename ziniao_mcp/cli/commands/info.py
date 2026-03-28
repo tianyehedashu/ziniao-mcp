@@ -77,9 +77,17 @@ def screenshot(
 
 
 @app.command("eval")
-def eval_cmd(script: str = typer.Argument(..., help="JavaScript to evaluate.")) -> None:
-    """Evaluate JavaScript in the current page."""
-    result = run_command("eval", {"script": script})
+def eval_cmd(
+    script: str = typer.Argument(..., help="JavaScript to evaluate."),
+    await_promise: bool = typer.Option(False, "--await", help="Await the result if it is a Promise (e.g. fetch)."),
+) -> None:
+    """Evaluate JavaScript in the current page.
+
+    Examples:
+        ziniao eval "document.title"
+        ziniao eval --await "fetch('/api/data').then(r=>r.json())"
+    """
+    result = run_command("eval", {"script": script, "await_promise": await_promise})
     print_result(result, json_mode=get_json_mode())
 
 
@@ -196,6 +204,9 @@ def register_top_level(parent: typer.Typer) -> None:
         screenshot(file, selector, full_page)
 
     @parent.command("eval")
-    def _eval(script: str = typer.Argument(..., help="JavaScript to evaluate.")) -> None:
-        """eval <js> — Run JavaScript in the page. Same as ``ziniao info eval``."""
-        eval_cmd(script)
+    def _eval(
+        script: str = typer.Argument(..., help="JavaScript to evaluate."),
+        await_promise: bool = typer.Option(False, "--await", help="Await Promise results (e.g. fetch)."),
+    ) -> None:
+        """eval <js> [--await] — Run JavaScript in the page. Same as ``ziniao info eval``."""
+        eval_cmd(script, await_promise=await_promise)

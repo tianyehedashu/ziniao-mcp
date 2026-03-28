@@ -341,16 +341,14 @@ def _windows_spawn_uv_tool_install(uv_exe: str, git: bool, *, no_kill: bool = Fa
         )
     else:
         head = "[ziniao] 已在新控制台启动升级（先终止占用进程，约 2 秒后执行 uv）。"
-    # stderr + flush：避免 Windows 上父进程很快 Exit(0) 时 stdout 提示未刷出、看起来像「无输出」
     for part in (
         head,
         f"  uv 的下载与安装日志在任务栏标题为「{_WIN_UPDATE_CONSOLE_TITLE}」的新窗口，请 Alt+Tab 查找。",
         "  本窗口即将退出；升级窗口结束前可按提示按键关窗（CI 下自动省略 pause）。",
         "  若要在当前窗口看完整过程，请使用: ziniao update --sync",
     ):
-        typer.echo(part, err=True)
+        typer.echo(part)
     sys.stdout.flush()
-    sys.stderr.flush()
     raise typer.Exit(0)
 
 
@@ -398,6 +396,16 @@ def update_cli(
         else:
             typer.echo("在第二个终端执行上述命令可避免「自替换」顾虑。")
         raise typer.Exit(0)
+
+    try:
+        from importlib.metadata import version as _pkg_version  # pylint: disable=import-outside-toplevel
+        _cur_ver = _pkg_version("ziniao")
+    except Exception:  # pylint: disable=broad-exception-caught
+        _cur_ver = "dev"
+    source_label = "GitHub main" if git else "PyPI"
+    typer.echo(f"[ziniao] 当前版本: {_cur_ver} | 升级来源: {source_label}")
+    typer.echo(f"[ziniao] {line}")
+    sys.stdout.flush()
 
     if not no_kill:
         killed = _kill_blocking_processes()

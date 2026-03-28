@@ -1,6 +1,6 @@
 ---
 name: ziniao-cli
-description: Browser automation for multi-store sellers and Chrome. Use when the user needs to open stores, navigate pages, fill forms, click buttons, take screenshots, extract data, intercept network requests, or automate any browser task. Triggers include "open a store", "open a website", "fill out a form", "click a button", "take a screenshot", "scrape data", "switch session", "multi-store batch", "browser automation", or any Ziniao/Chrome automation request.
+description: Browser automation for multi-store sellers and Chrome. Use when the user needs to open stores, navigate pages, fill forms, click buttons, take screenshots, extract data, intercept network requests, call logged-in APIs from the page (site presets / network fetch / page_fetch), or automate any browser task. Triggers include "open a store", "open a website", "fill out a form", "click a button", "take a screenshot", "scrape data", "switch session", "multi-store batch", "browser automation", "fetch API with cookies", "RPP", "site preset", or any Ziniao/Chrome automation request.
 allowed-tools: Bash(ziniao:*)
 ---
 
@@ -119,7 +119,7 @@ ziniao find role button [action]          # By ARIA role (--name for accessible 
 # Inspect
 ziniao snapshot [--interactive] [--compact] [-s <selector>]
 ziniao screenshot [file] [-s <selector>] [--full-page]
-ziniao eval "<js>"
+ziniao eval "<js>" [--await]              # --await for Promise (fetch, etc.); works in iframe too
 ziniao info console | network | errors
 ziniao info highlight <selector>
 
@@ -142,6 +142,15 @@ ziniao network routes
 ziniao network list [--filter url] [--clear]
 ziniao network har-start
 ziniao network har-stop [path]
+
+# Page-context HTTP (inherits tab cookies; optional XSRF from cookie name)
+ziniao network fetch [-p preset | -f file | URL] [-X METHOD] [-d body] [-H "K:V"]... [--page N] [--all] [-o out.json]
+ziniao network fetch --script '<expr using __BODY__>' -d '{"k":1}'
+ziniao network fetch-save [--id N | --filter SUBSTR] -o template.json [--as-preset]
+
+# Site presets (shortcuts: ziniao <site> <action> — templates under ziniao_mcp/sites/ and ~/.ziniao/sites/)
+ziniao site list | show <id> | enable <id> | disable <id>
+# Example: ziniao rakuten rpp-search -V start_date=2026-03-01 -V end_date=2026-03-07 [--page N] [--all] [-o out]
 
 # Batch, recording, emulation
 echo '[{"command":"navigate","args":{"url":"..."}}]' | ziniao batch run [--bail]
@@ -218,7 +227,12 @@ Shell quoting can corrupt complex expressions. Keep it simple or use single quot
 ziniao eval 'document.title'
 ziniao eval 'document.querySelectorAll("img").length'
 ziniao eval 'JSON.stringify(Array.from(document.querySelectorAll("tr")).map(r => r.textContent))'
+ziniao eval --await 'fetch("/api/me").then(r => r.text())'   # Promise → resolved value
 ```
+
+### Logged-in API from the page (site presets)
+
+Use when the site expects **session cookies** (and sometimes **XSRF**). Prefer **`ziniao <site> <action>`** over `network fetch -p` for brevity. Templates may declare **`auth`** / **`pagination`** for hints and **`--all`**. See **[../../docs/site-fetch-and-presets.md](../../docs/site-fetch-and-presets.md)** (concise guide).
 
 ## Install & PATH
 
@@ -247,3 +261,4 @@ If `ziniao` is not recognized: run `uv tool dir` to find the bin directory, add 
 |------|---------|
 | [references/commands.md](references/commands.md) | Full command reference with all options |
 | [references/configuration.md](references/configuration.md) | YAML/env paths, precedence, MCP setup |
+| [../../docs/site-fetch-and-presets.md](../../docs/site-fetch-and-presets.md) | Page-context fetch, site presets, auth/pagination, MCP `page_fetch` |

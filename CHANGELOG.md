@@ -4,6 +4,26 @@
 
 ## [Unreleased]
 
+## [0.2.27] - 2026-03-29
+
+### Added
+
+- **页面内 HTTP**：`ziniao network fetch`（preset / `-f` / URL / `--script` js 模式）、`ziniao network fetch-save`；daemon **`page_fetch`**；MCP 工具 **`page_fetch`**
+- **站点模板（site presets）**：`ziniao_mcp/sites/` 与 `~/.ziniao/sites/` 发现 JSON；**`ziniao site list|show|enable|disable`**；顶层 **`ziniao <site> <action>`**（如 **`ziniao rakuten rpp-search`**）；内置 **`rakuten/rpp-search`** 示例
+- **模板字段**：**`auth`**（类型 + `hint`）、**`pagination`**（`body_field` / `offset`）支持 **`--page`**、**`--all`** 合并分页；**`run_site_fetch`** / **`prepare_request`** 等共用逻辑
+- **`ziniao eval --await`**：等待 Promise；**iframe** 内 **`eval_in_frame(await_promise=...)`** 与主文档行为一致
+- **文档**：**[docs/site-fetch-and-presets.md](docs/site-fetch-and-presets.md)**；**`docs/api-reference.md`** 补充 **`page_fetch`**；**README**、**`skills/ziniao-cli`**
+
+### Changed
+
+- **`ziniao update`**：执行前打印当前包版本与升级来源（PyPI / GitHub）；Windows 新控制台升级提示改为 **stdout**
+- **网络子命令帮助**：**`network`** 组描述含 fetch
+
+### 工程
+
+- **测试**：**`tests/test_sites_pagination.py`**、**`tests/test_update_cmd.py`**（版本横幅）
+- **`pyproject.toml` / `.cursor-plugin/plugin.json` / Git tag**：与 **`v0.2.27`** 对齐
+
 ## [0.2.26] - 2026-03-28
 
 ### Added

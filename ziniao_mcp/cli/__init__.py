@@ -178,6 +178,7 @@ def _register_commands() -> None:
         recorder,
         scroll,
         session,
+        site_cmd,
         store,
         update_cmd,
     )
@@ -203,7 +204,10 @@ def _register_commands() -> None:
     app.add_typer(scroll.app, name="scroll", help="Scroll page or element into view.")
     app.add_typer(batch.app, name="batch", help="Batch command execution.")
     app.add_typer(mouse.app, name="mouse", help="Mouse control.")
-    app.add_typer(network_cmd.app, name="network", help="Network interception, monitoring & HAR.")
+    app.add_typer(network_cmd.app, name="network", help="Network interception, monitoring, HAR & fetch.")
+    app.add_typer(site_cmd.app, name="site", help="Site plugins: list, show, enable, disable.")
+
+    site_cmd.register_site_commands(app)
 
     # Top-level shortcuts for the most common commands
     store.register_top_level(app)

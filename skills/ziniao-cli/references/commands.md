@@ -95,7 +95,7 @@ Full command reference. For workflow and patterns see [SKILL.md](../SKILL.md).
 | `ziniao snapshot -s <selector>` | Scope to selector |
 | `ziniao screenshot [file]` | Screenshot |
 | `ziniao screenshot <file> -s <selector>` | Screenshot element |
-| `ziniao eval "<js>"` | Run JavaScript |
+| `ziniao eval "<js>" [--await]` | Run JavaScript; `--await` waits for Promise (main doc + iframe) |
 | `ziniao info console` | Console messages |
 | `ziniao info network` | Network requests |
 | `ziniao info errors` | JS errors |
@@ -111,6 +111,18 @@ Full command reference. For workflow and patterns see [SKILL.md](../SKILL.md).
 | `ziniao network list [--filter url] [--clear]` | List/clear requests |
 | `ziniao network har-start` | Start HAR recording |
 | `ziniao network har-stop [path]` | Stop and save HAR |
+| `ziniao network fetch [URL] [-p preset] [-f file] [--script …] [-X METHOD] [-d JSON] [-H "K:V"]… [--var K=V]… [--page N] [--all] [-o file]` | HTTP in **page context** (cookies; optional `xsrf_cookie` in JSON) |
+| `ziniao network fetch-save [--id N \| --filter SUBSTR] -o file [--full-headers] [--as-preset]` | Build JSON template from captured request |
+
+## Site presets
+
+JSON templates under `ziniao_mcp/sites/` and `~/.ziniao/sites/<site>/`. Shortcuts: **`ziniao <site> <action>`** (same options as fetch for vars/page/all/output).
+
+| Command | Description |
+|---------|-------------|
+| `ziniao site list` | List presets (`auth`, `paginated` flags in table) |
+| `ziniao site show <site/action-id>` | Variables, auth hint, pagination, usage |
+| `ziniao site enable <id>` / `disable <id>` | Toggle shortcut registration (`~/.ziniao/sites.json`) |
 
 ## Cookies, Storage, Clipboard, Mouse
 
@@ -144,6 +156,8 @@ Full command reference. For workflow and patterns see [SKILL.md](../SKILL.md).
 | `ziniao emulate --width W --height H` | Viewport |
 | `ziniao serve [--config ...] [--company ...] [--username ...]` | Start MCP server |
 | `ziniao quit` | Stop daemon |
+
+More detail: [docs/site-fetch-and-presets.md](../../docs/site-fetch-and-presets.md) (page-context fetch, `auth` / `pagination` in JSON, MCP `page_fetch`).
 
 ## Global flags
 

@@ -149,3 +149,48 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
         store = session.get_active_session()
         result = _har_stop(store, path=path)
         return json.dumps(result, ensure_ascii=False, indent=2)
+
+    @mcp.tool()
+    async def page_fetch(
+        url: str = "",
+        method: str = "GET",
+        body: str = "",
+        headers: str = "",
+        xsrf_cookie: str = "",
+        mode: str = "fetch",
+        script: str = "",
+        navigate_url: str = "",
+    ) -> str:
+        """Execute an HTTP request in the browser page context, leveraging the page's login session.
+
+        Two modes:
+        - **fetch** (default): builds a fetch() call with auto cookie inclusion.
+        - **js**: evaluates a custom JS expression (for sites with framework auth).
+
+        In js mode, ``__BODY__`` and ``__BODY_STR__`` variables are injected from body.
+
+        Args:
+            url: Request URL (required for fetch mode).
+            method: HTTP method (default GET).
+            body: Request body as JSON string.
+            headers: Request headers as JSON string (e.g. '{"Accept":"application/json"}').
+            xsrf_cookie: Cookie name to auto-extract XSRF token (e.g. "XSRF-TOKEN").
+            mode: Execution mode: "fetch" or "js".
+            script: JS expression (required for js mode).
+            navigate_url: Navigate to this URL first if current page doesn't match.
+        """
+        from ..cli.dispatch import _page_fetch  # pylint: disable=import-outside-toplevel
+
+        headers_dict = json.loads(headers) if headers else {}
+        args = {
+            "mode": mode,
+            "url": url,
+            "method": method,
+            "body": body,
+            "headers": headers_dict,
+            "xsrf_cookie": xsrf_cookie,
+            "script": script,
+            "navigate_url": navigate_url,
+        }
+        result = await _page_fetch(session, args)
+        return json.dumps(result, ensure_ascii=False, indent=2)

@@ -55,6 +55,22 @@ def test_update_dry_run_no_kill_windows_mentions_cmd(_mock_which: MagicMock) -> 
 @patch("ziniao_mcp.cli.commands.update_cmd._kill_blocking_processes", return_value=[])
 @patch("ziniao_mcp.cli.commands.update_cmd.subprocess.run")
 @patch("ziniao_mcp.cli.commands.update_cmd.shutil.which", return_value="/fake/uv")
+def test_update_prints_version_banner(
+    _mock_which: MagicMock, mock_run: MagicMock, _mock_kill: MagicMock,
+) -> None:
+    mock_proc = MagicMock(returncode=0, stdout="", stderr="")
+    mock_run.return_value = mock_proc
+    result = runner.invoke(app, ["update", "--sync"])
+    assert result.exit_code == 0
+    assert "当前版本" in result.stdout
+    assert "升级来源" in result.stdout
+    assert "PyPI" in result.stdout
+    assert "uv tool install" in result.stdout
+
+
+@patch("ziniao_mcp.cli.commands.update_cmd._kill_blocking_processes", return_value=[])
+@patch("ziniao_mcp.cli.commands.update_cmd.subprocess.run")
+@patch("ziniao_mcp.cli.commands.update_cmd.shutil.which", return_value="/fake/uv")
 def test_update_runs_uv_and_propagates_exit_code(
     _mock_which: MagicMock, mock_run: MagicMock, _mock_kill: MagicMock,
 ) -> None:

@@ -183,15 +183,19 @@ async def eval_in_frame(
     expression: str,
     *,
     return_by_value: bool = True,
+    await_promise: bool = True,
 ) -> Any:
-    """在 iframe 的 isolated world 中执行 JavaScript。"""
+    """在 iframe 的 isolated world 中执行 JavaScript。
+
+    ``await_promise`` 与顶层 ``tab.evaluate`` 一致：为 True 时等待 Promise 解析。
+    """
     from nodriver import cdp  # pylint: disable=import-outside-toplevel
 
     result = await tab.send(cdp.runtime.evaluate(
         expression=expression,
         context_id=cdp.runtime.ExecutionContextId(context_id),
         return_by_value=return_by_value,
-        await_promise=True,
+        await_promise=await_promise,
     ))
     if not result:
         return None
