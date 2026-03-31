@@ -1,6 +1,6 @@
 {
-  "name": "Rakuten DEAL CSV Download",
-  "description": "DEAL キャンペーン CSV ダウンロード - 利用ページのログイン状態で取得",
+  "name": "乐天·DEAL 活动 CSV",
+  "description": "DEAL 活动 CSV 下载；使用当前标签页登录态获取。",
   "auth": {
     "type": "cookie",
     "hint": "需先在当前浏览器标签页登录 RMS（datatool.rms.rakuten.co.jp）；请求会携带 Cookie",
@@ -18,19 +18,19 @@
     "start_date": {
       "type": "str",
       "required": true,
-      "description": "開始日 (YYYYMMDD)",
+      "description": "开始日 (YYYYMMDD)",
       "example": "20260301"
     },
     "end_date": {
       "type": "str",
       "required": true,
-      "description": "終了日 (YYYYMMDD)",
+      "description": "结束日 (YYYYMMDD)",
       "example": "20260331"
     },
     "period": {
       "type": "str",
       "default": "daily",
-      "description": "集計単位: daily / weekly / monthly"
+      "description": "汇总粒度：daily / weekly / monthly"
     }
   }
 }

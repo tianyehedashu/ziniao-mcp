@@ -1,4 +1,4 @@
-# Giikin `api_proxy/rakuten` — PRD 1–10 完整代理 Payload
+# Giikin `api_proxy/rakuten` — PRD 1–10 完整代理 Payload（另见 PRD 2 补：RPP-EXP merchant）
 
 `POST https://openapi.giikin.com/arachne/thirdshop_proxy/api_proxy/rakuten`  
 Header：`Authorization: <oauth2/client_token 返回的 data.client_token>`  
@@ -101,6 +101,39 @@ Header：`Authorization: <oauth2/client_token 返回的 data.client_token>`
     "startDate": "2026-03-01",
     "endDate": "2026-03-05",
     "pageSize": 30
+  }
+}
+```
+
+### PRD 2 补 — RPP-EXP merchant（当前店铺信息 / `shopUrl`）
+
+RMS 前端在加载 RPP-EXP 时会请求此接口；**无需** `x-shop-url`。成功时 `code` 为 `RPPEXP-CORE-API-S000`，`result` 含：
+
+| 字段 | 说明 |
+|------|------|
+| `merchantName` | 店铺表示名 |
+| `shopId` | 店铺 ID |
+| `shopUrl` | 店铺 URL slug（与 `rpp-exp-report` / `tda-exp-report` 的 `-V shop_url=` 一致） |
+| `customerId` | 与 `shopId` 同型会话字段 |
+| `inactiveTime` | 非活跃时间等 |
+| `shopStatus` | 店铺状态 |
+| `rsFlag` | 标志位 |
+
+Giikin 代理示例（GET、无 body）：
+
+```json
+{
+  "username": "<USERNAME>",
+  "url": "https://ad.rms.rakuten.co.jp/rppexp/api/core/merchant",
+  "method": "GET",
+  "headers": {
+    "accept": "application/json, text/plain, */*",
+    "accept-language": "ja",
+    "referer": "https://ad.rms.rakuten.co.jp/rppexp/reports/",
+    "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
+    "sec-fetch-dest": "empty",
+    "sec-fetch-mode": "cors",
+    "sec-fetch-site": "same-origin"
   }
 }
 ```

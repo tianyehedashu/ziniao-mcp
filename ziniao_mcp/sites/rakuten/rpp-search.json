@@ -1,6 +1,6 @@
 {
-  "name": "Rakuten RPP Search Report",
-  "description": "RPP 広告レポート検索（日別）- 利用ページのログイン状態で API を呼び出す",
+  "name": "乐天·RPP 报表检索",
+  "description": "搜索型广告（RPP）报表检索（支持按日等维度）；使用当前标签页登录态调用 API。",
   "auth": {
     "type": "xsrf",
     "hint": "需先在当前浏览器标签页登录 RMS（ad.rms.rakuten.co.jp）；请求会携带 Cookie 并从 Cookie 注入 X-XSRF-TOKEN",
@@ -28,29 +28,29 @@
     "start_date": {
       "type": "str",
       "required": true,
-      "description": "開始日 (YYYY-MM-DD)",
+      "description": "开始日 (YYYY-MM-DD)",
       "example": "2026-03-01"
     },
     "end_date": {
       "type": "str",
       "required": true,
-      "description": "終了日 (YYYY-MM-DD)",
+      "description": "结束日 (YYYY-MM-DD)",
       "example": "2026-03-07"
     },
     "page": {
       "type": "int",
       "default": 1,
-      "description": "ページ番号"
+      "description": "页码"
     },
     "selection_type": {
       "type": "int",
       "default": 1,
-      "description": "集計単位: 1=日別, 2=キャンペーン, 3=商品, 4=キーワード"
+      "description": "汇总维度：1=按日，2=按推广计划，3=按商品，4=按关键词"
     },
     "campaign_type": {
       "type": "str",
       "default": "1",
-      "description": "キャンペーンタイプ: 1=通常"
+      "description": "推广计划类型：1=通常"
     }
   },
   "body": {

@@ -1,6 +1,6 @@
 {
-  "name": "Rakuten CPA Reports Search",
-  "description": "CPA 広告レポート検索 - 利用ページのログイン状態で API を呼び出す",
+  "name": "乐天·CPA 报表检索",
+  "description": "CPA（按转化付费）广告报表检索；使用当前标签页登录态调用 API。",
   "auth": {
     "type": "xsrf",
     "hint": "需先在当前浏览器标签页登录 RMS（ad.rms.rakuten.co.jp）；请求会携带 Cookie 并从 Cookie 注入 X-XSRF-TOKEN",
@@ -19,24 +19,24 @@
     "start_date": {
       "type": "str",
       "required": true,
-      "description": "開始日 (YYYY-MM-DD)",
+      "description": "开始日 (YYYY-MM-DD)",
       "example": "2026-03-01"
     },
     "end_date": {
       "type": "str",
       "required": true,
-      "description": "終了日 (YYYY-MM-DD)",
+      "description": "结束日 (YYYY-MM-DD)",
       "example": "2026-03-05"
     },
     "page": {
       "type": "int",
       "default": 1,
-      "description": "ページ番号"
+      "description": "页码"
     },
     "period_type": {
       "type": "int",
       "default": 2,
-      "description": "期間タイプ: 2=カスタム"
+      "description": "周期类型：2=自定义区间"
     }
   }
 }

@@ -1,6 +1,6 @@
 ---
 name: rakuten-ad-reports
-description: 乐天 RMS 广告数据拉取。覆盖 RPP / RPP-EXP / CPA / 运用型优惠券 / TDA / TDA-EXP / R-Mail / DEAL CSV / 广告购入明细 / 联盟 pending 共 10 个报表接口。使用 ziniao CLI site preset 在已登录的浏览器会话内直接调用乐天后台 API。当用户提到乐天广告、Rakuten 报表、RPP、TDA、CPA、DEAL CSV、联盟、R-Mail、广告购入明细、乐天数据导出时触发。
+description: 乐天 RMS 广告数据拉取。覆盖 RPP / RPP-EXP（含 merchant 取 shopUrl）/ CPA / 运用型优惠券 / TDA / TDA-EXP / R-Mail / DEAL CSV / 广告购入明细 / 联盟 pending 共 10 个报表接口 + RPP-EXP merchant。使用 ziniao CLI site preset 在已登录的浏览器会话内直接调用乐天后台 API。当用户提到乐天广告、Rakuten 报表、RPP、TDA、CPA、DEAL CSV、联盟、R-Mail、广告购入明细、乐天数据导出时触发。
 allowed-tools: Bash(ziniao:*)
 ---
 
@@ -22,6 +22,7 @@ allowed-tools: Bash(ziniao:*)
 |-----|--------|----------|
 | 1 | `rpp-search` | 检索型广告（搜索广告） |
 | 2 | `rpp-exp-report` | RPP 专家版报表 |
+| 2 补 | `rpp-exp-merchant` | RPP-EXP 当前店铺信息（`shopUrl` 等） |
 | 3 | `cpa-reports-search` | CPA 广告（按转化付费） |
 | 4 | `cpnadv-performance-retrieve` | 运用型优惠券效果报表 |
 | 5 | `tda-reports-search` | 定向展示广告（TDA） |
@@ -45,6 +46,25 @@ ziniao rakuten rpp-search -V start_date=2026-03-01 -V end_date=2026-03-31
 ziniao rakuten rpp-exp-report -V start_date=2026-03-01 -V end_date=2026-03-31 -V shop_url=your-shop-slug
 # 可选 vars: page_no, page_size(默认30), aggregation_period(默认3=自定义)
 ```
+
+### PRD 2 补 — RPP-EXP merchant｜当前店铺信息（取 `shop_url`）
+
+与页面首屏一致：`GET https://ad.rms.rakuten.co.jp/rppexp/api/core/merchant`（XSRF + Cookie），**不需要** `-V shop_url`。
+
+```bash
+ziniao --json rakuten rpp-exp-merchant
+# 或保存: ziniao rakuten rpp-exp-merchant -o merchant.json
+```
+
+成功响应（`body` 内 JSON）典型结构：
+
+- `code`: `RPPEXP-CORE-API-S000`
+- `message`: `Success`
+- `result`:
+  - `merchantName`：店铺名
+  - `shopId`：店铺数字 ID
+  - **`shopUrl`**：店铺 slug（填入 `rpp-exp-report` / `tda-exp-report` 的 `-V shop_url=`）
+  - `customerId`、`inactiveTime`、`shopStatus`、`rsFlag`
 
 ### PRD 3 — CPA｜中文：CPA 广告（按转化付费）
 
@@ -118,6 +138,10 @@ ziniao open-store rakuten-shop-001
 # 2. 拉取 RPP 全量日报并保存
 ziniao rakuten rpp-search -V start_date=2026-03-01 -V end_date=2026-03-31 --all -o rpp_march.json
 
+# 2b. 先取 RPP-EXP 的 shopUrl 再拉报表（脚本里可 jq 解析 data.body）
+ziniao --json rakuten rpp-exp-merchant
+ziniao rakuten rpp-exp-report -V start_date=2026-03-01 -V end_date=2026-03-05 -V shop_url=pettena-collections
+
 # 3. 拉取多个报表
 ziniao rakuten cpa-reports-search -V start_date=2026-03-01 -V end_date=2026-03-31 -o cpa_march.json
 ziniao rakuten tda-reports-search -V start_date=2026-03-01 -V end_date=2026-03-31 -o tda_march.json
@@ -139,7 +163,7 @@ ziniao site disable rakuten/rmail-reports     # 禁用不需要的 preset
 
 ## 注意事项
 
-- `shop_url` 参数（PRD 2、6）对应乐天店铺 URL slug（如 `pettena-collections`），会注入 `x-shop-url` header。
+- `shop_url` 参数（PRD 2、6）对应乐天店铺 URL slug（如 `pettena-collections`），会注入 `x-shop-url` header。不确定 slug 时先用 **`ziniao rakuten rpp-exp-merchant`**（或 `--json`）从 `result.shopUrl` 读取。
 - PRD 4 的 body 是 URL 编码字符串（非 JSON），preset 已处理好格式。
 - 日期格式因接口而异：PRD 8 使用 `YYYYMMDD`，PRD 9/10 使用 `YYYY-MM`，其余使用 `YYYY-MM-DD`。
 - `--all` 仅 PRD 1（rpp-search）支持自动翻页；其他接口通过 `-V page=N` 手动翻页。

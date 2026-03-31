@@ -1,6 +1,6 @@
 {
-  "name": "Rakuten R-Mail Reports",
-  "description": "メルマガ（R-Mail）レポートページ - 利用ページのログイン状態で取得",
+  "name": "乐天·R-Mail 报表",
+  "description": "邮件杂志（R-Mail）报表页；使用当前标签页登录态获取 HTML。",
   "auth": {
     "type": "cookie",
     "hint": "需先在当前浏览器标签页登录 RMS；请求会携带 Cookie",

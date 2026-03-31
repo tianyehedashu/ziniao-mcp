@@ -1,6 +1,6 @@
 {
-  "name": "Rakuten Affiliate Report Pending",
-  "description": "超级联盟 pending レポート - 利用ページのログイン状態で API を呼び出す",
+  "name": "乐天·联盟返利待确认",
+  "description": "超级联盟返利待确认（pending）报表；使用当前标签页登录态调用 API。",
   "auth": {
     "type": "cookie",
     "hint": "需先在当前浏览器标签页登录 RMS（afl.rms.rakuten.co.jp）；请求会携带 Cookie",
@@ -20,23 +20,23 @@
     "date": {
       "type": "str",
       "required": true,
-      "description": "対象月 (YYYY-MM)",
+      "description": "目标月份 (YYYY-MM)",
       "example": "2026-03"
     },
     "offset": {
       "type": "int",
       "default": 0,
-      "description": "オフセット"
+      "description": "偏移量（分页）"
     },
     "limit": {
       "type": "int",
       "default": 100,
-      "description": "取得件数"
+      "description": "每页条数"
     },
     "order": {
       "type": "str",
       "default": "asc",
-      "description": "ソート順: asc / desc"
+      "description": "排序：asc / desc"
     }
   }
 }

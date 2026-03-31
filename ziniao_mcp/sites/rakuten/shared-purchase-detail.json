@@ -1,6 +1,6 @@
 {
-  "name": "Rakuten Ad Purchase Detail",
-  "description": "広告購入履歴明細 - 利用ページのログイン状態で API を呼び出す",
+  "name": "乐天·广告购入明细",
+  "description": "广告购买履历明细；使用当前标签页登录态调用 API。",
   "auth": {
     "type": "xsrf",
     "hint": "需先在当前浏览器标签页登录 RMS（ad.rms.rakuten.co.jp）；请求会携带 Cookie 并从 Cookie 注入 X-XSRF-TOKEN",
@@ -19,63 +19,63 @@
     "target_month": {
       "type": "str",
       "required": true,
-      "description": "対象月 (YYYY-MM)",
+      "description": "目标月份 (YYYY-MM)",
       "example": "2026-03"
     },
     "period": {
       "type": "int",
       "default": 1,
-      "description": "期間: 1=当月"
+      "description": "周期：1=当月"
     },
     "flag_ec": {
       "type": "str",
       "default": "true",
-      "description": "EC 広告を含む"
+      "description": "包含 EC 广告"
     },
     "flag_grp": {
       "type": "str",
       "default": "true",
-      "description": "GRP/EX 広告を含む"
+      "description": "包含 GRP/EX 广告"
     },
     "flag_rpp": {
       "type": "str",
       "default": "true",
-      "description": "RPP 広告を含む"
+      "description": "包含 RPP 广告"
     },
     "flag_rpp_exp": {
       "type": "str",
       "default": "true",
-      "description": "RPP-EXP 広告を含む"
+      "description": "包含 RPP-EXP 广告"
     },
     "flag_cpa": {
       "type": "str",
       "default": "true",
-      "description": "CPA 広告を含む"
+      "description": "包含 CPA 广告"
     },
     "flag_ca": {
       "type": "str",
       "default": "true",
-      "description": "CA 広告を含む"
+      "description": "包含 CA 广告"
     },
     "flag_tda": {
       "type": "str",
       "default": "true",
-      "description": "TDA 広告を含む"
+      "description": "包含 TDA 广告"
     },
     "flag_tda_exp": {
       "type": "str",
       "default": "true",
-      "description": "TDA-EXP 広告を含む"
+      "description": "包含 TDA-EXP 广告"
     },
     "flag_agree_yes": {
       "type": "str",
       "default": "true",
-      "description": "承諾済みを含む"
+      "description": "包含已同意项"
     },
     "flag_agree_no": {
       "type": "str",
       "default": "true",
-      "description": "未承諾を含む"
+      "description": "包含未同意项"
     }
   }
 }

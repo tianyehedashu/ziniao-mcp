@@ -1,0 +1,18 @@
+{
+  "name": "乐天·RPP-EXP 店铺信息",
+  "description": "RPP 专家版当前店铺的 merchant 信息（含 shopUrl，供 x-shop-url）。",
+  "auth": {
+    "type": "xsrf",
+    "hint": "需先在当前浏览器标签页登录 RMS（ad.rms.rakuten.co.jp）；请求会携带 Cookie 并从 Cookie 注入 X-XSRF-TOKEN",
+    "show_hint": false
+  },
+  "navigate_url": "https://ad.rms.rakuten.co.jp/rppexp/reports/",
+  "mode": "fetch",
+  "url": "https://ad.rms.rakuten.co.jp/rppexp/api/core/merchant",
+  "method": "GET",
+  "headers": {
+    "Accept": "application/json",
+    "Accept-Language": "ja"
+  },
+  "xsrf_cookie": "XSRF-TOKEN"
+}
