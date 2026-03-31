@@ -1,0 +1,65 @@
+{
+  "name": "Rakuten TDA-EXP Report",
+  "description": "TDA エキスパートレポート検索 - 利用ページのログイン状態で API を呼び出す",
+  "auth": {
+    "type": "xsrf",
+    "hint": "需先在当前浏览器标签页登録 RMS（ad.rms.rakuten.co.jp）；请求会携带 Cookie 并从 Cookie 注入 X-XSRF-TOKEN",
+    "show_hint": false
+  },
+  "navigate_url": "https://ad.rms.rakuten.co.jp/tdaexp/reports/",
+  "mode": "fetch",
+  "url": "https://ad.rms.rakuten.co.jp/tdaexp/api/tdaexp-core/report",
+  "method": "POST",
+  "headers": {
+    "Accept": "application/json",
+    "Accept-Language": "ja",
+    "Content-Type": "application/json",
+    "page-id": "",
+    "page-name": "tdaexp_reports_",
+    "x-shop-url": "{{shop_url}}"
+  },
+  "xsrf_cookie": "XSRF-TOKEN",
+  "vars": {
+    "start_date": {
+      "type": "str",
+      "required": true,
+      "description": "開始日 (YYYY-MM-DD)",
+      "example": "2026-03-01"
+    },
+    "end_date": {
+      "type": "str",
+      "required": true,
+      "description": "終了日 (YYYY-MM-DD)",
+      "example": "2026-03-05"
+    },
+    "shop_url": {
+      "type": "str",
+      "required": true,
+      "description": "店舗 URL スラグ (x-shop-url ヘッダー)",
+      "example": "pettena-collections"
+    },
+    "page_no": {
+      "type": "int",
+      "default": 1,
+      "description": "ページ番号"
+    },
+    "page_size": {
+      "type": "int",
+      "default": 30,
+      "description": "ページあたりの件数"
+    },
+    "aggregation_period": {
+      "type": "int",
+      "default": 3,
+      "description": "集計期間: 3=カスタム"
+    }
+  },
+  "body": {
+    "pageNo": "{{page_no}}",
+    "aggregationUnit": 1,
+    "aggregationPeriod": "{{aggregation_period}}",
+    "startDate": "{{start_date}}",
+    "endDate": "{{end_date}}",
+    "pageSize": "{{page_size}}"
+  }
+}

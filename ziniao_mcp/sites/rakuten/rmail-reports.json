@@ -1,0 +1,17 @@
+{
+  "name": "Rakuten R-Mail Reports",
+  "description": "メルマガ（R-Mail）レポートページ - 利用ページのログイン状態で取得",
+  "auth": {
+    "type": "cookie",
+    "hint": "需先在当前浏览器标签页登录 RMS；请求会携带 Cookie",
+    "show_hint": false
+  },
+  "navigate_url": "https://auto-rmail.rms.rakuten.co.jp/reports",
+  "mode": "fetch",
+  "url": "https://auto-rmail.rms.rakuten.co.jp/reports",
+  "method": "GET",
+  "headers": {
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "ja"
+  }
+}

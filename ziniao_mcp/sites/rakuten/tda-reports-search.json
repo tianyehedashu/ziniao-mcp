@@ -1,0 +1,52 @@
+{
+  "name": "Rakuten TDA Reports Search",
+  "description": "TDA 広告レポート検索 - 利用ページのログイン状態で API を呼び出す",
+  "auth": {
+    "type": "xsrf",
+    "hint": "需先在当前浏览器标签页登录 RMS（ad.rms.rakuten.co.jp）；请求会携带 Cookie 并从 Cookie 注入 X-XSRF-TOKEN",
+    "show_hint": false
+  },
+  "navigate_url": "https://ad.rms.rakuten.co.jp/tda/performanceReport",
+  "mode": "fetch",
+  "url": "https://ad.rms.rakuten.co.jp/tda/api/aggregator/v2/reports/search?page={{page}}&campaignType={{campaign_type}}&selectionType={{selection_type}}&periodType={{period_type}}&reportStartDate={{start_date}}&reportEndDate={{end_date}}",
+  "method": "GET",
+  "headers": {
+    "Accept": "application/json",
+    "Accept-Language": "ja"
+  },
+  "xsrf_cookie": "XSRF-TOKEN",
+  "vars": {
+    "start_date": {
+      "type": "str",
+      "required": true,
+      "description": "開始日 (YYYY-MM-DD)",
+      "example": "2026-03-01"
+    },
+    "end_date": {
+      "type": "str",
+      "required": true,
+      "description": "終了日 (YYYY-MM-DD)",
+      "example": "2026-03-05"
+    },
+    "page": {
+      "type": "int",
+      "default": 1,
+      "description": "ページ番号"
+    },
+    "campaign_type": {
+      "type": "int",
+      "default": 1,
+      "description": "キャンペーンタイプ: 1=通常"
+    },
+    "selection_type": {
+      "type": "int",
+      "default": 1,
+      "description": "集計単位: 1=日別"
+    },
+    "period_type": {
+      "type": "int",
+      "default": 3,
+      "description": "期間タイプ: 3=カスタム"
+    }
+  }
+}

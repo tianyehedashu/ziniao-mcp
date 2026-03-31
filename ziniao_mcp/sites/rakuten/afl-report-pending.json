@@ -1,0 +1,42 @@
+{
+  "name": "Rakuten Affiliate Report Pending",
+  "description": "超级联盟 pending レポート - 利用ページのログイン状態で API を呼び出す",
+  "auth": {
+    "type": "cookie",
+    "hint": "需先在当前浏览器标签页登录 RMS（afl.rms.rakuten.co.jp）；请求会携带 Cookie",
+    "show_hint": false
+  },
+  "navigate_url": "https://afl.rms.rakuten.co.jp/report/pending-daily",
+  "mode": "fetch",
+  "url": "https://afl.rms.rakuten.co.jp/api/report/pending?order={{order}}&offset={{offset}}&limit={{limit}}&date={{date}}",
+  "method": "GET",
+  "headers": {
+    "Accept": "application/json, text/javascript, */*; q=0.01",
+    "Accept-Language": "ja",
+    "Content-Type": "application/json",
+    "X-Requested-With": "XMLHttpRequest"
+  },
+  "vars": {
+    "date": {
+      "type": "str",
+      "required": true,
+      "description": "対象月 (YYYY-MM)",
+      "example": "2026-03"
+    },
+    "offset": {
+      "type": "int",
+      "default": 0,
+      "description": "オフセット"
+    },
+    "limit": {
+      "type": "int",
+      "default": 100,
+      "description": "取得件数"
+    },
+    "order": {
+      "type": "str",
+      "default": "asc",
+      "description": "ソート順: asc / desc"
+    }
+  }
+}

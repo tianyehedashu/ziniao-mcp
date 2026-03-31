@@ -1,0 +1,42 @@
+{
+  "name": "Rakuten CPA Reports Search",
+  "description": "CPA 広告レポート検索 - 利用ページのログイン状態で API を呼び出す",
+  "auth": {
+    "type": "xsrf",
+    "hint": "需先在当前浏览器标签页登录 RMS（ad.rms.rakuten.co.jp）；请求会携带 Cookie 并从 Cookie 注入 X-XSRF-TOKEN",
+    "show_hint": false
+  },
+  "navigate_url": "https://ad.rms.rakuten.co.jp/cpa/reports",
+  "mode": "fetch",
+  "url": "https://ad.rms.rakuten.co.jp/cpa/api/reports/search?page={{page}}&periodType={{period_type}}&startDate={{start_date}}&endDate={{end_date}}",
+  "method": "GET",
+  "headers": {
+    "Accept": "application/json",
+    "Accept-Language": "ja"
+  },
+  "xsrf_cookie": "XSRF-TOKEN",
+  "vars": {
+    "start_date": {
+      "type": "str",
+      "required": true,
+      "description": "開始日 (YYYY-MM-DD)",
+      "example": "2026-03-01"
+    },
+    "end_date": {
+      "type": "str",
+      "required": true,
+      "description": "終了日 (YYYY-MM-DD)",
+      "example": "2026-03-05"
+    },
+    "page": {
+      "type": "int",
+      "default": 1,
+      "description": "ページ番号"
+    },
+    "period_type": {
+      "type": "int",
+      "default": 2,
+      "description": "期間タイプ: 2=カスタム"
+    }
+  }
+}

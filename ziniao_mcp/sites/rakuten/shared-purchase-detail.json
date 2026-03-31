@@ -1,0 +1,81 @@
+{
+  "name": "Rakuten Ad Purchase Detail",
+  "description": "広告購入履歴明細 - 利用ページのログイン状態で API を呼び出す",
+  "auth": {
+    "type": "xsrf",
+    "hint": "需先在当前浏览器标签页登录 RMS（ad.rms.rakuten.co.jp）；请求会携带 Cookie 并从 Cookie 注入 X-XSRF-TOKEN",
+    "show_hint": false
+  },
+  "navigate_url": "https://ad.rms.rakuten.co.jp/shared/purchase_detail",
+  "mode": "fetch",
+  "url": "https://ad.rms.rakuten.co.jp/shared/api/purchase_detail?targetMonth={{target_month}}&period={{period}}&serviceTypeEcFlag={{flag_ec}}&serviceTypeGrpOrExFlag={{flag_grp}}&serviceTypeRppFlag={{flag_rpp}}&serviceTypeRppExpFlag={{flag_rpp_exp}}&serviceTypeCpaFlag={{flag_cpa}}&serviceTypeCaFlag={{flag_ca}}&serviceTypeTdaFlag={{flag_tda}}&serviceTypeTdaExpFlag={{flag_tda_exp}}&agreementYesFlag={{flag_agree_yes}}&agreementNoFlag={{flag_agree_no}}",
+  "method": "GET",
+  "headers": {
+    "Accept": "application/json",
+    "Accept-Language": "ja"
+  },
+  "xsrf_cookie": "XSRF-TOKEN",
+  "vars": {
+    "target_month": {
+      "type": "str",
+      "required": true,
+      "description": "対象月 (YYYY-MM)",
+      "example": "2026-03"
+    },
+    "period": {
+      "type": "int",
+      "default": 1,
+      "description": "期間: 1=当月"
+    },
+    "flag_ec": {
+      "type": "str",
+      "default": "true",
+      "description": "EC 広告を含む"
+    },
+    "flag_grp": {
+      "type": "str",
+      "default": "true",
+      "description": "GRP/EX 広告を含む"
+    },
+    "flag_rpp": {
+      "type": "str",
+      "default": "true",
+      "description": "RPP 広告を含む"
+    },
+    "flag_rpp_exp": {
+      "type": "str",
+      "default": "true",
+      "description": "RPP-EXP 広告を含む"
+    },
+    "flag_cpa": {
+      "type": "str",
+      "default": "true",
+      "description": "CPA 広告を含む"
+    },
+    "flag_ca": {
+      "type": "str",
+      "default": "true",
+      "description": "CA 広告を含む"
+    },
+    "flag_tda": {
+      "type": "str",
+      "default": "true",
+      "description": "TDA 広告を含む"
+    },
+    "flag_tda_exp": {
+      "type": "str",
+      "default": "true",
+      "description": "TDA-EXP 広告を含む"
+    },
+    "flag_agree_yes": {
+      "type": "str",
+      "default": "true",
+      "description": "承諾済みを含む"
+    },
+    "flag_agree_no": {
+      "type": "str",
+      "default": "true",
+      "description": "未承諾を含む"
+    }
+  }
+}
