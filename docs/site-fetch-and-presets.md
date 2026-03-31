@@ -48,7 +48,19 @@ ziniao network fetch-save --filter "reports/search" -o tpl.json
 | `auth` | `type`: `cookie` / `xsrf` / `token` / `none`；`hint` 给人看的说明 |
 | `pagination` | `body_field` 或 `offset`：支持 `--all` 自动翻页合并列表 |
 
-用户自定义：将 `.json` 放到 `~/.ziniao/sites/<站点名>/`，会覆盖同名内置模板。
+## 从内置模板派生（自定义）
+
+```bash
+# 将内置模板复制到 ~/.ziniao/sites/ 供编辑（同名覆盖内置）
+ziniao site fork rakuten/rpp-search
+
+# 另存为新 ID
+ziniao site fork rakuten/rpp-search mysite/rpp-custom
+```
+
+编辑后直接用 `-p` 调用——`load_preset` 会优先读用户目录。
+
+也可手动将 `.json` 放到 `~/.ziniao/sites/<站点名>/`，会覆盖同名内置模板。
 
 Python 插件（可选）：`~/.ziniao/sites/<站点>/__init__.py` 或包内 `ziniao_mcp/sites/<站点>/`，继承 `SitePlugin`，实现 `before_fetch` / `after_fetch` / `paginate`（复杂分页）。第三方包可通过 `ziniao.sites` entry point 注册。
 

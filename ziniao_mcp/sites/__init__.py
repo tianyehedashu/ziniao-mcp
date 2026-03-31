@@ -96,6 +96,54 @@ def load_preset(preset_id: str) -> dict[str, Any]:
     raise FileNotFoundError(f"Preset not found: {preset_id}")
 
 
+_PRESET_ID_RE = re.compile(r"^[a-zA-Z0-9_-]+/[a-zA-Z0-9_-]+$")
+
+
+def _assert_safe_preset_id(preset_id: str, *, role: str) -> None:
+    """Reject path traversal and other non-ID strings before path joins."""
+    if not _PRESET_ID_RE.match(preset_id):
+        raise ValueError(
+            f"Invalid {role} preset ID '{preset_id}' — must be <site>/<action> "
+            f"(alphanumeric, hyphens, underscores only)"
+        )
+
+
+def fork_preset(
+    src_id: str,
+    dst_id: str | None = None,
+    *,
+    force: bool = False,
+) -> Path:
+    """Copy a preset to the user directory for editing.
+
+    *dst_id* defaults to *src_id* (same-name override of builtins).
+    Returns the absolute path of the written file.
+    Raises ``FileNotFoundError`` (source missing), ``ValueError`` (bad ID),
+    or ``FileExistsError`` (target exists without *force*).
+    """
+    _assert_safe_preset_id(src_id, role="source")
+    if dst_id is None:
+        dst_id = src_id
+    else:
+        _assert_safe_preset_id(dst_id, role="destination")
+
+    data = load_preset(src_id)
+    site, name = dst_id.split("/", 1)
+    dst_path = USER_DIR / site / f"{name}.json"
+
+    if dst_path.exists() and not force:
+        raise FileExistsError(
+            f"Already exists: {dst_path}\n  Use --force to overwrite."
+        )
+
+    dst_path.parent.mkdir(parents=True, exist_ok=True)
+    dst_path.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return dst_path
+
+
 def _scan_ep_presets() -> dict[str, Path]:
     """Discover presets from ``ziniao.sites`` entry-points group."""
     result: dict[str, Path] = {}

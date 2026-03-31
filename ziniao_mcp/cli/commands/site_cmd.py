@@ -93,10 +93,12 @@ def site_list() -> None:
 @app.command("show")
 def site_show(
     preset_id: str = typer.Argument(..., help="Preset ID (e.g. rakuten/rpp-search)."),
+    raw: bool = typer.Option(False, "--raw", help="Print the raw preset JSON template."),
 ) -> None:
     """Show preset details, variables, and usage example.
 
     Example: ziniao site show rakuten/rpp-search
+             ziniao site show rakuten/rpp-search --raw
     """
     from ...sites import load_preset  # pylint: disable=import-outside-toplevel
 
@@ -105,6 +107,10 @@ def site_show(
     except FileNotFoundError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1) from exc
+
+    if raw:
+        typer.echo(json.dumps(data, ensure_ascii=False, indent=2))
+        return
 
     if get_json_mode():
         data["enabled"] = is_preset_enabled(preset_id)
@@ -148,6 +154,38 @@ def site_show(
     )
     page_hint = " [--page N] [--all]" if ptype not in ("", "none", None) else ""
     typer.echo(f"\n  Usage: ziniao {site_name} {action_name} {var_args}{page_hint}")
+
+
+# ---------------------------------------------------------------------------
+# site fork / copy — copy a preset to the user directory for editing
+# ---------------------------------------------------------------------------
+
+def _site_fork(
+    src: str = typer.Argument(..., help="Source preset ID (e.g. rakuten/rpp-search)."),
+    dst: Optional[str] = typer.Argument(None, help="Target preset ID (defaults to same as source)."),
+    force: bool = typer.Option(False, "--force", help="Overwrite if the target file already exists."),
+) -> None:
+    """Copy a preset to ~/.ziniao/sites/ for editing.
+
+    Examples:
+        ziniao site fork rakuten/rpp-search
+        ziniao site fork rakuten/rpp-search mysite/rpp-custom --force
+    """
+    from ...sites import fork_preset  # pylint: disable=import-outside-toplevel
+
+    try:
+        path = fork_preset(src, dst, force=force)
+    except (FileNotFoundError, ValueError, FileExistsError) as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1) from exc
+
+    target_id = dst or src
+    typer.echo(f"  Saved: {path}")
+    typer.echo(f"  Edit the file, then run: ziniao network fetch -p {target_id} ...")
+
+
+app.command("fork")(_site_fork)
+app.command("copy", hidden=True)(_site_fork)
 
 
 # ---------------------------------------------------------------------------
@@ -237,7 +275,6 @@ def _register_action(
         output: Optional[str] = typer.Option(None, "--output", "-o", help="Save response body to file."),
     ) -> None:
         from ...sites import (  # pylint: disable=import-outside-toplevel
-            load_preset,
             prepare_request,
             run_site_fetch,
             save_response_body,
@@ -246,14 +283,6 @@ def _register_action(
         if fetch_all and page is not None:
             typer.echo("Error: use either --page or --all, not both.", err=True)
             raise typer.Exit(1)
-
-        try:
-            raw = load_preset(preset_id)
-        except FileNotFoundError:
-            raw = {}
-        hint = (raw.get("auth") or {}).get("hint")
-        if hint and not get_json_mode():
-            typer.echo(f"  Auth: {hint}")
 
         parsed_vars = _parse_var_list(var)
         if page is not None:
@@ -264,6 +293,11 @@ def _register_action(
         except (FileNotFoundError, ValueError, json.JSONDecodeError) as exc:
             typer.echo(f"Error: {exc}", err=True)
             raise typer.Exit(1) from exc
+
+        if not get_json_mode():
+            auth = spec.get("auth") or {}
+            if auth.get("show_hint", True) and auth.get("hint"):
+                typer.echo(typer.style(f"  ℹ {auth['hint']}", dim=True))
 
         def _fetch_sync(s: dict) -> dict:
             return run_command("page_fetch", s)

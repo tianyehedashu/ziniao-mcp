@@ -4,6 +4,27 @@
 
 ## [Unreleased]
 
+## [0.2.28] - 2026-03-30
+
+### Added
+
+- **`ziniao site fork`** / **`ziniao site copy`**：将当前生效的 preset 写入 **`~/.ziniao/sites/`**（单参默认同名覆盖内置；可选目标 ID、`--force`）；**`fork_preset`** API
+- **`ziniao site show --raw`**：打印原始 preset JSON（无 CLI 信封）
+- **文档 / 技能**：**[docs/site-fetch-and-presets.md](docs/site-fetch-and-presets.md)** 增加 fork 工作流；**`skills/ziniao-cli/SKILL.md`** 速查更新
+
+### Changed
+
+- **`network fetch` / `ziniao <site> <action>`**：鉴权说明改为灰色 **`ℹ`** 样式；preset **`auth.show_hint`**（默认 `true`）可关闭逐次提示；**`rakuten/rpp-search`** 默认不打印 fetch 前 hint
+
+### Fixed
+
+- **`fork_preset`**：对 **source** preset ID 做与 destination 相同的安全校验，拒绝路径穿越式 ID
+
+### 工程
+
+- **测试**：**`tests/test_sites_fork.py`**
+- **`pyproject.toml` / `.cursor-plugin/plugin.json` / Git tag**：与 **`v0.2.28`** 对齐
+
 ## [0.2.27] - 2026-03-29
 
 ### Added

@@ -3,7 +3,8 @@
   "description": "RPP 広告レポート検索（日別）- 利用ページのログイン状態で API を呼び出す",
   "auth": {
     "type": "xsrf",
-    "hint": "需先在当前浏览器标签页登录 RMS（ad.rms.rakuten.co.jp）；请求会携带 Cookie 并从 Cookie 注入 X-XSRF-TOKEN"
+    "hint": "需先在当前浏览器标签页登录 RMS（ad.rms.rakuten.co.jp）；请求会携带 Cookie 并从 Cookie 注入 X-XSRF-TOKEN",
+    "show_hint": false
   },
   "pagination": {
     "type": "body_field",

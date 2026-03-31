@@ -141,7 +141,6 @@ def fetch_cmd(
         raise typer.Exit(1)
 
     from ...sites import (  # pylint: disable=import-outside-toplevel
-        load_preset,
         prepare_request,
         run_site_fetch,
         save_response_body,
@@ -154,15 +153,6 @@ def fetch_cmd(
             parsed_vars[k.strip()] = val.strip()
     if page is not None:
         parsed_vars["page"] = str(page)
-
-    if preset and not get_json_mode():
-        try:
-            raw = load_preset(preset)
-            hint = (raw.get("auth") or {}).get("hint")
-            if hint:
-                typer.echo(f"  Auth: {hint}")
-        except FileNotFoundError:
-            pass
 
     try:
         spec, plugin = prepare_request(
@@ -180,10 +170,10 @@ def fetch_cmd(
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1) from exc
 
-    if file and not preset and not get_json_mode():
-        hint = (spec.get("auth") or {}).get("hint")
-        if hint:
-            typer.echo(f"  Auth: {hint}")
+    if not get_json_mode():
+        auth = spec.get("auth") or {}
+        if auth.get("show_hint", True) and auth.get("hint"):
+            typer.echo(typer.style(f"  ℹ {auth['hint']}", dim=True))
 
     def _fetch_sync(s: dict) -> dict:
         return run_command("page_fetch", s)

@@ -1,6 +1,6 @@
 ---
 name: ziniao-cli
-description: Browser automation for multi-store sellers and Chrome. Use when the user needs to open stores, navigate pages, fill forms, click buttons, take screenshots, extract data, intercept network requests, call logged-in APIs from the page (site presets / network fetch / page_fetch), or automate any browser task. Triggers include "open a store", "open a website", "fill out a form", "click a button", "take a screenshot", "scrape data", "switch session", "multi-store batch", "browser automation", "fetch API with cookies", "RPP", "site preset", or any Ziniao/Chrome automation request.
+description: Browser automation for multi-store sellers and Chrome. Use when the user needs to open stores, navigate pages, fill forms, click buttons, take screenshots, extract data, intercept network requests, call logged-in APIs from the page (site presets / network fetch / page_fetch), or automate any browser task. Triggers include "open a store", "open a website", "fill out a form", "click a button", "take a screenshot", "scrape data", "switch session", "multi-store batch", "browser automation", "fetch API with cookies", "site preset", or any Ziniao/Chrome automation request.
 allowed-tools: Bash(ziniao:*)
 ---
 
@@ -149,7 +149,8 @@ ziniao network fetch --script '<expr using __BODY__>' -d '{"k":1}'
 ziniao network fetch-save [--id N | --filter SUBSTR] -o template.json [--as-preset]
 
 # Site presets (shortcuts: ziniao <site> <action> — templates under ziniao_mcp/sites/ and ~/.ziniao/sites/)
-ziniao site list | show <id> | enable <id> | disable <id>
+ziniao site list | show <id> [--raw] | enable <id> | disable <id>
+ziniao site fork <id> [<new_id>] [--force]        # copy preset to ~/.ziniao/sites/ for editing
 # Example: ziniao rakuten rpp-search -V start_date=2026-03-01 -V end_date=2026-03-07 [--page N] [--all] [-o out]
 
 # Batch, recording, emulation
