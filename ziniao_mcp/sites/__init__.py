@@ -70,6 +70,7 @@ def list_presets() -> list[dict[str, Any]]:
             "description": data.get("description", ""),
             "mode": data.get("mode", "fetch"),
             "vars": list((data.get("vars") or {}).keys()),
+            "var_defs": data.get("vars") or {},
             "path": str(merged[pid]),
             "auth": auth.get("type", "cookie"),
             "auth_hint": auth.get("hint", ""),

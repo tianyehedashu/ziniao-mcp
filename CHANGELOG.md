@@ -4,6 +4,21 @@
 
 ## [Unreleased]
 
+## [0.2.31] - 2026-04-01
+
+### Added
+
+- **`ziniao <site> <action> --help`**：由 preset **`var_defs`** 生成变量说明、必填示例与分页提示；站点子命令组帮助含命令数量与 **`site list` / `site show`** 指引
+- **`list_presets()`**：返回体增加 **`var_defs`**（与 JSON **`vars`** 同源），供 CLI / 集成方展示变量元数据
+
+### Changed
+
+- **乐天文档 / preset**：**`ref.md`** 补充 **merchant → `shopUrl` → `x-shop-url` / `-V shop_url=`** 推荐顺序；**`rpp-exp-merchant`** 描述对齐接口与报表头关系
+
+### 工程
+
+- **`pyproject.toml` / `.cursor-plugin/plugin.json` / Git tag**：与 **`v0.2.31`** 对齐
+
 ## [0.2.28] - 2026-03-30
 
 ### Added

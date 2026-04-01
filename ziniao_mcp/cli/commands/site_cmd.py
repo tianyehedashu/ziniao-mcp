@@ -237,6 +237,7 @@ def register_site_commands(root_app: typer.Typer) -> None:
     disabled = set(state.get("disabled", []))
 
     site_groups: dict[str, typer.Typer] = {}
+    site_counts: dict[str, int] = {}
 
     for p in presets:
         if p["id"] in disabled:
@@ -247,13 +248,54 @@ def register_site_commands(root_app: typer.Typer) -> None:
         site_name, action_name = parts
 
         if site_name not in site_groups:
-            site_groups[site_name] = typer.Typer(
-                no_args_is_help=True,
-                help=f"Site commands for {site_name}.",
-            )
+            site_groups[site_name] = typer.Typer(no_args_is_help=True)
+            site_counts[site_name] = 0
             root_app.add_typer(site_groups[site_name], name=site_name, hidden=False)
 
+        site_counts[site_name] += 1
         _register_action(site_groups[site_name], p["id"], site_name, action_name, p)
+
+    for site_name, grp in site_groups.items():
+        n = site_counts[site_name]
+        grp.info.help = (
+            f"{site_name} site presets ({n} commands).\n\n"
+            f"Run 'ziniao site list' for tags & variables overview,\n"
+            f"or  'ziniao site show {site_name}/<action>' for full details."
+        )
+
+
+def _build_command_help(meta: dict, site_name: str, action_name: str) -> str:
+    """Build an informative help string for ``ziniao <site> <action> --help``."""
+    parts: list[str] = []
+
+    desc = meta.get("description", "")
+    if desc:
+        parts.append(desc)
+
+    tags = [f"Mode: {meta.get('mode', 'fetch')}", f"Auth: {meta.get('auth', 'cookie')}"]
+    if meta.get("paginated"):
+        tags.append("Paginated")
+    parts.append(" · ".join(tags))
+
+    var_defs: dict = meta.get("var_defs") or {}
+    if var_defs:
+        var_lines: list[str] = []
+        for vname, vdef in var_defs.items():
+            req = " *" if vdef.get("required") else ""
+            default = f" (={vdef['default']})" if "default" in vdef else ""
+            vdesc = vdef.get("description", "")
+            example = f"  e.g. {vdef['example']}" if vdef.get("example") else ""
+            var_lines.append(f"  {vname}{req}{default}  {vdesc}{example}")
+        parts.append("Vars (-V key=value):\n" + "\n".join(var_lines))
+
+    required_vars = {k: v for k, v in var_defs.items() if v.get("required")}
+    var_args = " ".join(f"-V {k}={v.get('example', '...')}" for k, v in required_vars.items())
+    pag_hint = " --all" if meta.get("paginated") else ""
+    if var_args or pag_hint:
+        parts.append(f"Example: ziniao {site_name} {action_name} {var_args}{pag_hint}")
+    parts.append(f"Full info: ziniao site show {site_name}/{action_name}")
+
+    return "\n\n".join(parts)
 
 
 def _register_action(
@@ -265,9 +307,9 @@ def _register_action(
 ) -> None:
     """Register a single ``ziniao <site> <action>`` command."""
 
-    description = meta.get("description", "")
+    help_text = _build_command_help(meta, site_name, action_name)
 
-    @site_app.command(action_name, help=description)
+    @site_app.command(action_name, help=help_text)
     def _action(
         var: Optional[List[str]] = typer.Option(None, "--var", "-V", help="Variable key=value (repeatable)."),
         page: Optional[int] = typer.Option(None, "--page", help="Override page number (paginated presets)."),

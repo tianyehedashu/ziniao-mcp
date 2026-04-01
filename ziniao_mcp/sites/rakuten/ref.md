@@ -109,6 +109,13 @@ Header：`Authorization: <oauth2/client_token 返回的 data.client_token>`
 
 RMS 前端在加载 RPP-EXP 时会请求此接口；**无需** `x-shop-url`。成功时 `code` 为 `RPPEXP-CORE-API-S000`，`result` 含：
 
+#### 与 `x-shop-url` 的关系（如何拿到报表用的 slug）
+
+- **报表侧**：PRD 2（RPP-EXP `…/report`）与 PRD 6（TDA-EXP `…/report`）的请求头里需要 **`x-shop-url: <店铺 slug>`**（与乐天市場店铺 URL 中 `https://www.rakuten.co.jp/<slug>/` 的 `<slug>` 一致）。
+- **本接口的作用**：`GET …/rppexp/api/core/merchant` **不**带 `x-shop-url`；响应里的 **`result.shopUrl` 就是上述 slug**。先调 merchant，再把 `shopUrl` 填入 PRD 2 / PRD 6 代理 JSON 的 **`headers["x-shop-url"]`**（或与 ziniao preset 的 **`-V shop_url=`** 同源）。
+- **推荐顺序**：`merchant`（取 `shopUrl`）→ 再调 `rpp-exp` / `tda-exp` 报表接口，避免 slug 写错或多店会话不一致。
+- **ziniao CLI**：`ziniao rakuten rpp-exp-merchant`（或 `network fetch -p rakuten/rpp-exp-merchant`）→ 从返回 JSON 的 **`result.shopUrl`** 读出后，传给 `ziniao rakuten rpp-exp-report -V shop_url=…` / `tda-exp-report -V shop_url=…`。
+
 | 字段 | 说明 |
 |------|------|
 | `merchantName` | 店铺表示名 |
