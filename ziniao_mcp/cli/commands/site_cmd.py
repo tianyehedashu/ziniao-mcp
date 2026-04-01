@@ -45,6 +45,41 @@ def is_preset_enabled(preset_id: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Shared preset table formatting
+# ---------------------------------------------------------------------------
+
+def _echo_preset_table(
+    presets: list[dict],
+    *,
+    show_status: bool = False,
+    disabled: set[str] | None = None,
+    strip_site: bool = False,
+) -> None:
+    """Print presets in the unified tabular format with tags and vars."""
+    if not presets:
+        typer.echo("No site presets found.")
+        return
+    _disabled = disabled or set()
+    if strip_site:
+        names = [p["id"].split("/", 1)[1] if "/" in p["id"] else p["id"] for p in presets]
+    else:
+        names = [p["id"] for p in presets]
+    max_name = max(len(n) for n in names)
+    for p, name in zip(presets, names):
+        prefix = ""
+        if show_status:
+            prefix = "x " if p["id"] in _disabled else "  "
+        mode_tag = f"[{p['mode']}]"
+        auth_tag = f"[{p.get('auth', 'cookie')}]"
+        pag_note = " (paginated)" if p.get("paginated") else ""
+        vars_str = ", ".join(p.get("vars", [])) if p.get("vars") else ""
+        line = f"  {prefix}{name:<{max_name}}  {mode_tag:<8} {auth_tag:<8}{pag_note}  {p.get('description', '')}"
+        if vars_str:
+            line += f"  (vars: {vars_str})"
+        typer.echo(line)
+
+
+# ---------------------------------------------------------------------------
 # site list
 # ---------------------------------------------------------------------------
 
@@ -68,22 +103,9 @@ def site_list() -> None:
         print_result({"presets": presets, "count": len(presets)}, json_mode=True)
         return
 
-    if not presets:
-        typer.echo("No site presets found.")
-        return
-
-    max_id = max(len(p["id"]) for p in presets)
-    for p in presets:
-        status = "  " if p["id"] not in disabled else "x "
-        mode_tag = f"[{p['mode']}]"
-        auth_tag = f"[{p.get('auth', 'cookie')}]"
-        pag_note = " (paginated)" if p.get("paginated") else ""
-        vars_str = ", ".join(p.get("vars", [])) if p.get("vars") else ""
-        line = f"  {status}{p['id']:<{max_id}}  {mode_tag:<8} {auth_tag:<8}{pag_note}  {p.get('description', '')}"
-        if vars_str:
-            line += f"  (vars: {vars_str})"
-        typer.echo(line)
-    typer.echo(f"\n  Total: {len(presets)}  (x = disabled)")
+    _echo_preset_table(presets, show_status=True, disabled=disabled)
+    if presets:
+        typer.echo(f"\n  Total: {len(presets)}  (x = disabled)")
 
 
 # ---------------------------------------------------------------------------
@@ -238,6 +260,7 @@ def register_site_commands(root_app: typer.Typer) -> None:
 
     site_groups: dict[str, typer.Typer] = {}
     site_counts: dict[str, int] = {}
+    site_presets: dict[str, list[dict]] = {}
 
     for p in presets:
         if p["id"] in disabled:
@@ -248,19 +271,34 @@ def register_site_commands(root_app: typer.Typer) -> None:
         site_name, action_name = parts
 
         if site_name not in site_groups:
-            site_groups[site_name] = typer.Typer(no_args_is_help=True)
+            site_groups[site_name] = typer.Typer(invoke_without_command=True)
             site_counts[site_name] = 0
+            site_presets[site_name] = []
             root_app.add_typer(site_groups[site_name], name=site_name, hidden=False)
 
         site_counts[site_name] += 1
+        site_presets[site_name].append(p)
         _register_action(site_groups[site_name], p["id"], site_name, action_name, p)
 
     for site_name, grp in site_groups.items():
         n = site_counts[site_name]
-        grp.info.help = (
-            f"{site_name} site presets ({n} commands).\n\n"
-            f"Run 'ziniao site list' for tags & variables overview,\n"
-            f"or  'ziniao site show {site_name}/<action>' for full details."
+        grp.info.help = f"{site_name} site presets ({n} commands)."
+        _set_site_callback(grp, site_name, site_presets[site_name])
+
+
+def _set_site_callback(
+    grp: typer.Typer, site_name: str, presets: list[dict],
+) -> None:
+    """Add a callback that prints the rich preset table when no subcommand is given."""
+
+    @grp.callback(invoke_without_command=True)
+    def _default(ctx: typer.Context) -> None:
+        if ctx.invoked_subcommand is not None:
+            return
+        _echo_preset_table(presets, strip_site=True)
+        typer.echo(
+            f"\n  {len(presets)} commands."
+            f"  Use 'ziniao site show {site_name}/<name>' for full details."
         )
 
 

@@ -4,6 +4,16 @@
 
 ## [Unreleased]
 
+## [0.2.32] - 2026-04-01
+
+### Changed
+
+- **站点动态分组（`ziniao <site>`）**：无子命令时输出与 **`ziniao site list`** 同款的 **`[mode]` / `[auth]`**、分页与 **`(vars: …)`** 表格（共用 **`_echo_preset_table`**）；**`ziniao <site> --help`** 仍为 Typer 标准帮助
+
+### 工程
+
+- **`pyproject.toml` / `.cursor-plugin/plugin.json` / Git tag**：与 **`v0.2.32`** 对齐
+
 ## [0.2.31] - 2026-04-01
 
 ### Added
