@@ -157,6 +157,7 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
         body: str = "",
         headers: str = "",
         xsrf_cookie: str = "",
+        xsrf_headers: str = "",
         mode: str = "fetch",
         script: str = "",
         navigate_url: str = "",
@@ -175,6 +176,7 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
             body: Request body as JSON string.
             headers: Request headers as JSON string (e.g. '{"Accept":"application/json"}').
             xsrf_cookie: Cookie name to auto-extract XSRF token (e.g. "XSRF-TOKEN").
+            xsrf_headers: JSON array of header names to set with that token, e.g. '["x-csrf-token"]'. Defaults to ["X-XSRF-TOKEN"] when xsrf_cookie is set.
             mode: Execution mode: "fetch" or "js".
             script: JS expression (required for js mode).
             navigate_url: Navigate to this URL first if current page doesn't match.
@@ -182,7 +184,7 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
         from ..cli.dispatch import _page_fetch  # pylint: disable=import-outside-toplevel
 
         headers_dict = json.loads(headers) if headers else {}
-        args = {
+        args: dict = {
             "mode": mode,
             "url": url,
             "method": method,
@@ -192,5 +194,12 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
             "script": script,
             "navigate_url": navigate_url,
         }
+        if xsrf_headers.strip():
+            try:
+                parsed = json.loads(xsrf_headers)
+                if isinstance(parsed, list) and parsed:
+                    args["xsrf_headers"] = [str(x) for x in parsed if str(x).strip()]
+            except (json.JSONDecodeError, TypeError):
+                pass
         result = await _page_fetch(session, args)
         return json.dumps(result, ensure_ascii=False, indent=2)

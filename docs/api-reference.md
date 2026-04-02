@@ -445,7 +445,7 @@
 
 ### `page_fetch`
 
-在当前**活动标签页**的页面上下文中发起 HTTP 请求（`fetch` 或自定义 `js`），自动携带该页 **Cookie**；可与 CLI `ziniao network fetch` 对照使用。模板变量、分页、`site` 子命令等见 [site-fetch-and-presets.md](site-fetch-and-presets.md)。
+在当前**活动标签页**的页面上下文中发起 HTTP 请求（`fetch` 或自定义 `js`），自动携带该页 **Cookie**；可与 CLI `ziniao network fetch` 对照使用。模板变量、分页、会话鉴权等见 [site-fetch-and-presets.md](site-fetch-and-presets.md)；XSRF 策略详情见 [page-fetch-xsrf.md](page-fetch-xsrf.md)。
 
 **参数**：
 
@@ -455,7 +455,8 @@
 | `method` | `string` | 否 | 默认 `GET` |
 | `body` | `string` | 否 | 请求体（多为 JSON 字符串） |
 | `headers` | `string` | 否 | 请求头 JSON 字符串，如 `'{"Accept":"application/json"}'` |
-| `xsrf_cookie` | `string` | 否 | Cookie 名称，用于从 `document.cookie` 注入 `X-XSRF-TOKEN` |
+| `xsrf_cookie` | `string` | 否 | Cookie 名称；从 `document.cookie` 取令牌 |
+| `xsrf_headers` | `string` | 否 | JSON 数组字符串，如 `'["x-csrf-token"]'`；设 `xsrf_cookie` 且不传时默认 `["X-XSRF-TOKEN"]` |
 | `mode` | `string` | 否 | `fetch`（默认）或 `js` |
 | `script` | `string` | 否 | `js` 模式下执行的表达式；可使用注入的 `__BODY__` / `__BODY_STR__` |
 | `navigate_url` | `string` | 否 | 若当前 URL 不匹配则先导航到此地址 |

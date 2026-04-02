@@ -4,6 +4,26 @@
 
 ## [Unreleased]
 
+## [0.2.33] - 2026-04-02
+
+### Added
+
+- **页面内 fetch · XSRF/CSRF**：预设与 CLI 统一使用 **`xsrf_headers`**（字符串数组）；**`_normalize_xsrf`** 在 **`prepare_request`** 与 **`_page_fetch_fetch`** 中归一化；仅 **`xsrf_cookie`** 时默认 **`["X-XSRF-TOKEN"]`**
+- **`network fetch`**：可重复 **`--xsrf-header`**，经 **`prepare_request(xsrf_headers=...)`** 覆盖预设
+- **`network fetch-save`**：表驱动识别 CSRF 请求头（**`_CSRF_REQUEST_HEADER_NAMES_ORDERED`**），输出 **`xsrf_cookie` + `xsrf_headers`**
+- **MCP `page_fetch`**：**`xsrf_headers`** 参数（JSON 数组字符串）
+- **乐天**：**`rakuten/cpnadv-performance-retrieve`** 使用 **`x-csrf-token`** 请求头（修复该接口 401）
+
+### Changed
+
+- **移除** 单字段 **`xsrf_header`**（不再后向兼容）
+- **`ziniao site list`**：人类输出增加列说明图例；**`site`** 组帮助与 **`ziniao <site>`** 尾注指向 **`site list`**
+- **文档**：[docs/site-fetch-and-presets.md](docs/site-fetch-and-presets.md) 增加架构图与 **会话鉴权（`auth.type`）** 说明；新增 [docs/page-fetch-xsrf.md](docs/page-fetch-xsrf.md)；**README**、**api-reference** 索引同步
+
+### 工程
+
+- **`pyproject.toml` / `.cursor-plugin/plugin.json` / Git tag**：与 **`v0.2.33`** 对齐
+
 ## [0.2.32] - 2026-04-01
 
 ### Changed

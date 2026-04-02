@@ -15,9 +15,26 @@ import typer
 from .. import get_json_mode, run_command
 from ..output import print_result
 
-app = typer.Typer(no_args_is_help=True, help="Site plugins: list, show, enable, disable.")
+app = typer.Typer(
+    no_args_is_help=True,
+    help=(
+        "Site presets: list/show/fork/enable/disable. "
+        "Presets run in the active tab (cookies); see `ziniao site list --help` for column legend."
+    ),
+)
 
 _STATE_FILE = Path.home() / ".ziniao" / "sites.json"
+
+# Printed before `site list` table (human mode) — keep in sync with docstring of site_list().
+_PRESET_LIST_LEGEND = (
+    "  ---\n"
+    "  Columns: [mode] fetch | js — how the page issues HTTP (default fetch; js uses `script` in JSON).\n"
+    "           [auth] cookie | xsrf | token | none — session / anti-CSRF handling for the request.\n"
+    "           (paginated) — template defines pagination; use --page or --all on ziniao <site> <action>.\n"
+    "           (vars: …) — template placeholders; pass -V name=value. Details: ziniao site show <id>\n"
+    "           Leading x — preset disabled via `ziniao site disable` (hidden from ziniao <site> shortcuts).\n"
+    "  ---"
+)
 
 
 # ---------------------------------------------------------------------------
@@ -87,6 +104,13 @@ def _echo_preset_table(
 def site_list() -> None:
     """List all available site presets and their status.
 
+    Human output begins with a legend, then one line per preset. Tags mean:
+    [mode] fetch (default) uses page-context fetch(); js runs the template `script`.
+    [auth] cookie | xsrf | token | none reflects preset JSON field `auth`.
+    (paginated) means the template defines pagination (use --page / --all on ziniao <site> <action>).
+    (vars: …) lists -V keys; run ziniao site show <site>/<action> for required/default/example.
+    A leading x marks presets disabled via ziniao site disable (still work with network fetch -p).
+
     Examples:
         ziniao site list
         ziniao --json site list
@@ -103,6 +127,8 @@ def site_list() -> None:
         print_result({"presets": presets, "count": len(presets)}, json_mode=True)
         return
 
+    typer.echo(_PRESET_LIST_LEGEND)
+    typer.echo("")
     _echo_preset_table(presets, show_status=True, disabled=disabled)
     if presets:
         typer.echo(f"\n  Total: {len(presets)}  (x = disabled)")
@@ -297,8 +323,9 @@ def _set_site_callback(
             return
         _echo_preset_table(presets, strip_site=True)
         typer.echo(
-            f"\n  {len(presets)} commands."
-            f"  Use 'ziniao site show {site_name}/<name>' for full details."
+            f"\n  {len(presets)} commands.  "
+            f"ziniao site show {site_name}/<name> — variables & examples.  "
+            f"[mode]/[auth]/(paginated) legend: ziniao site list"
         )
 
 

@@ -3,7 +3,7 @@
   "description": "运用型优惠券（优惠券进阶广告）效果报表；使用当前标签页登录态调用 API。",
   "auth": {
     "type": "xsrf",
-    "hint": "需先在当前浏览器标签页登录 RMS（ad.rms.rakuten.co.jp）；请求会携带 Cookie 并从 Cookie 注入 X-XSRF-TOKEN",
+    "hint": "需先在当前浏览器标签页打开运用型优惠券效果页并登录；请求携带 Cookie，并从 XSRF-TOKEN cookie 注入 x-csrf-token 请求头",
     "show_hint": false
   },
   "navigate_url": "https://ad.rms.rakuten.co.jp/cpnadv/performance_reports",
@@ -16,6 +16,7 @@
     "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"
   },
   "xsrf_cookie": "XSRF-TOKEN",
+  "xsrf_headers": ["x-csrf-token"],
   "vars": {
     "start_date": {
       "type": "str",

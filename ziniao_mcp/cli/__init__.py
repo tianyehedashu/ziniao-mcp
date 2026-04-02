@@ -205,7 +205,11 @@ def _register_commands() -> None:
     app.add_typer(batch.app, name="batch", help="Batch command execution.")
     app.add_typer(mouse.app, name="mouse", help="Mouse control.")
     app.add_typer(network_cmd.app, name="network", help="Network interception, monitoring, HAR & fetch.")
-    app.add_typer(site_cmd.app, name="site", help="Site plugins: list, show, enable, disable.")
+    app.add_typer(
+        site_cmd.app,
+        name="site",
+        help="Site presets (page-context fetch). list/show/fork/enable/disable; see `site list --help` for columns.",
+    )
 
     site_cmd.register_site_commands(app)
 

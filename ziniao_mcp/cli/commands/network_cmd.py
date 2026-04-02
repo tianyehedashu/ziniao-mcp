@@ -117,6 +117,11 @@ def fetch_cmd(
     body: Optional[str] = typer.Option(None, "--body", "-d", help="Request body (JSON string)."),
     header: Optional[List[str]] = typer.Option(None, "--header", "-H", help="Header in Name:Value format (repeatable)."),
     xsrf_cookie: Optional[str] = typer.Option(None, "--xsrf-cookie", help="Cookie name for auto XSRF token."),
+    xsrf_headers_cli: Optional[List[str]] = typer.Option(
+        None,
+        "--xsrf-header",
+        help="Header name(s) for token from xsrf cookie (repeatable). Default X-XSRF-TOKEN when cookie set.",
+    ),
     var: Optional[List[str]] = typer.Option(None, "--var", "-V", help="Template variable key=value (repeatable)."),
     page: Optional[int] = typer.Option(None, "--page", help="Override page number (paginated preset/file)."),
     fetch_all: bool = typer.Option(False, "--all", help="Fetch and merge all pages (needs pagination in JSON)."),
@@ -164,6 +169,7 @@ def fetch_cmd(
             body=body or "",
             headers=_parse_headers(header or []) or None,
             xsrf_cookie=xsrf_cookie or "",
+            xsrf_headers=xsrf_headers_cli if xsrf_headers_cli else None,
             var_values=parsed_vars,
         )
     except (FileNotFoundError, ValueError, json.JSONDecodeError) as exc:
@@ -196,6 +202,15 @@ _AUTO_HEADERS = frozenset({
     "user-agent", "cookie", "content-length",
 })
 _AUTO_PREFIXES = ("sec-ch-", "sec-fetch-")
+
+# Lowercase names; first match in *req_headers* wins (preference order).
+_CSRF_REQUEST_HEADER_NAMES_ORDERED = (
+    "x-xsrf-token",
+    "x-csrf-token",
+    "csrf-token",
+    "x-xsrftoken",
+)
+_CSRF_HEADER_NAMES_LOWER = frozenset(_CSRF_REQUEST_HEADER_NAMES_ORDERED)
 
 
 def _is_auto_header(name: str) -> bool:
@@ -251,11 +266,18 @@ def fetch_save(
     if headers:
         spec["headers"] = headers
 
-    xsrf_val = req_headers.get("x-xsrf-token") or req_headers.get("X-XSRF-TOKEN") or ""
-    if xsrf_val:
+    by_lower = {k.lower(): k for k in req_headers}
+    found_csrf_orig: Optional[str] = None
+    for name in _CSRF_REQUEST_HEADER_NAMES_ORDERED:
+        if name in by_lower:
+            found_csrf_orig = by_lower[name]
+            break
+    if found_csrf_orig:
         spec["xsrf_cookie"] = "XSRF-TOKEN"
-        headers.pop("x-xsrf-token", None)
-        headers.pop("X-XSRF-TOKEN", None)
+        spec["xsrf_headers"] = [found_csrf_orig]
+        for key in list(headers.keys()):
+            if key.lower() in _CSRF_HEADER_NAMES_LOWER:
+                headers.pop(key, None)
 
     post_data = captured.get("post_data", "")
     if post_data:

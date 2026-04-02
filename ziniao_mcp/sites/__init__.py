@@ -8,6 +8,8 @@ Discovery order (same preset ID → first match wins):
 Optional JSON fields on presets:
 
 - ``auth``: ``{ "type": "cookie"|"xsrf"|"token"|"none", "hint": "..." }``
+- ``xsrf_cookie``: cookie name for XSRF token extraction (e.g. ``XSRF-TOKEN``).
+- ``xsrf_headers``: ``string[]`` — header names to set from ``xsrf_cookie``; defaults to ``["X-XSRF-TOKEN"]`` when ``xsrf_cookie`` is set.
 - ``pagination``: ``body_field`` / ``offset`` config for ``--all`` (see built-in examples).
 """
 
@@ -18,7 +20,7 @@ import copy
 import json
 import re
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Sequence
 
 from ._base import SitePlugin  # noqa: F401 — re-export for convenience
 
@@ -280,6 +282,27 @@ def _coerce(value: Any, var_def: dict) -> Any:
 # Shared execution helpers
 # ---------------------------------------------------------------------------
 
+_DEFAULT_XSRF_REQUEST_HEADER = "X-XSRF-TOKEN"
+
+
+def _normalize_xsrf(spec: dict) -> None:
+    """Ensure ``xsrf_headers`` is a clean list when ``xsrf_cookie`` is set.
+
+    If ``xsrf_cookie`` is present but ``xsrf_headers`` is missing/empty,
+    defaults to ``["X-XSRF-TOKEN"]``.  Removes empty entries and the key
+    entirely when no cookie is configured.
+    """
+    raw = spec.get("xsrf_headers")
+    headers_out = [str(x).strip() for x in raw if str(x).strip()] if isinstance(raw, list) else []
+    cookie = str(spec.get("xsrf_cookie") or "").strip()
+    if cookie and not headers_out:
+        headers_out = [_DEFAULT_XSRF_REQUEST_HEADER]
+    if headers_out:
+        spec["xsrf_headers"] = headers_out
+    else:
+        spec.pop("xsrf_headers", None)
+
+
 def prepare_request(
     *,
     preset: str = "",
@@ -290,6 +313,7 @@ def prepare_request(
     body: str = "",
     headers: dict | None = None,
     xsrf_cookie: str = "",
+    xsrf_headers: Sequence[str] | None = None,
     var_values: dict[str, str] | None = None,
 ) -> tuple[dict, SitePlugin | None]:
     """Build a unified request spec from preset / file / CLI args.
@@ -332,12 +356,16 @@ def prepare_request(
         spec["headers"] = existing
     if xsrf_cookie:
         spec["xsrf_cookie"] = xsrf_cookie
+    if xsrf_headers:
+        spec["xsrf_headers"] = [str(x).strip() for x in xsrf_headers if str(x).strip()]
 
     if isinstance(spec.get("body"), (dict, list)):
         spec["body"] = json.dumps(spec["body"], ensure_ascii=False)
 
     if plugin:
         spec = plugin.before_fetch(spec)
+
+    _normalize_xsrf(spec)
 
     return spec, plugin
 

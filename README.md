@@ -426,7 +426,7 @@ ziniao --json eval "document.querySelectorAll('a').length"
 ziniao --json network list --limit 10
 ziniao network route "*.ads.*" --abort
 
-# 页面内请求（继承登录 Cookie；站点模板见 docs/site-fetch-and-presets.md）
+# 页面内请求（复用登录会话；架构与鉴权策略见 docs/site-fetch-and-presets.md）
 ziniao site list
 ziniao rakuten rpp-search -V start_date=2026-03-01 -V end_date=2026-03-07
 ziniao network fetch -p rakuten/rpp-search -V start_date=2026-03-01 --all -o out.json
@@ -719,7 +719,8 @@ ziniao-mcp/
 | [CLI JSON 输出](docs/cli-json.md) | `--json` / `--json-legacy` 与 `jq` 字段路径 |
 | [CLI 与 LLM](docs/cli-llm.md) | 与 agent-browser 对齐：`--json` + `--content-boundaries` + `--max-output`、`ZINIAO_*`、快照语义 |
 | [与 agent-browser CLI 对照](docs/cli-agent-browser-parity.md) | 全量命令、参数语义、batch/snapshot 差异与 daemon 命令表 |
-| [页面内请求与站点模板](docs/site-fetch-and-presets.md) | `site` / `network fetch`、鉴权与分页字段、`eval --await`、MCP `page_fetch` |
+| [页面内请求与站点模板](docs/site-fetch-and-presets.md) | 架构、会话鉴权（`auth.type`）、`site` / `network fetch`、分页、MCP `page_fetch` |
+| [XSRF/CSRF 策略](docs/page-fetch-xsrf.md) | `xsrf_cookie` / `xsrf_headers`、`fetch-save` 识别表、实现与扩展 |
 
 ## 上游与贡献
 

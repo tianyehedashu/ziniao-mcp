@@ -1297,25 +1297,36 @@ async def _page_fetch(sm: Any, args: dict) -> dict:
 
 
 async def _page_fetch_fetch(tab: Any, args: dict) -> dict:
-    url = args.get("url", "")
+    from ziniao_mcp.sites import _normalize_xsrf  # pylint: disable=import-outside-toplevel
+
+    work = dict(args)
+    _normalize_xsrf(work)
+
+    url = work.get("url", "")
     if not url:
         return {"error": "url is required for fetch mode"}
-    method = args.get("method", "GET")
-    body = args.get("body", "")
-    headers = args.get("headers") or {}
-    xsrf_cookie = args.get("xsrf_cookie", "")
+    method = work.get("method", "GET")
+    body = work.get("body", "")
+    headers = work.get("headers") or {}
+    xsrf_cookie = work.get("xsrf_cookie", "")
+    xsrf_headers_list = work.get("xsrf_headers") or []
 
     headers_js = json.dumps(headers, ensure_ascii=False)
     body_js = json.dumps(body, ensure_ascii=False) if body else "null"
     url_js = json.dumps(url)
     xsrf_js = json.dumps(xsrf_cookie)
+    xsrf_headers_js = json.dumps(xsrf_headers_list)
 
     js = f"""(async () => {{
   const h = {headers_js};
   const xc = {xsrf_js};
-  if (xc) {{
+  const xhs = {xsrf_headers_js};
+  if (xc && xhs && xhs.length) {{
     const m = document.cookie.match(new RegExp(xc + '=([^;]+)'));
-    if (m) h['X-XSRF-TOKEN'] = decodeURIComponent(m[1]);
+    if (m) {{
+      const tok = decodeURIComponent(m[1]);
+      for (const name of xhs) {{ if (name) h[name] = tok; }}
+    }}
   }}
   const opts = {{ method: {json.dumps(method)}, headers: h, credentials: 'include' }};
   const body = {body_js};
