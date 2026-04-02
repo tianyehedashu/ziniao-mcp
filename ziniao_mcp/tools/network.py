@@ -156,8 +156,7 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
         method: str = "GET",
         body: str = "",
         headers: str = "",
-        xsrf_cookie: str = "",
-        xsrf_headers: str = "",
+        header_inject: str = "",
         mode: str = "fetch",
         script: str = "",
         navigate_url: str = "",
@@ -175,8 +174,7 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
             method: HTTP method (default GET).
             body: Request body as JSON string.
             headers: Request headers as JSON string (e.g. '{"Accept":"application/json"}').
-            xsrf_cookie: Cookie name to auto-extract XSRF token (e.g. "XSRF-TOKEN").
-            xsrf_headers: JSON array of header names to set with that token, e.g. '["x-csrf-token"]'. Defaults to ["X-XSRF-TOKEN"] when xsrf_cookie is set.
+            header_inject: JSON array of injection rules. Each entry: {"header":"x-csrf-token","source":"cookie","key":"XSRF-TOKEN"}. Sources: cookie, localStorage, sessionStorage, eval.
             mode: Execution mode: "fetch" or "js".
             script: JS expression (required for js mode).
             navigate_url: Navigate to this URL first if current page doesn't match.
@@ -190,15 +188,14 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
             "method": method,
             "body": body,
             "headers": headers_dict,
-            "xsrf_cookie": xsrf_cookie,
             "script": script,
             "navigate_url": navigate_url,
         }
-        if xsrf_headers.strip():
+        if header_inject.strip():
             try:
-                parsed = json.loads(xsrf_headers)
+                parsed = json.loads(header_inject)
                 if isinstance(parsed, list) and parsed:
-                    args["xsrf_headers"] = [str(x) for x in parsed if str(x).strip()]
+                    args["header_inject"] = parsed
             except (json.JSONDecodeError, TypeError):
                 pass
         result = await _page_fetch(session, args)

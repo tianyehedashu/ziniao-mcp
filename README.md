@@ -720,7 +720,7 @@ ziniao-mcp/
 | [CLI 与 LLM](docs/cli-llm.md) | 与 agent-browser 对齐：`--json` + `--content-boundaries` + `--max-output`、`ZINIAO_*`、快照语义 |
 | [与 agent-browser CLI 对照](docs/cli-agent-browser-parity.md) | 全量命令、参数语义、batch/snapshot 差异与 daemon 命令表 |
 | [页面内请求与站点模板](docs/site-fetch-and-presets.md) | 架构、会话鉴权（`auth.type`）、`site` / `network fetch`、分页、MCP `page_fetch` |
-| [XSRF/CSRF 策略](docs/page-fetch-xsrf.md) | `xsrf_cookie` / `xsrf_headers`、`fetch-save` 识别表、实现与扩展 |
+| [Header 注入（`header_inject`）](docs/page-fetch-auth.md) | 声明式 header 注入（cookie/localStorage/sessionStorage/eval）、`fetch-save` 识别表、实现与扩展 |
 
 ## 上游与贡献
 

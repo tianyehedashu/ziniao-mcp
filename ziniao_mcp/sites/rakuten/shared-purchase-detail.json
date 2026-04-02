@@ -14,7 +14,7 @@
     "Accept": "application/json",
     "Accept-Language": "ja"
   },
-  "xsrf_cookie": "XSRF-TOKEN",
+  "header_inject": [{"header": "X-XSRF-TOKEN", "source": "cookie", "key": "XSRF-TOKEN"}],
   "vars": {
     "target_month": {
       "type": "str",

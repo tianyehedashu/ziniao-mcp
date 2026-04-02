@@ -23,7 +23,7 @@
     "Accept-Language": "ja",
     "Content-Type": "application/json"
   },
-  "xsrf_cookie": "XSRF-TOKEN",
+  "header_inject": [{"header": "X-XSRF-TOKEN", "source": "cookie", "key": "XSRF-TOKEN"}],
   "vars": {
     "start_date": {
       "type": "str",

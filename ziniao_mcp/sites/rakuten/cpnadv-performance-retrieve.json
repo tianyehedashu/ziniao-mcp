@@ -15,8 +15,7 @@
     "Accept-Language": "ja",
     "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"
   },
-  "xsrf_cookie": "XSRF-TOKEN",
-  "xsrf_headers": ["x-csrf-token"],
+  "header_inject": [{"header": "x-csrf-token", "source": "cookie", "key": "XSRF-TOKEN"}],
   "vars": {
     "start_date": {
       "type": "str",

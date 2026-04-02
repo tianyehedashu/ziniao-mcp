@@ -1,6 +1,6 @@
 # 页面内请求与站点模板（Site presets）
 
-在当前浏览器**活动标签页**的 JavaScript 环境里执行请求，自动带上该页的 **Cookie**；可按模板注入 **XSRF**、**变量**、**分页**。适用于已登录后台的 XHR/API 拉数，而不是无头爬公网。
+在当前浏览器**活动标签页**的 JavaScript 环境里执行请求，自动带上该页的 **Cookie**；可按模板声明式注入**鉴权头**（`header_inject`）、**变量**、**分页**。适用于已登录后台的 XHR/API 拉数，而不是无头爬公网。
 
 ## 架构
 
@@ -13,20 +13,22 @@
 └────────────────────────┬────────────────────────────────────────┘
                          ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│ 归一化：prepare_request()                                        │
+│ 合并：prepare_request()                                          │
 │  加载预设/文件 → 渲染 {{vars}} → 合并 CLI 覆盖                     │
-│  → plugin.before_fetch() → _normalize_xsrf()                   │
-│                                                                 │
-│  输出：唯一 spec dict                                             │
-│    url, method, body, headers,                                  │
-│    xsrf_cookie + xsrf_headers[],                                │
-│    navigate_url, mode, pagination …                             │
+│  → plugin.before_fetch()                                        │
+│  输出 spec（header_inject 校验尚未执行，见下一步）                     │
 └────────────────────────┬────────────────────────────────────────┘
                          ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│ 执行器：_page_fetch_fetch()                                      │
-│  不含业务逻辑；按 spec 生成 JS：                                    │
-│    cookie → xsrf_headers[] → h[name] = token                   │
+│ daemon：_page_fetch()                                            │
+│  _normalize_header_inject(args) — CLI 与 MCP 唯一归一化点           │
+│  → navigate_url（若配置）→ fetch 或 js 模式                       │
+└────────────────────────┬────────────────────────────────────────┘
+                         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ _page_fetch_fetch()                                              │
+│  按已归一化 spec 生成 JS：                                        │
+│    header_inject[] → 按 source 读值 → h[name] = token           │
 │    fetch(url, {headers, body, credentials:'include'})           │
 └────────────────────────┬────────────────────────────────────────┘
                          ▼
@@ -36,7 +38,55 @@
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-设计原则：**特例停在归一化层，执行器只按 spec 发请求**。如果某个站点的鉴权逻辑无法用声明字段表达，应使用 `mode: "js"` 或 `SitePlugin.before_fetch`，而不是在执行器里加分支。
+设计原则：**`header_inject` 校验只在 `_page_fetch` 做一次**；`prepare_request` 只做合并与插件钩子。**特例**用 `mode: "js"` 或 `SitePlugin.before_fetch` 表达，不在 `_page_fetch_fetch` 里堆分支。
+
+### 架构考量（分层、边界、取舍）
+
+**1. 三层职责**
+
+| 层 | 代码锚点 | 做什么 | 不做什么 |
+|----|----------|--------|----------|
+| **装配** | `prepare_request` | 读预设/文件、渲染 `{{vars}}`、合并 CLI、跑 `before_fetch` | 不做 `header_inject` 校验 |
+| **执行入口** | `dispatch._page_fetch` | 导航、`_normalize_header_inject`、按 `mode` 分支 | 不含具体站点 if/else |
+| **传输实现** | `_page_fetch_fetch` | 把 dict 编成页面内 `fetch` + `credentials: 'include'` | 不再改注入语义 |
+
+**2. 为何 `header_inject` 校验放在 daemon 的 `_page_fetch`**
+
+- **入口收敛**：CLI（经 `prepare_request`）与 **MCP（直传 args）** 最终都进入同一函数；校验只做一次，避免装配层与执行层重复。
+- **边界清晰**：装配产物可以视为**意图**（用户/预设写了什么）；进入 `_page_fetch` 之后才是**即将执行的 HTTP 契约**。
+- **插件顺序**：`before_fetch` 仍可改写 `header_inject`；校验在**插件之后、真正发请求之前**。
+
+**3. 接受的权衡**
+
+- `prepare_request` 返回的 dict 中 `header_inject` 可能含无效项，直到 daemon 执行才被过滤。当前产品路径上唯一消费者是 `page_fetch`，无额外中间层依赖已校验的 spec；若将来有只读 spec 的工具，需自行调用 `_normalize_header_inject`。
+
+**4. 独立管线与逃逸舱**
+
+- **`fetch-save`**：从抓包**反向生成** JSON，不走 `prepare_request` / `_page_fetch`；表驱动识别 CSRF 头，与运行时管线正交。
+- **`mode: "js"` / `SitePlugin`**：当声明式字段无法表达鉴权或签名时，在**装配层或页面内脚本**解决，而不是往 `_page_fetch_fetch` 塞分支。
+
+```mermaid
+flowchart LR
+  subgraph client [Client]
+    CLI[CLI_site_network]
+    MCP[MCP_page_fetch]
+  end
+  subgraph assembly [Assembly]
+    PR[prepare_request]
+  end
+  subgraph daemon [Daemon]
+    PF["_page_fetch\n_normalize_header_inject"]
+    PFF[_page_fetch_fetch]
+  end
+  subgraph tab [BrowserTab]
+    F[fetch]
+  end
+  CLI --> PR
+  PR --> PF
+  MCP --> PF
+  PF --> PFF
+  PFF --> F
+```
 
 ## 会话鉴权（auth）
 
@@ -45,13 +95,13 @@
 | `auth.type` | 含义 | 模板字段 |
 |-------------|------|---------|
 | `cookie` | 只带 Cookie（`credentials: 'include'`） | 无额外字段 |
-| `xsrf` | Cookie + 从 Cookie 读反 CSRF 令牌写入请求头 | `xsrf_cookie` + `xsrf_headers` |
-| `token` | Bearer / 自定义令牌（通常从页面状态获取） | 一般配合 `mode: "js"` |
+| `xsrf` | Cookie + 从 Cookie 读反 CSRF 令牌写入请求头 | `header_inject` (source: cookie) |
+| `token` | Bearer / 自定义令牌（通常从页面状态获取） | `header_inject` (source: localStorage/eval) 或 `mode: "js"` |
 | `none` | 无需鉴权 | 无 |
 
-`auth.type` 是**给人和工具看的标签**（`site list` 显示、Agent 决策参考）；实际行为由 `xsrf_cookie` / `xsrf_headers` / `mode` 等字段驱动。
+`auth.type` 是**给人和工具看的标签**（`site list` 显示、Agent 决策参考）；实际行为由 `header_inject` / `mode` 等字段驱动。
 
-XSRF 策略的字段说明、`fetch-save` 自动识别、扩展方式 → **[page-fetch-xsrf.md](page-fetch-xsrf.md)**。
+`header_inject` 的字段说明、`fetch-save` 自动识别、扩展方式 → **[page-fetch-auth.md](page-fetch-auth.md)**。
 
 ## 最简用法
 
@@ -95,8 +145,7 @@ ziniao network fetch-save --filter "reports/search" -o tpl.json
 | `navigate_url` | 执行前若不在该页则先导航 |
 | `mode` | `fetch`（默认）或 `js`（走页面内脚本，配合 `script`） |
 | `auth` | `type`: `cookie` / `xsrf` / `token` / `none`；`hint` 给人看的说明 |
-| `xsrf_cookie` | Cookie 名；从 `document.cookie` 取令牌 |
-| `xsrf_headers` | `string[]`：令牌写入的请求头名；设 `xsrf_cookie` 且不写时默认 `["X-XSRF-TOKEN"]` |
+| `header_inject` | `list[dict]`：声明式 header 注入规则；详见 [page-fetch-auth.md](page-fetch-auth.md) |
 | `vars` | 模板变量定义；正文里用 `{{name}}` |
 | `pagination` | `body_field` 或 `offset`：支持 `--all` 自动翻页合并列表 |
 
@@ -126,10 +175,10 @@ ziniao eval --await "fetch('/api').then(r => r.text())"
 
 ## MCP
 
-工具 **`page_fetch`**：参数为 URL、method、body、headers（JSON 字符串）、`xsrf_cookie`、`xsrf_headers`（JSON 数组字符串）、`mode`、`script`、`navigate_url`，语义与 daemon 的 `page_fetch` 一致。
+工具 **`page_fetch`**：参数为 URL、method、body、headers（JSON 字符串）、`header_inject`（JSON 数组字符串）、`mode`、`script`、`navigate_url`，语义与 daemon 的 `page_fetch` 一致。
 
 ## 另见
 
-- **[page-fetch-xsrf.md](page-fetch-xsrf.md)** — XSRF/CSRF 策略：使用、实现与扩展
+- **[page-fetch-auth.md](page-fetch-auth.md)** — Header 注入（`header_inject`）：使用、实现与扩展
 - 仓库内 Agent 技能：`skills/ziniao-cli/SKILL.md`（速查表）
 - 完整命令表：`skills/ziniao-cli/references/commands.md`

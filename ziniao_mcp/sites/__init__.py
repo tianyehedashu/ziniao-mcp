@@ -8,8 +8,9 @@ Discovery order (same preset ID → first match wins):
 Optional JSON fields on presets:
 
 - ``auth``: ``{ "type": "cookie"|"xsrf"|"token"|"none", "hint": "..." }``
-- ``xsrf_cookie``: cookie name for XSRF token extraction (e.g. ``XSRF-TOKEN``).
-- ``xsrf_headers``: ``string[]`` — header names to set from ``xsrf_cookie``; defaults to ``["X-XSRF-TOKEN"]`` when ``xsrf_cookie`` is set.
+- ``header_inject``: ``list[dict]`` — declarative header injection rules.
+  Each entry: ``{ "header": str, "source": "cookie"|"localStorage"|"sessionStorage"|"eval",
+  "key": str, "expression": str, "transform": str }``.
 - ``pagination``: ``body_field`` / ``offset`` config for ``--all`` (see built-in examples).
 """
 
@@ -20,7 +21,7 @@ import copy
 import json
 import re
 from pathlib import Path
-from typing import Any, Callable, Sequence
+from typing import Any, Callable
 
 from ._base import SitePlugin  # noqa: F401 — re-export for convenience
 
@@ -282,25 +283,50 @@ def _coerce(value: Any, var_def: dict) -> Any:
 # Shared execution helpers
 # ---------------------------------------------------------------------------
 
-_DEFAULT_XSRF_REQUEST_HEADER = "X-XSRF-TOKEN"
+_VALID_INJECT_SOURCES = frozenset({"cookie", "localStorage", "sessionStorage", "eval"})
 
 
-def _normalize_xsrf(spec: dict) -> None:
-    """Ensure ``xsrf_headers`` is a clean list when ``xsrf_cookie`` is set.
+def _normalize_header_inject(spec: dict) -> None:
+    """Validate and clean the ``header_inject`` list in *spec*.
 
-    If ``xsrf_cookie`` is present but ``xsrf_headers`` is missing/empty,
-    defaults to ``["X-XSRF-TOKEN"]``.  Removes empty entries and the key
-    entirely when no cookie is configured.
+    Each entry must have ``header`` (str) and ``source`` (one of cookie /
+    localStorage / sessionStorage / eval).  Invalid or incomplete entries are
+    silently dropped.  If the resulting list is empty the key is removed.
+
+    Invoked from ``dispatch._page_fetch`` (single choke point for CLI + MCP);
+    ``prepare_request`` does not call this.
     """
-    raw = spec.get("xsrf_headers")
-    headers_out = [str(x).strip() for x in raw if str(x).strip()] if isinstance(raw, list) else []
-    cookie = str(spec.get("xsrf_cookie") or "").strip()
-    if cookie and not headers_out:
-        headers_out = [_DEFAULT_XSRF_REQUEST_HEADER]
-    if headers_out:
-        spec["xsrf_headers"] = headers_out
+    raw = spec.get("header_inject")
+    if not isinstance(raw, list):
+        spec.pop("header_inject", None)
+        return
+    cleaned: list[dict] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        header = str(item.get("header") or "").strip()
+        source = str(item.get("source") or "").strip()
+        if not header or source not in _VALID_INJECT_SOURCES:
+            continue
+        entry: dict = {"header": header, "source": source}
+        if source == "eval":
+            expr = str(item.get("expression") or "").strip()
+            if not expr:
+                continue
+            entry["expression"] = expr
+        else:
+            key = str(item.get("key") or "").strip()
+            if not key:
+                continue
+            entry["key"] = key
+        transform = str(item.get("transform") or "").strip()
+        if transform:
+            entry["transform"] = transform
+        cleaned.append(entry)
+    if cleaned:
+        spec["header_inject"] = cleaned
     else:
-        spec.pop("xsrf_headers", None)
+        spec.pop("header_inject", None)
 
 
 def prepare_request(
@@ -312,11 +338,13 @@ def prepare_request(
     method: str = "GET",
     body: str = "",
     headers: dict | None = None,
-    xsrf_cookie: str = "",
-    xsrf_headers: Sequence[str] | None = None,
+    header_inject: list[dict] | None = None,
     var_values: dict[str, str] | None = None,
 ) -> tuple[dict, SitePlugin | None]:
     """Build a unified request spec from preset / file / CLI args.
+
+    ``header_inject`` validation is applied in ``dispatch._page_fetch``,
+    not here.
 
     Returns ``(spec_dict, plugin_or_None)``.
     Raises ``FileNotFoundError`` / ``ValueError`` / ``json.JSONDecodeError``.
@@ -354,18 +382,14 @@ def prepare_request(
         existing = spec.get("headers") or {}
         existing.update(headers)
         spec["headers"] = existing
-    if xsrf_cookie:
-        spec["xsrf_cookie"] = xsrf_cookie
-    if xsrf_headers:
-        spec["xsrf_headers"] = [str(x).strip() for x in xsrf_headers if str(x).strip()]
+    if header_inject:
+        spec["header_inject"] = header_inject
 
     if isinstance(spec.get("body"), (dict, list)):
         spec["body"] = json.dumps(spec["body"], ensure_ascii=False)
 
     if plugin:
         spec = plugin.before_fetch(spec)
-
-    _normalize_xsrf(spec)
 
     return spec, plugin
 

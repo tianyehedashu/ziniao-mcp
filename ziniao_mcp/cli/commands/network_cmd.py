@@ -107,6 +107,34 @@ def _parse_headers(raw: List[str]) -> dict:
     return result
 
 
+def _parse_inject(raw: str) -> dict:
+    """Parse a single ``--inject`` value into a header_inject entry.
+
+    Accepts either a JSON object string (starts with ``{``) or the compact
+    format ``source:key=header`` / ``eval:expression=header``.
+    """
+    raw = raw.strip()
+    if raw.startswith("{"):
+        return json.loads(raw)
+    # compact: source:key_or_expr=header[:transform]
+    eq_pos = raw.find("=")
+    if eq_pos < 0:
+        raise ValueError(f"Invalid --inject format (missing '='): {raw}")
+    left, right = raw[:eq_pos], raw[eq_pos + 1:]
+    colon_pos = left.find(":")
+    if colon_pos < 0:
+        raise ValueError(f"Invalid --inject format (missing source): {raw}")
+    source = left[:colon_pos].strip()
+    key_or_expr = left[colon_pos + 1:].strip()
+    header = right.strip()
+    entry: dict = {"source": source, "header": header}
+    if source == "eval":
+        entry["expression"] = key_or_expr
+    else:
+        entry["key"] = key_or_expr
+    return entry
+
+
 @app.command("fetch")
 def fetch_cmd(
     url: Optional[str] = typer.Argument(None, help="URL to fetch (or use --preset / --file)."),
@@ -116,11 +144,10 @@ def fetch_cmd(
     method: str = typer.Option("GET", "--method", "-X", help="HTTP method."),
     body: Optional[str] = typer.Option(None, "--body", "-d", help="Request body (JSON string)."),
     header: Optional[List[str]] = typer.Option(None, "--header", "-H", help="Header in Name:Value format (repeatable)."),
-    xsrf_cookie: Optional[str] = typer.Option(None, "--xsrf-cookie", help="Cookie name for auto XSRF token."),
-    xsrf_headers_cli: Optional[List[str]] = typer.Option(
+    inject: Optional[List[str]] = typer.Option(
         None,
-        "--xsrf-header",
-        help="Header name(s) for token from xsrf cookie (repeatable). Default X-XSRF-TOKEN when cookie set.",
+        "--inject",
+        help='Header injection rule (repeatable). Compact: "cookie:XSRF-TOKEN=x-csrf-token" or JSON object.',
     ),
     var: Optional[List[str]] = typer.Option(None, "--var", "-V", help="Template variable key=value (repeatable)."),
     page: Optional[int] = typer.Option(None, "--page", help="Override page number (paginated preset/file)."),
@@ -159,6 +186,14 @@ def fetch_cmd(
     if page is not None:
         parsed_vars["page"] = str(page)
 
+    parsed_inject: list[dict] | None = None
+    if inject:
+        try:
+            parsed_inject = [_parse_inject(i) for i in inject]
+        except (json.JSONDecodeError, ValueError) as exc:
+            typer.echo(f"Error parsing --inject: {exc}", err=True)
+            raise typer.Exit(1) from exc
+
     try:
         spec, plugin = prepare_request(
             preset=preset or "",
@@ -168,8 +203,7 @@ def fetch_cmd(
             method=method,
             body=body or "",
             headers=_parse_headers(header or []) or None,
-            xsrf_cookie=xsrf_cookie or "",
-            xsrf_headers=xsrf_headers_cli if xsrf_headers_cli else None,
+            header_inject=parsed_inject,
             var_values=parsed_vars,
         )
     except (FileNotFoundError, ValueError, json.JSONDecodeError) as exc:
@@ -273,8 +307,9 @@ def fetch_save(
             found_csrf_orig = by_lower[name]
             break
     if found_csrf_orig:
-        spec["xsrf_cookie"] = "XSRF-TOKEN"
-        spec["xsrf_headers"] = [found_csrf_orig]
+        spec["header_inject"] = [
+            {"header": found_csrf_orig, "source": "cookie", "key": "XSRF-TOKEN"}
+        ]
         for key in list(headers.keys()):
             if key.lower() in _CSRF_HEADER_NAMES_LOWER:
                 headers.pop(key, None)

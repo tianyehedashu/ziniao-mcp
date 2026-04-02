@@ -4,6 +4,28 @@
 
 ## [Unreleased]
 
+## [0.2.34] - 2026-04-02
+
+### Breaking
+
+- **页面内 fetch · Header 注入**：移除 **`xsrf_cookie`** / **`xsrf_headers`**；统一为声明式 **`header_inject`**（`source`: `cookie` | `localStorage` | `sessionStorage` | `eval`，见文档）
+- **`ziniao network fetch`**：**`--xsrf-cookie` / `--xsrf-header`** 改为可重复的 **`--inject`**（紧凑 `source:key=header` 或 JSON 对象）
+- **`ziniao network fetch-save`**：输出 **`header_inject`** 替代 `xsrf_*`
+- **MCP `page_fetch`**：参数 **`header_inject`**（JSON 数组字符串）替代 `xsrf_cookie` / `xsrf_headers`
+- **乐天内置预设**：8 个 `xsrf` 模板已改为 **`header_inject`** 数组
+
+### Added
+
+- **文档**：[docs/page-fetch-auth.md](docs/page-fetch-auth.md)（替代已删除的 `page-fetch-xsrf.md`）
+
+### Fixed
+
+- **测试**：Typer **`CliRunner`** 在 Click 8+ 默认混合 stderr 时访问 **`result.stderr`** 会报错；相关用例改为 **`CliRunner(mix_stderr=False)`**
+
+### 工程
+
+- **`pyproject.toml` / `.cursor-plugin/plugin.json` / Git tag**：与 **`v0.2.34`** 对齐
+
 ## [0.2.33] - 2026-04-02
 
 ### Added

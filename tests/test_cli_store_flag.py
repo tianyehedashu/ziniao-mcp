@@ -12,7 +12,7 @@ from ziniao_mcp.cli.output import set_cli_json_legacy
 
 
 def test_store_and_session_mutually_exclusive() -> None:
-    runner = CliRunner()
+    runner = CliRunner(mix_stderr=False)
     result = runner.invoke(
         app,
         ["--store", "a", "--session", "b", "session", "list"],
@@ -42,12 +42,12 @@ def test_store_passes_target_session_to_send_command(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(cli_mod, "send_command", fake_send_command)
     set_cli_json_legacy(True)
     try:
-        runner = CliRunner()
+        runner = CliRunner(mix_stderr=False)
         result = runner.invoke(
             cli_mod.app,
             ["--store", "my-store-001", "--json-legacy", "session", "list"],
         )
-        assert result.exit_code == 0, result.stdout + result.stderr
+        assert result.exit_code == 0, (result.stdout or "") + (result.stderr or "")
         assert captured["command"] == "session_list"
         assert captured["target_session"] == "my-store-001"
     finally:
@@ -71,12 +71,12 @@ def test_session_passes_target_session_to_send_command(monkeypatch: pytest.Monke
     monkeypatch.setattr(cli_mod, "send_command", fake_send_command)
     set_cli_json_legacy(True)
     try:
-        runner = CliRunner()
+        runner = CliRunner(mix_stderr=False)
         result = runner.invoke(
             cli_mod.app,
             ["--session", "chrome-sess-9", "--json-legacy", "get", "url"],
         )
-        assert result.exit_code == 0, result.stdout + result.stderr
+        assert result.exit_code == 0, (result.stdout or "") + (result.stderr or "")
         assert captured["target_session"] == "chrome-sess-9"
     finally:
         set_cli_json_legacy(False)

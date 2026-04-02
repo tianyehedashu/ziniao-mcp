@@ -18,7 +18,7 @@
     "page-name": "rppexp_reports_",
     "x-shop-url": "{{shop_url}}"
   },
-  "xsrf_cookie": "XSRF-TOKEN",
+  "header_inject": [{"header": "X-XSRF-TOKEN", "source": "cookie", "key": "XSRF-TOKEN"}],
   "vars": {
     "start_date": {
       "type": "str",

@@ -1280,6 +1280,10 @@ async def _clipboard(sm: Any, args: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 async def _page_fetch(sm: Any, args: dict) -> dict:
+    from ziniao_mcp.sites import _normalize_header_inject  # pylint: disable=import-outside-toplevel
+
+    _normalize_header_inject(args)
+
     mode = args.get("mode", "fetch")
     navigate_url = args.get("navigate_url", "")
     tab = sm.get_active_tab()
@@ -1297,35 +1301,36 @@ async def _page_fetch(sm: Any, args: dict) -> dict:
 
 
 async def _page_fetch_fetch(tab: Any, args: dict) -> dict:
-    from ziniao_mcp.sites import _normalize_xsrf  # pylint: disable=import-outside-toplevel
-
-    work = dict(args)
-    _normalize_xsrf(work)
-
-    url = work.get("url", "")
+    url = args.get("url", "")
     if not url:
         return {"error": "url is required for fetch mode"}
-    method = work.get("method", "GET")
-    body = work.get("body", "")
-    headers = work.get("headers") or {}
-    xsrf_cookie = work.get("xsrf_cookie", "")
-    xsrf_headers_list = work.get("xsrf_headers") or []
+    method = args.get("method", "GET")
+    body = args.get("body", "")
+    headers = args.get("headers") or {}
+    injections = args.get("header_inject") or []
 
     headers_js = json.dumps(headers, ensure_ascii=False)
     body_js = json.dumps(body, ensure_ascii=False) if body else "null"
     url_js = json.dumps(url)
-    xsrf_js = json.dumps(xsrf_cookie)
-    xsrf_headers_js = json.dumps(xsrf_headers_list)
+    inject_js = json.dumps(injections, ensure_ascii=False)
 
     js = f"""(async () => {{
   const h = {headers_js};
-  const xc = {xsrf_js};
-  const xhs = {xsrf_headers_js};
-  if (xc && xhs && xhs.length) {{
-    const m = document.cookie.match(new RegExp(xc + '=([^;]+)'));
-    if (m) {{
-      const tok = decodeURIComponent(m[1]);
-      for (const name of xhs) {{ if (name) h[name] = tok; }}
+  const injections = {inject_js};
+  for (const inj of injections) {{
+    let val = null;
+    if (inj.source === 'cookie') {{
+      const m = document.cookie.match(new RegExp(inj.key + '=([^;]+)'));
+      val = m ? decodeURIComponent(m[1]) : null;
+    }} else if (inj.source === 'localStorage') {{
+      val = localStorage.getItem(inj.key);
+    }} else if (inj.source === 'sessionStorage') {{
+      val = sessionStorage.getItem(inj.key);
+    }} else if (inj.source === 'eval') {{
+      try {{ val = await Promise.resolve(eval(inj.expression)); }} catch(e) {{}}
+    }}
+    if (val != null) {{
+      h[inj.header] = inj.transform ? inj.transform.replace('${{value}}', val) : val;
     }}
   }}
   const opts = {{ method: {json.dumps(method)}, headers: h, credentials: 'include' }};
