@@ -4,6 +4,24 @@
 
 ## [Unreleased]
 
+## [0.2.35] - 2026-04-02
+
+### Changed
+
+- **站点动态分组（`ziniao <site>`）**：**`--help`** 子命令表首段与无参列表共用 **`_preset_listing_suffix`**，`[mode]` / `[auth]` / `(paginated)` / `(vars: …)` 与直接执行 **`ziniao <site>`** 一致
+
+### Added
+
+- **`ziniao <site>`** 与 **`ziniao <site> --help`** 底部增加 **`Example: …`**（选取该站点下首条含必填变量的 preset，用 **`var_defs` 的 example** 拼命令行；分页预设追加 **`--all`**）；Typer 分组 **`epilog`** 与无参尾注同步
+
+### Fixed
+
+- **CLI**：**`site_cmd`** 将 **`_pick_example_line` / `_set_site_callback`** 置于 **`register_site_commands`** 之前，消除 Pylint 对「未定义变量 / 实参过多」的误报
+
+### 工程
+
+- **`pyproject.toml` / `.cursor-plugin/plugin.json` / Git tag**：与 **`v0.2.35`** 对齐
+
 ## [0.2.34] - 2026-04-02
 
 ### Breaking

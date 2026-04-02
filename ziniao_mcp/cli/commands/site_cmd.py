@@ -29,7 +29,8 @@ _STATE_FILE = Path.home() / ".ziniao" / "sites.json"
 _PRESET_LIST_LEGEND = (
     "  ---\n"
     "  Columns: [mode] fetch | js — how the page issues HTTP (default fetch; js uses `script` in JSON).\n"
-    "           [auth] cookie | xsrf | token | none — session / anti-CSRF handling for the request.\n"
+    "           [auth] cookie | xsrf | token | none — preset `auth.type` (documentation taxonomy, not the injector).\n"
+    "                    In fetch mode, xsrf presets use declarative `header_inject` for CSRF/session headers; see docs/page-fetch-auth.md.\n"
     "           (paginated) — template defines pagination; use --page or --all on ziniao <site> <action>.\n"
     "           (vars: …) — template placeholders; pass -V name=value. Details: ziniao site show <id>\n"
     "           Leading x — preset disabled via `ziniao site disable` (hidden from ziniao <site> shortcuts).\n"
@@ -65,6 +66,18 @@ def is_preset_enabled(preset_id: str) -> bool:
 # Shared preset table formatting
 # ---------------------------------------------------------------------------
 
+def _preset_listing_suffix(p: dict) -> str:
+    """One-line summary after the preset name: [mode] [auth] (paginated) desc (vars: …)."""
+    mode_tag = f"[{p['mode']}]"
+    auth_tag = f"[{p.get('auth', 'cookie')}]"
+    pag_note = " (paginated)" if p.get("paginated") else ""
+    vars_str = ", ".join(p.get("vars", [])) if p.get("vars") else ""
+    line = f"{mode_tag:<8} {auth_tag:<8}{pag_note}  {p.get('description', '')}"
+    if vars_str:
+        line += f"  (vars: {vars_str})"
+    return line
+
+
 def _echo_preset_table(
     presets: list[dict],
     *,
@@ -86,14 +99,7 @@ def _echo_preset_table(
         prefix = ""
         if show_status:
             prefix = "x " if p["id"] in _disabled else "  "
-        mode_tag = f"[{p['mode']}]"
-        auth_tag = f"[{p.get('auth', 'cookie')}]"
-        pag_note = " (paginated)" if p.get("paginated") else ""
-        vars_str = ", ".join(p.get("vars", [])) if p.get("vars") else ""
-        line = f"  {prefix}{name:<{max_name}}  {mode_tag:<8} {auth_tag:<8}{pag_note}  {p.get('description', '')}"
-        if vars_str:
-            line += f"  (vars: {vars_str})"
-        typer.echo(line)
+        typer.echo(f"  {prefix}{name:<{max_name}}  {_preset_listing_suffix(p)}")
 
 
 # ---------------------------------------------------------------------------
@@ -106,7 +112,7 @@ def site_list() -> None:
 
     Human output begins with a legend, then one line per preset. Tags mean:
     [mode] fetch (default) uses page-context fetch(); js runs the template `script`.
-    [auth] cookie | xsrf | token | none reflects preset JSON field `auth`.
+    [auth] cookie | xsrf | token | none is preset `auth.type` (metadata). xsrf + fetch uses `header_inject` for tokens (docs/page-fetch-auth.md).
     (paginated) means the template defines pagination (use --page / --all on ziniao <site> <action>).
     (vars: …) lists -V keys; run ziniao site show <site>/<action> for required/default/example.
     A leading x marks presets disabled via ziniao site disable (still work with network fetch -p).
@@ -276,6 +282,48 @@ def site_disable(
 # Dynamic site shortcut registration: ziniao <site> <action>
 # ---------------------------------------------------------------------------
 
+
+def _pick_example_line(site_name: str, presets: list[dict]) -> str:
+    """Pick a representative preset and build an example command line."""
+    best = None
+    for p in presets:
+        var_defs: dict = p.get("var_defs") or {}
+        required = {k: v for k, v in var_defs.items() if v.get("required")}
+        if required:
+            best = p
+            break
+    if best is None:
+        best = presets[0] if presets else None
+    if best is None:
+        return ""
+    action = best["id"].split("/", 1)[1] if "/" in best["id"] else best["id"]
+    var_defs = best.get("var_defs") or {}
+    required = {k: v for k, v in var_defs.items() if v.get("required")}
+    var_args = " ".join(f"-V {k}={v.get('example', '...')}" for k, v in required.items())
+    pag_hint = " --all" if best.get("paginated") else ""
+    return f"Example: ziniao {site_name} {action} {var_args}{pag_hint}".rstrip()
+
+
+def _set_site_callback(
+    grp: typer.Typer, site_name: str, presets: list[dict], example_line: str,
+) -> None:
+    """Add a callback that prints the rich preset table when no subcommand is given."""
+
+    @grp.callback(invoke_without_command=True)
+    def _default(ctx: typer.Context) -> None:
+        if ctx.invoked_subcommand is not None:
+            return
+        _echo_preset_table(presets, strip_site=True)
+        footer = (
+            f"\n  {len(presets)} commands.  "
+            f"ziniao site show {site_name}/<name> — variables & examples.  "
+            f"[mode]/[auth]/(paginated) legend: ziniao site list"
+        )
+        if example_line:
+            footer += f"\n  {example_line}"
+        typer.echo(footer)
+
+
 def register_site_commands(root_app: typer.Typer) -> None:
     """Scan all enabled presets and register ``ziniao <site> <action>`` shortcuts."""
     from ...sites import list_presets  # pylint: disable=import-outside-toplevel
@@ -308,36 +356,24 @@ def register_site_commands(root_app: typer.Typer) -> None:
 
     for site_name, grp in site_groups.items():
         n = site_counts[site_name]
+        example_line = _pick_example_line(site_name, site_presets[site_name])
         grp.info.help = f"{site_name} site presets ({n} commands)."
-        _set_site_callback(grp, site_name, site_presets[site_name])
-
-
-def _set_site_callback(
-    grp: typer.Typer, site_name: str, presets: list[dict],
-) -> None:
-    """Add a callback that prints the rich preset table when no subcommand is given."""
-
-    @grp.callback(invoke_without_command=True)
-    def _default(ctx: typer.Context) -> None:
-        if ctx.invoked_subcommand is not None:
-            return
-        _echo_preset_table(presets, strip_site=True)
-        typer.echo(
-            f"\n  {len(presets)} commands.  "
-            f"ziniao site show {site_name}/<name> — variables & examples.  "
-            f"[mode]/[auth]/(paginated) legend: ziniao site list"
-        )
+        grp.info.epilog = example_line
+        _set_site_callback(grp, site_name, site_presets[site_name], example_line)
 
 
 def _build_command_help(meta: dict, site_name: str, action_name: str) -> str:
     """Build an informative help string for ``ziniao <site> <action> --help``."""
     parts: list[str] = []
 
-    desc = meta.get("description", "")
-    if desc:
-        parts.append(desc)
+    parts.append(_preset_listing_suffix(meta))
 
-    tags = [f"Mode: {meta.get('mode', 'fetch')}", f"Auth: {meta.get('auth', 'cookie')}"]
+    mode = meta.get("mode", "fetch")
+    auth = meta.get("auth", "cookie")
+    auth_tag = (
+        "xsrf (header_inject)" if auth == "xsrf" and mode == "fetch" else auth
+    )
+    tags = [f"Mode: {mode}", f"Auth: {auth_tag}"]
     if meta.get("paginated"):
         tags.append("Paginated")
     parts.append(" · ".join(tags))
