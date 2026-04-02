@@ -79,7 +79,7 @@ _page_fetch_fetch → 页面内 fetch + 通用注入循环
 ```
 
 - **`_normalize_header_inject`**（`ziniao_mcp/sites/__init__.py`）：校验每项 `header` + `source`，过滤无效项，无有效项时移除 key。仅由 **`dispatch._page_fetch`** 调用。
-- **`_page_fetch_fetch`**（`ziniao_mcp/cli/dispatch.py`）：读取已归一化的 `args["header_inject"]`，生成 JS 按 `source` 类型读值、按 `transform` 变换、写入请求头。
+- **`_page_fetch_fetch`** / **`_page_fetch_js`**（`ziniao_mcp/cli/dispatch.py`）：读取已归一化的 `args["header_inject"]`，生成 JS 按 `source` 类型读值、按 `transform` 变换、写入请求头。与 **`ziniao eval`** 一致：若当前会话存在 **`iframe_context`**（`ziniao nav frame` 进入的子帧），则在 **该 iframe 的 execution context** 内执行脚本；否则在顶层 `tab.evaluate`。紫鸟等多店场景下 RMS 常落在子帧，此前仅顶层执行会导致读不到 `meta` / `localStorage`、CSRF 头缺失（如乐天 **cpnadv** 返回 401）。
 - **`fetch-save`**（`ziniao_mcp/cli/commands/network_cmd.py`）：表驱动识别 CSRF 头，生成 `header_inject`。
 
 架构分层与「为何归一化在 `_page_fetch`」→ [site-fetch-and-presets.md](site-fetch-and-presets.md) **架构考量**。

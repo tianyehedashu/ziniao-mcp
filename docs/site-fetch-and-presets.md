@@ -179,6 +179,7 @@ ziniao eval --await "fetch('/api').then(r => r.text())"
 
 ## 另见
 
+- **[rakuten-presets-smoke-test.md](rakuten-presets-smoke-test.md)** — 乐天内置 preset 逐条示例命令与冒烟说明
 - **[page-fetch-auth.md](page-fetch-auth.md)** — Header 注入（`header_inject`）：使用、实现与扩展
 - 仓库内 Agent 技能：`skills/ziniao-cli/SKILL.md`（速查表）
 - 完整命令表：`skills/ziniao-cli/references/commands.md`

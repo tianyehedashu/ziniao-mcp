@@ -1296,11 +1296,14 @@ async def _page_fetch(sm: Any, args: dict) -> dict:
             await tab.sleep(2.0)
 
     if mode == "js":
-        return await _page_fetch_js(tab, args)
-    return await _page_fetch_fetch(tab, args)
+        return await _page_fetch_js(sm, args)
+    return await _page_fetch_fetch(sm, args)
 
 
-async def _page_fetch_fetch(tab: Any, args: dict) -> dict:
+async def _page_fetch_fetch(sm: Any, args: dict) -> dict:
+    tab = sm.get_active_tab()
+    store = sm.get_active_session()
+
     url = args.get("url", "")
     if not url:
         return {"error": "url is required for fetch mode"}
@@ -1341,7 +1344,15 @@ async def _page_fetch_fetch(tab: Any, args: dict) -> dict:
   return JSON.stringify({{ status: resp.status, statusText: resp.statusText, body: text }});
 }})()"""
 
-    result = await tab.evaluate(js, await_promise=True, return_by_value=True)
+    if store.iframe_context:
+        from ..iframe import eval_in_frame  # pylint: disable=import-outside-toplevel
+
+        result = await eval_in_frame(
+            tab, store.iframe_context.context_id, js,
+            await_promise=True, return_by_value=True,
+        )
+    else:
+        result = await tab.evaluate(js, await_promise=True, return_by_value=True)
     if isinstance(result, str):
         try:
             return {"ok": True, **json.loads(result)}
@@ -1350,7 +1361,10 @@ async def _page_fetch_fetch(tab: Any, args: dict) -> dict:
     return {"ok": True, "body": str(result) if result else ""}
 
 
-async def _page_fetch_js(tab: Any, args: dict) -> dict:
+async def _page_fetch_js(sm: Any, args: dict) -> dict:
+    tab = sm.get_active_tab()
+    store = sm.get_active_session()
+
     script = args.get("script", "")
     if not script:
         return {"error": "script is required for js mode"}
@@ -1366,7 +1380,15 @@ async def _page_fetch_js(tab: Any, args: dict) -> dict:
   return result;
 }})()"""
 
-    result = await tab.evaluate(js, await_promise=True, return_by_value=True)
+    if store.iframe_context:
+        from ..iframe import eval_in_frame  # pylint: disable=import-outside-toplevel
+
+        result = await eval_in_frame(
+            tab, store.iframe_context.context_id, js,
+            await_promise=True, return_by_value=True,
+        )
+    else:
+        result = await tab.evaluate(js, await_promise=True, return_by_value=True)
     return {"ok": True, "body": str(result) if result else ""}
 
 

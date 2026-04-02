@@ -4,6 +4,22 @@
 
 ## [Unreleased]
 
+## [0.2.36] - 2026-04-02
+
+### Fixed
+
+- **`page_fetch`（fetch / js 模式）**：与 **`ziniao eval`** 一致，在存在 **`iframe_context`** 时在 **子帧 execution context** 内执行脚本；修复顶层 `document` 读不到 **`meta` / storage** 导致 **`header_inject` 失效**（乐天 **`rakuten/cpnadv-performance-retrieve`** 等 401）
+- **乐天 `cpnadv-performance-retrieve`**：**`x-csrf-token`** 改为从 **`<meta name="_csrf">`** 读取（与页面 `fetch` 一致；Cookie **`XSRF-TOKEN`** 与 meta 值不一致）；**`displayStatuses`** 与浏览器一致使用 **`%2C`**
+
+### Added
+
+- **`scripts/rakuten_presets_smoke.py`**：乐天 11 条 preset 冒烟；**`--save`** 将 **`ziniao --json --max-output 0`** 完整输出写入 **`out/rakuten-preset-responses/`**
+- **文档**：[docs/rakuten-presets-smoke-test.md](docs/rakuten-presets-smoke-test.md)；[site-fetch-and-presets.md](docs/site-fetch-and-presets.md) / [page-fetch-auth.md](docs/page-fetch-auth.md) 补充 **iframe 与 page_fetch** 说明
+
+### 工程
+
+- **`pyproject.toml` / `.cursor-plugin/plugin.json` / Git tag**：与 **`v0.2.36`** 对齐
+
 ## [0.2.35] - 2026-04-02
 
 ### Changed
