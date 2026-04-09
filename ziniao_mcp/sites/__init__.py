@@ -28,6 +28,41 @@ from ._base import SitePlugin  # noqa: F401 — re-export for convenience
 BUILTIN_DIR = Path(__file__).parent
 USER_DIR = Path.home() / ".ziniao" / "sites"
 
+
+# ---------------------------------------------------------------------------
+# Body byte decoding helpers
+# ---------------------------------------------------------------------------
+
+def parse_charset(content_type: str) -> str:
+    """Extract ``charset=…`` from a Content-Type header value.
+
+    Returns the normalised codec name, or ``""`` if absent.
+    """
+    for part in content_type.split(";"):
+        part = part.strip()
+        if part.lower().startswith("charset="):
+            return part[8:].strip().strip("\"'")
+    return ""
+
+
+def decode_body_bytes(raw: bytes, content_type: str) -> str:
+    """Decode raw response bytes to a Python string.
+
+    Strategy: honour ``charset`` from *content_type* first, then try strict
+    UTF-8, and finally fall back to ``utf-8`` with replacement characters so
+    that callers always receive a valid ``str``.
+    """
+    charset = parse_charset(content_type)
+    if charset:
+        try:
+            return raw.decode(charset)
+        except (UnicodeDecodeError, LookupError):
+            pass
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return raw.decode("utf-8", errors="replace")
+
 _SKIP_DIRS = {"__pycache__"}
 _VAR_RE = re.compile(r"\{\{(\w+)\}\}")
 
@@ -394,18 +429,63 @@ def prepare_request(
     return spec, plugin
 
 
-def save_response_body(body_text: str, output_path: str) -> str:
-    """Pretty-print JSON body if possible and write to *output_path*.
+def save_response_body(
+    body_text: str,
+    output_path: str,
+    *,
+    body_b64: str = "",
+    content_type: str = "",
+    output_encoding: str = "",
+) -> str:
+    """Write response body to *output_path*, preserving original bytes.
+
+    When *body_b64* (base64 of raw bytes) is available and no
+    *output_encoding* is requested, the raw bytes are written as-is (like
+    ``curl -o``).  This avoids Shift-JIS / Latin-1 / binary corruption.
+
+    If *output_encoding* is given (e.g. ``"utf-8"``), raw bytes are decoded
+    via the response charset then re-encoded to that encoding; JSON pretty-
+    printing is attempted when the result is valid JSON.
+
+    Falls back to the legacy ``body_text`` path when *body_b64* is absent
+    (e.g. merged pagination results that are already UTF-8 JSON).
 
     Returns a human-readable confirmation message.
     """
+    import base64  # pylint: disable=import-outside-toplevel
+
+    dest = Path(output_path)
+
+    if body_b64:
+        raw = base64.b64decode(body_b64)
+        if output_encoding:
+            text = decode_body_bytes(raw, content_type)
+            try:
+                parsed = json.loads(text)
+                text = json.dumps(parsed, ensure_ascii=False, indent=2)
+            except (json.JSONDecodeError, TypeError):
+                pass
+            dest.write_text(text, encoding=output_encoding)
+            return f"Saved to {output_path} ({len(text)} chars, {output_encoding})"
+        # Try JSON pretty-print: only when raw bytes are valid UTF-8 JSON
+        try:
+            parsed = json.loads(raw)
+            pretty = json.dumps(parsed, ensure_ascii=False, indent=2)
+            dest.write_text(pretty, encoding="utf-8")
+            return f"Saved to {output_path} ({len(pretty)} chars, JSON pretty-printed)"
+        except (json.JSONDecodeError, TypeError, UnicodeDecodeError):
+            pass
+        dest.write_bytes(raw)
+        return f"Saved to {output_path} ({len(raw)} bytes)"
+
+    # Fallback: body_text only (pagination-merged results, legacy callers)
     try:
         parsed = json.loads(body_text)
         body_text = json.dumps(parsed, ensure_ascii=False, indent=2)
     except (json.JSONDecodeError, TypeError):
         pass
-    Path(output_path).write_text(body_text, encoding="utf-8")
-    return f"Saved to {output_path} ({len(body_text)} bytes)"
+    dest.write_text(body_text, encoding=output_encoding or "utf-8")
+    return f"Saved to {output_path} ({len(body_text)} chars)"
 
 
 # ---------------------------------------------------------------------------

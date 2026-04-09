@@ -169,6 +169,11 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
 
         In js mode, ``__BODY__`` and ``__BODY_STR__`` variables are injected from body.
 
+        The response includes ``body`` (text decoded via charset), ``body_b64``
+        (base64 of the raw response bytes — lossless for any charset/binary),
+        and ``content_type``.  Structured consumers should prefer decoding
+        ``body_b64`` to avoid charset corruption.
+
         Args:
             url: Request URL (required for fetch mode).
             method: HTTP method (default GET).

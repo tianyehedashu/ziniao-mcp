@@ -153,6 +153,10 @@ def fetch_cmd(
     page: Optional[int] = typer.Option(None, "--page", help="Override page number (paginated preset/file)."),
     fetch_all: bool = typer.Option(False, "--all", help="Fetch and merge all pages (needs pagination in JSON)."),
     output: Optional[str] = typer.Option(None, "--output", "-o", help="Save response body to file."),
+    output_encoding: Optional[str] = typer.Option(
+        None, "--output-encoding",
+        help="Transcode output to this encoding (e.g. utf-8). Default: write raw bytes.",
+    ),
 ) -> None:
     """Execute an HTTP request in the browser page context.
 
@@ -220,8 +224,14 @@ def fetch_cmd(
 
     result = run_site_fetch(spec, plugin, _fetch_sync, fetch_all=fetch_all)
 
-    if output and result.get("body"):
-        typer.echo(save_response_body(result["body"], output))
+    if output and (result.get("body") or result.get("body_b64")):
+        typer.echo(save_response_body(
+            result.get("body", ""),
+            output,
+            body_b64=result.get("body_b64", ""),
+            content_type=result.get("content_type", ""),
+            output_encoding=output_encoding or "",
+        ))
         return
 
     print_result(result, json_mode=get_json_mode())

@@ -4,6 +4,22 @@
 
 ## [Unreleased]
 
+## [0.2.37] - 2026-04-09
+
+### Fixed
+
+- **`ziniao network fetch` / `ziniao <site> <action>`（`-o`）**：`page_fetch` 不再用浏览器 **`Response.text()`** 作为唯一数据源，改为 **`arrayBuffer()` → Base64** 传回 **`body_b64`**，避免 Shift_JIS / 错误 charset / 二进制体在 JS 侧被替换成 **U+FFFD**（文件中 **`ef bf bd`**）后不可恢复
+- **`save_response_body`**：默认按 **原始字节** 落盘（类 curl）；**UTF-8 JSON** 仍自动 **pretty-print**；新增 **`--output-encoding`** 将响应按 **Content-Type charset** 解码后再以指定编码写入文本
+
+### Added
+
+- **`parse_charset` / `decode_body_bytes`**（`ziniao_mcp.sites`）：供 **`body` 字符串** 按响应头 charset 解码，兼容分页与插件
+- **测试**：`tests/test_response_encoding.py` 覆盖 charset 解析、多编码解码与 **`-o` 字节级一致性**
+
+### 工程
+
+- **`pyproject.toml` / `.cursor-plugin/plugin.json` / Git tag**：与 **`v0.2.37`** 对齐
+
 ## [0.2.36] - 2026-04-02
 
 ### Fixed

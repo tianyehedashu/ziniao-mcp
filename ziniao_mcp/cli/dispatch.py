@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 from typing import Any
@@ -1340,8 +1341,15 @@ async def _page_fetch_fetch(sm: Any, args: dict) -> dict:
   const body = {body_js};
   if (body) opts.body = typeof body === 'string' ? body : JSON.stringify(body);
   const resp = await fetch({url_js}, opts);
-  const text = await resp.text();
-  return JSON.stringify({{ status: resp.status, statusText: resp.statusText, body: text }});
+  const ct = resp.headers.get('content-type') || '';
+  const buf = await resp.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  const CHUNK = 0x8000;
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += CHUNK) {{
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + CHUNK, bytes.length)));
+  }}
+  return JSON.stringify({{ status: resp.status, statusText: resp.statusText, body_b64: btoa(bin), content_type: ct }});
 }})()"""
 
     if store.iframe_context:
@@ -1355,9 +1363,23 @@ async def _page_fetch_fetch(sm: Any, args: dict) -> dict:
         result = await tab.evaluate(js, await_promise=True, return_by_value=True)
     if isinstance(result, str):
         try:
-            return {"ok": True, **json.loads(result)}
+            parsed = json.loads(result)
         except (json.JSONDecodeError, TypeError):
-            pass
+            return {"ok": True, "body": result}
+        if "body_b64" in parsed:
+            from ziniao_mcp.sites import decode_body_bytes  # pylint: disable=import-outside-toplevel
+            raw = base64.b64decode(parsed["body_b64"])
+            ct = parsed.get("content_type", "")
+            body_str = decode_body_bytes(raw, ct)
+            return {
+                "ok": True,
+                "status": parsed.get("status"),
+                "statusText": parsed.get("statusText", ""),
+                "body": body_str,
+                "body_b64": parsed["body_b64"],
+                "content_type": ct,
+            }
+        return {"ok": True, **parsed}
     return {"ok": True, "body": str(result) if result else ""}
 
 
