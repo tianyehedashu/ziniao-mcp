@@ -77,6 +77,10 @@ TESTS: list[tuple[str, list[str]]] = [
         ["-V", "start_date=2026-03-01", "-V", "end_date=2026-03-07"],
     ),
     (
+        "cpnadv-performance-retrieve-item",
+        ["-V", "start_date=2026-03-01", "-V", "end_date=2026-03-07"],
+    ),
+    (
         "datatool-deal-csv",
         ["-V", "start_date=20260301", "-V", "end_date=20260331", "-V", "period=daily"],
     ),
@@ -91,7 +95,22 @@ TESTS: list[tuple[str, list[str]]] = [
             f"shop_url={SHOP}",
         ],
     ),
+    (
+        "rpp-exp-report-item",
+        [
+            "-V",
+            "start_date=2026-03-01",
+            "-V",
+            "end_date=2026-03-07",
+            "-V",
+            f"shop_url={SHOP}",
+        ],
+    ),
     ("rpp-search", ["-V", "start_date=2026-03-01", "-V", "end_date=2026-03-07"]),
+    (
+        "rpp-search-item",
+        ["-V", "start_date=2026-03-01", "-V", "end_date=2026-03-07"],
+    ),
     ("shared-purchase-detail", ["-V", "target_month=2026-03"]),
     (
         "tda-exp-report",
@@ -104,7 +123,22 @@ TESTS: list[tuple[str, list[str]]] = [
             f"shop_url={SHOP}",
         ],
     ),
+    (
+        "tda-exp-report-item",
+        [
+            "-V",
+            "start_date=2026-03-01",
+            "-V",
+            "end_date=2026-03-07",
+            "-V",
+            f"shop_url={SHOP}",
+        ],
+    ),
     ("tda-reports-search", ["-V", "start_date=2026-03-01", "-V", "end_date=2026-03-07"]),
+    (
+        "tda-reports-search-item",
+        ["-V", "start_date=2026-03-01", "-V", "end_date=2026-03-07"],
+    ),
     ("reviews-csv", ["-V", "last_days=7"]),
 ]
 

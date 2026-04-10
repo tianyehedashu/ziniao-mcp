@@ -1,0 +1,52 @@
+{
+  "name": "乐天·TDA 报表检索（商品维度）",
+  "description": "RMS 定向展示广告（TDA）报表检索，按商品汇总；默认查询参数已与后台「按商品」视图对齐。",
+  "auth": {
+    "type": "xsrf",
+    "hint": "需先在当前浏览器标签页登录 RMS（ad.rms.rakuten.co.jp）；请求会携带 Cookie 并从 Cookie 注入 X-XSRF-TOKEN",
+    "show_hint": false
+  },
+  "navigate_url": "https://ad.rms.rakuten.co.jp/tda/performanceReport",
+  "mode": "fetch",
+  "url": "https://ad.rms.rakuten.co.jp/tda/api/aggregator/v2/reports/search?page={{page}}&campaignType={{campaign_type}}&selectionType={{selection_type}}&periodType={{period_type}}&reportStartDate={{start_date}}&reportEndDate={{end_date}}",
+  "method": "GET",
+  "headers": {
+    "Accept": "application/json",
+    "Accept-Language": "ja"
+  },
+  "header_inject": [{"header": "X-XSRF-TOKEN", "source": "cookie", "key": "XSRF-TOKEN"}],
+  "vars": {
+    "start_date": {
+      "type": "str",
+      "required": true,
+      "description": "开始日 (YYYY-MM-DD)",
+      "example": "2026-03-01"
+    },
+    "end_date": {
+      "type": "str",
+      "required": true,
+      "description": "结束日 (YYYY-MM-DD)",
+      "example": "2026-03-05"
+    },
+    "page": {
+      "type": "int",
+      "default": 1,
+      "description": "页码"
+    },
+    "campaign_type": {
+      "type": "int",
+      "default": 2,
+      "description": "推广计划类型（按商品汇总时默认为 2）"
+    },
+    "selection_type": {
+      "type": "int",
+      "default": 2,
+      "description": "汇总维度（按商品汇总时默认为 2）"
+    },
+    "period_type": {
+      "type": "int",
+      "default": 3,
+      "description": "周期类型：3=自定义"
+    }
+  }
+}

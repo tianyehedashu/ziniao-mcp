@@ -1,6 +1,6 @@
 # 乐天站点预设（`ziniao rakuten`）冒烟说明
 
-本文档列出内置 **12** 条乐天 preset 的**推荐测试命令**，并说明如何判断成败。自动化脚本：[scripts/rakuten_presets_smoke.py](../scripts/rakuten_presets_smoke.py)。
+本文档列出内置 **17** 条乐天 preset 的**推荐测试命令**，并说明如何判断成败。自动化脚本：[scripts/rakuten_presets_smoke.py](../scripts/rakuten_presets_smoke.py)。
 
 ## 前置条件
 
@@ -20,16 +20,21 @@
 | 3   | `afl-report-pending`          | `ziniao rakuten afl-report-pending -V date=2026-03`                                                |
 | 4   | `cpa-reports-search`          | `ziniao rakuten cpa-reports-search -V start_date=2026-03-01 -V end_date=2026-03-07`                |
 | 5   | `cpnadv-performance-retrieve` | `ziniao rakuten cpnadv-performance-retrieve -V start_date=2026-03-01 -V end_date=2026-03-07`       |
-| 6   | `datatool-deal-csv`           | `ziniao rakuten datatool-deal-csv -V start_date=20260301 -V end_date=20260331 -V period=daily`     |
-| 7   | `rpp-exp-report`              | `ziniao rakuten rpp-exp-report -V start_date=2026-03-01 -V end_date=2026-03-07 -V shop_url=<slug>` |
-| 8   | `rpp-search`                  | `ziniao rakuten rpp-search -V start_date=2026-03-01 -V end_date=2026-03-07`                        |
-| 9   | `shared-purchase-detail`      | `ziniao rakuten shared-purchase-detail -V target_month=2026-03`                                    |
-| 10  | `tda-exp-report`              | `ziniao rakuten tda-exp-report -V start_date=2026-03-01 -V end_date=2026-03-07 -V shop_url=<slug>` |
-| 11  | `tda-reports-search`          | `ziniao rakuten tda-reports-search -V start_date=2026-03-01 -V end_date=2026-03-07`                |
-| 12  | `reviews-csv`                 | `ziniao rakuten reviews-csv -V last_days=7 -o reviews.csv`（需 `review.rms.rakuten.co.jp` 已登录）       |
+| 6   | `cpnadv-performance-retrieve-item` | `ziniao rakuten cpnadv-performance-retrieve-item -V start_date=2026-03-01 -V end_date=2026-03-07`（按商品；翻页用 `-V page=`） |
+| 7   | `datatool-deal-csv`           | `ziniao rakuten datatool-deal-csv -V start_date=20260301 -V end_date=20260331 -V period=daily`     |
+| 8   | `rpp-exp-report`              | `ziniao rakuten rpp-exp-report -V start_date=2026-03-01 -V end_date=2026-03-07 -V shop_url=<slug>` |
+| 9   | `rpp-exp-report-item`         | `ziniao rakuten rpp-exp-report-item -V start_date=2026-03-01 -V end_date=2026-03-07 -V shop_url=<slug>`（按商品；可选 `-V search_product_name=`） |
+| 10  | `rpp-search`                  | `ziniao rakuten rpp-search -V start_date=2026-03-01 -V end_date=2026-03-07`                        |
+| 11  | `rpp-search-item`             | `ziniao rakuten rpp-search-item -V start_date=2026-03-01 -V end_date=2026-03-07`（按商品；支持 `--all`） |
+| 12  | `shared-purchase-detail`      | `ziniao rakuten shared-purchase-detail -V target_month=2026-03`                                    |
+| 13  | `tda-exp-report`              | `ziniao rakuten tda-exp-report -V start_date=2026-03-01 -V end_date=2026-03-07 -V shop_url=<slug>` |
+| 14  | `tda-exp-report-item`         | `ziniao rakuten tda-exp-report-item -V start_date=2026-03-01 -V end_date=2026-03-07 -V shop_url=<slug>`（按商品；可选 `-V search_product_name=`） |
+| 15  | `tda-reports-search`          | `ziniao rakuten tda-reports-search -V start_date=2026-03-01 -V end_date=2026-03-07`                |
+| 16  | `tda-reports-search-item`     | `ziniao rakuten tda-reports-search-item -V start_date=2026-03-01 -V end_date=2026-03-07`（按商品汇总） |
+| 17  | `reviews-csv`                 | `ziniao rakuten reviews-csv -V last_days=7 -o reviews.csv`（需 `review.rms.rakuten.co.jp` 已登录）       |
 
 
-分页 preset（如 `rpp-search`）可追加 `--page N` 或 `--all`（见 `ziniao rakuten rpp-search --help`）。
+分页：`rpp-search`、`rpp-search-item` 可追加 `--page N` 或 `--all`（见子命令 `--help`）。`cpnadv-performance-retrieve` / `cpnadv-performance-retrieve-item` 为表单 POST，请用 `-V page=` 手动翻页。
 
 ## 如何解读输出
 
