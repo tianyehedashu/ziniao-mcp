@@ -4,6 +4,27 @@
 
 ## [Unreleased]
 
+## [0.2.39] - 2026-04-11
+
+### Added
+
+- **站点预设 `rakuten/reviews-csv`**：RMS 评论一览 CSV；**`last_days`**（默认 30，日本时间自然日）或 **`start_date` + `end_date`**；预设 **`output_decode_encoding: cp932`**
+- **`coerce_page_fetch_eval_result`**（`ziniao_mcp.sites`）：统一 **`page_fetch`** 在 fetch / js 两种模式下对 **`evaluate` 返回值**的解析与 **`body_b64` → `body`** 解码
+
+### Changed
+
+- **`page_fetch`（`mode: js`）**：若页面脚本返回 **`ArrayBuffer` / `Uint8Array`**，在页内编码为 **`body_b64`**，与 fetch 模式一致，**`-o`** 可无损落盘
+- **内置站点插件 `get_plugin`**：仅将 **`ModuleNotFoundError`** 视为「无内置包」；存在多个 **`SitePlugin`** 子类时须设置模块级 **`SITE_PLUGIN`**；**`rakuten`** 显式导出 **`SITE_PLUGIN`**
+- **文档与技能**：`site-fetch-and-presets`、API 参考、`ziniao-cli` skill、乐天 preset 冒烟表与脚本、**`rakuten-ad-reports`** skill（含评论 CSV）
+
+### Fixed
+
+- **乐天 `reviews-csv`**：显式日期时校验 **`start_date` ≤ `end_date`**
+
+### 工程
+
+- **`pyproject.toml` / `.cursor-plugin/plugin.json` / Git tag**：与 **`v0.2.39`** 对齐
+
 ## [0.2.38] - 2026-04-10
 
 ### Changed

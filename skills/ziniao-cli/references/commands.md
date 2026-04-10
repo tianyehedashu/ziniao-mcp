@@ -111,7 +111,7 @@ Full command reference. For workflow and patterns see [SKILL.md](../SKILL.md).
 | `ziniao network list [--filter url] [--clear]` | List/clear requests |
 | `ziniao network har-start` | Start HAR recording |
 | `ziniao network har-stop [path]` | Stop and save HAR |
-| `ziniao network fetch [URL] [-p preset] [-f file] [--script …] [-X METHOD] [-d JSON] [-H "K:V"]… [--inject …]… [--var K=V]… [--page N] [--all] [-o file]` | HTTP in **page context** (cookies; optional `header_inject` in JSON) |
+| `ziniao network fetch [URL] [-p preset] [-f file] [--script …] [-X METHOD] [-d JSON] [-H "K:V"]… [--inject …]… [--var K=V]… [--page N] [--all] [-o file] [--decode-encoding …] [--output-encoding …]` | Page-context HTTP; **`-o`** writes bytes from **`body_b64`**; **`--decode-encoding`** / preset **`output_decode_encoding`** for CP932 CSV etc. |
 | `ziniao network fetch-save [--id N \| --filter SUBSTR] -o file [--full-headers] [--as-preset]` | Build JSON template from captured request |
 
 ## Site presets

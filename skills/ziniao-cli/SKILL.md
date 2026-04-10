@@ -144,7 +144,7 @@ ziniao network har-start
 ziniao network har-stop [path]
 
 # Page-context HTTP (inherits tab cookies; optional XSRF from cookie name)
-ziniao network fetch [-p preset | -f file | URL] [-X METHOD] [-d body] [-H "K:V"]... [--page N] [--all] [-o out.json]
+ziniao network fetch [-p preset | -f file | URL] [-X METHOD] [-d body] [-H "K:V"]... [--page N] [--all] [-o file] [--decode-encoding cp932] [--output-encoding utf-8]
 ziniao network fetch --script '<expr using __BODY__>' -d '{"k":1}'
 ziniao network fetch-save [--id N | --filter SUBSTR] -o template.json [--as-preset]
 
@@ -152,6 +152,7 @@ ziniao network fetch-save [--id N | --filter SUBSTR] -o template.json [--as-pres
 ziniao site list | show <id> [--raw] | enable <id> | disable <id>
 ziniao site fork <id> [<new_id>] [--force]        # copy preset to ~/.ziniao/sites/ for editing
 # Example: ziniao rakuten rpp-search -V start_date=2026-03-01 -V end_date=2026-03-07 [--page N] [--all] [-o out]
+# CSV/binary: ziniao rakuten reviews-csv -o reviews.csv   # preset output_decode_encoding=cp932
 
 # Batch, recording, emulation
 echo '[{"command":"navigate","args":{"url":"..."}}]' | ziniao batch run [--bail]
@@ -233,7 +234,7 @@ ziniao eval --await 'fetch("/api/me").then(r => r.text())'   # Promise → resol
 
 ### Logged-in API from the page (site presets)
 
-Use when the site expects **session cookies** (and sometimes **XSRF**). Prefer **`ziniao <site> <action>`** over `network fetch -p` for brevity. Templates may declare **`auth`** / **`pagination`** for hints and **`--all`**. See **[../../docs/site-fetch-and-presets.md](../../docs/site-fetch-and-presets.md)** (concise guide).
+Use when the site expects **session cookies** (and sometimes **XSRF**). Prefer **`ziniao <site> <action>`** over `network fetch -p` for brevity. Templates may declare **`auth`** / **`pagination`** for hints and **`--all`**. With **`-o`**, responses use **`body_b64`** end-to-end; use **`--decode-encoding`** / preset **`output_decode_encoding`** for Shift_JIS/CP932 CSV. See **[../../docs/site-fetch-and-presets.md](../../docs/site-fetch-and-presets.md)**.
 
 ## Install & PATH
 

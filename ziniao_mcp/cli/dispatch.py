@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import base64
 import json
 import logging
 from typing import Any
+
+from ziniao_mcp.sites import coerce_page_fetch_eval_result
 
 _logger = logging.getLogger("ziniao-daemon")
 
@@ -1361,26 +1362,7 @@ async def _page_fetch_fetch(sm: Any, args: dict) -> dict:
         )
     else:
         result = await tab.evaluate(js, await_promise=True, return_by_value=True)
-    if isinstance(result, str):
-        try:
-            parsed = json.loads(result)
-        except (json.JSONDecodeError, TypeError):
-            return {"ok": True, "body": result}
-        if "body_b64" in parsed:
-            from ziniao_mcp.sites import decode_body_bytes  # pylint: disable=import-outside-toplevel
-            raw = base64.b64decode(parsed["body_b64"])
-            ct = parsed.get("content_type", "")
-            body_str = decode_body_bytes(raw, ct)
-            return {
-                "ok": True,
-                "status": parsed.get("status"),
-                "statusText": parsed.get("statusText", ""),
-                "body": body_str,
-                "body_b64": parsed["body_b64"],
-                "content_type": ct,
-            }
-        return {"ok": True, **parsed}
-    return {"ok": True, "body": str(result) if result else ""}
+    return coerce_page_fetch_eval_result(result)
 
 
 async def _page_fetch_js(sm: Any, args: dict) -> dict:
@@ -1398,6 +1380,18 @@ async def _page_fetch_js(sm: Any, args: dict) -> dict:
   const __BODY__ = {body_obj_js};
   const __BODY_STR__ = {body_str_js};
   let result = await ({script});
+  if (result instanceof ArrayBuffer) {{
+    result = new Uint8Array(result);
+  }}
+  if (result instanceof Uint8Array) {{
+    const bytes = result;
+    const CHUNK = 0x8000;
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += CHUNK) {{
+      bin += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + CHUNK, bytes.length)));
+    }}
+    return JSON.stringify({{ status: 200, statusText: 'OK', body_b64: btoa(bin), content_type: 'application/octet-stream' }});
+  }}
   if (typeof result !== 'string') result = JSON.stringify(result);
   return result;
 }})()"""
@@ -1411,7 +1405,7 @@ async def _page_fetch_js(sm: Any, args: dict) -> dict:
         )
     else:
         result = await tab.evaluate(js, await_promise=True, return_by_value=True)
-    return {"ok": True, "body": str(result) if result else ""}
+    return coerce_page_fetch_eval_result(result)
 
 
 # ---------------------------------------------------------------------------

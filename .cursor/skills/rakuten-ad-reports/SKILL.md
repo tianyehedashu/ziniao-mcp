@@ -1,6 +1,6 @@
 ---
 name: rakuten-ad-reports
-description: 乐天 RMS 广告数据拉取。覆盖 RPP / RPP-EXP（含 merchant 取 shopUrl）/ CPA / 运用型优惠券 / TDA / TDA-EXP / R-Mail / DEAL CSV / 广告购入明细 / 联盟 pending 共 10 个报表接口 + RPP-EXP merchant。使用 ziniao CLI site preset 在已登录的浏览器会话内直接调用乐天后台 API。当用户提到乐天广告、Rakuten 报表、RPP、TDA、CPA、DEAL CSV、联盟、R-Mail、广告购入明细、乐天数据导出时触发。
+description: 乐天 RMS 广告数据拉取。覆盖 RPP / RPP-EXP（含 merchant 取 shopUrl）/ CPA / 运用型优惠券 / TDA / TDA-EXP / R-Mail / DEAL CSV / 广告购入明细 / 联盟 pending 共 10 个报表接口 + RPP-EXP merchant；另有 **`reviews-csv`**（评论一览 CSV，非广告）。使用 ziniao CLI site preset 在已登录的浏览器会话内调用后台 API。当用户提到乐天广告、Rakuten 报表、RPP、TDA、CPA、DEAL CSV、联盟、R-Mail、广告购入明细、乐天数据导出、**RMS 评论 CSV** 时触发。
 allowed-tools: Bash(ziniao:*)
 ---
 
@@ -31,6 +31,15 @@ allowed-tools: Bash(ziniao:*)
 | 8 | `datatool-deal-csv` | DEAL 活动 CSV 下载 |
 | 9 | `shared-purchase-detail` | 广告购入历史明细 |
 | 10 | `afl-report-pending` | 联盟返利待确认（pending） |
+
+### RMS 评论 CSV（非广告）
+
+```bash
+ziniao rakuten reviews-csv -o reviews.csv
+# 可选：-V last_days=30（默认，日本时间自然日）或同时 -V start_date= -V end_date= 覆盖
+```
+
+预设 **`output_decode_encoding: cp932`**；`-o` 落盘为 UTF-8 文本。详见仓库 **`docs/site-fetch-and-presets.md`**。
 
 ### PRD 1 — RPP（检索型広告）｜中文：检索型广告（搜索广告）
 

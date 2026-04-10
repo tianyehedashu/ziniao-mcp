@@ -9,7 +9,7 @@ import base64
 import json
 from pathlib import Path
 
-from ziniao_mcp.sites import decode_body_bytes, parse_charset, save_response_body
+from ziniao_mcp.sites import coerce_page_fetch_eval_result, decode_body_bytes, parse_charset, save_response_body
 
 
 # ---------------------------------------------------------------------------
@@ -75,6 +75,33 @@ def test_decode_wrong_charset_falls_back() -> None:
     raw = b"\xff\xfe"
     result = decode_body_bytes(raw, "text/html; charset=nonexistent-codec")
     assert isinstance(result, str)
+
+
+# ---------------------------------------------------------------------------
+# coerce_page_fetch_eval_result (fetch + js evaluate wrappers)
+# ---------------------------------------------------------------------------
+
+def test_coerce_body_b64_roundtrip() -> None:
+    raw = '{"x":1}'.encode("utf-8")
+    b64 = base64.b64encode(raw).decode()
+    envelope = json.dumps(
+        {"status": 200, "statusText": "OK", "body_b64": b64, "content_type": "application/json; charset=utf-8"},
+    )
+    out = coerce_page_fetch_eval_result(envelope)
+    assert out["ok"] is True
+    assert out["status"] == 200
+    assert out["body_b64"] == b64
+    assert '"x": 1' in out["body"] or '"x":1' in out["body"]
+
+
+def test_coerce_plain_string_unchanged() -> None:
+    assert coerce_page_fetch_eval_result("not json") == {"ok": True, "body": "not json"}
+
+
+def test_coerce_json_object_without_b64_merges_keys() -> None:
+    out = coerce_page_fetch_eval_result('{"error":"x"}')
+    assert out["ok"] is True
+    assert out["error"] == "x"
 
 
 # ---------------------------------------------------------------------------

@@ -121,6 +121,10 @@ ziniao rakuten rpp-search -V start_date=2026-03-01 -V end_date=2026-03-07
 ziniao rakuten rpp-search -V start_date=... -V end_date=... --page 2
 ziniao rakuten rpp-search -V start_date=... -V end_date=... --all -o out.json
 
+# 非 JSON 体（例：RMS 评论 CSV，预设内已声明 CP932→UTF-8）
+ziniao rakuten reviews-csv -o reviews.csv
+# 日期：默认 last_days=30（日本时间自然日）；显式 -V start_date= / end_date= 时覆盖
+
 # 禁用/启用模板
 ziniao site disable rakuten/rpp-search
 ziniao site enable rakuten/rpp-search
@@ -138,6 +142,12 @@ ziniao network fetch-save --filter "reports/search" -o tpl.json
 
 `fetch-save`：从已捕获请求生成 JSON 模板（可先 `ziniao network list` 看 id）。
 
+## 保存响应（`-o`）与编码
+
+- 页面侧用 **`arrayBuffer()` → Base64** 回传 **`body_b64`**，避免在浏览器里先当「错误编码文本」解码导致 **`U+FFFD` / `ef bf bd`** 不可恢复。
+- **`-o`**：默认写入与网络响应**一致的字节**；CLI 可用 **`--decode-encoding`**（如 `cp932`）先解码，再用 **`--output-encoding`** 控制落盘编码（未指定时多为 UTF-8 文本）。
+- 预设根字段 **`output_decode_encoding`**：为 **`ziniao network fetch` / `ziniao <site> <action>`** 提供默认 `--decode-encoding`，CLI 仍可覆盖。
+
 ## JSON 模板字段
 
 | 字段 | 作用 |
@@ -148,6 +158,7 @@ ziniao network fetch-save --filter "reports/search" -o tpl.json
 | `header_inject` | `list[dict]`：声明式 header 注入规则；详见 [page-fetch-auth.md](page-fetch-auth.md) |
 | `vars` | 模板变量定义；正文里用 `{{name}}` |
 | `pagination` | `body_field` 或 `offset`：支持 `--all` 自动翻页合并列表 |
+| `output_decode_encoding` | 可选。`-o` 时默认 `--decode-encoding`（如日文 CSV 常用 `cp932`） |
 
 ## 从内置模板派生（自定义）
 
@@ -175,7 +186,7 @@ ziniao eval --await "fetch('/api').then(r => r.text())"
 
 ## MCP
 
-工具 **`page_fetch`**：参数为 URL、method、body、headers（JSON 字符串）、`header_inject`（JSON 数组字符串）、`mode`、`script`、`navigate_url`，语义与 daemon 的 `page_fetch` 一致。
+工具 **`page_fetch`**：参数为 URL、method、body、headers（JSON 字符串）、`header_inject`（JSON 数组字符串）、`mode`、`script`、`navigate_url`，语义与 daemon 的 `page_fetch` 一致。成功时返回 JSON 含 **`body`**（可读字符串）与 **`body_b64`**（原始响应字节，Base64）。
 
 ## 另见
 

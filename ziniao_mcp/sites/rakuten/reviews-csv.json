@@ -1,0 +1,78 @@
+{
+  "name": "乐天·RMS 评论 CSV",
+  "description": "review.rms.rakuten.co.jp 评论一览 CSV；默认 CP932→UTF-8 保存（output_decode_encoding）。",
+  "auth": {
+    "type": "cookie",
+    "hint": "需在当前标签页登录 RMS（review.rms.rakuten.co.jp）",
+    "show_hint": false
+  },
+  "navigate_url": "https://review.rms.rakuten.co.jp/search/",
+  "rakuten_review_csv": true,
+  "output_decode_encoding": "cp932",
+  "mode": "fetch",
+  "url": "",
+  "method": "GET",
+  "headers": {
+    "Accept": "*/*",
+    "Accept-Language": "ja"
+  },
+  "vars": {
+    "last_days": {
+      "type": "int",
+      "default": "30",
+      "description": "往前多少天（日本时间）：含「今天」共 N 个自然日；与 start_date+end_date 二选一，填了日期则以日期为准",
+      "example": "30"
+    },
+    "start_date": {
+      "description": "可选。开始日 YYYY-MM-DD（当天 0:00）；与 end_date 同时填则覆盖 last_days",
+      "example": "2026-03-10"
+    },
+    "end_date": {
+      "description": "可选。结束日 YYYY-MM-DD（当天 23:59）；与 start_date 同时填则覆盖 last_days",
+      "example": "2026-04-10"
+    },
+    "kw": {
+      "default": "",
+      "description": "关键词（空为全部）"
+    },
+    "ao": {
+      "default": "A",
+      "description": "排序参数 ao（与 RMS 页面一致）"
+    },
+    "st": {
+      "type": "int",
+      "default": "1",
+      "description": "st 参数"
+    },
+    "tc": {
+      "type": "int",
+      "default": "0",
+      "description": "tc 参数"
+    },
+    "ev": {
+      "type": "int",
+      "default": "0",
+      "description": "ev 参数"
+    },
+    "sh": {
+      "type": "int",
+      "default": "0",
+      "description": "开始时刻·时"
+    },
+    "si": {
+      "type": "int",
+      "default": "0",
+      "description": "开始时刻·分"
+    },
+    "eh": {
+      "type": "int",
+      "default": "23",
+      "description": "结束时刻·时"
+    },
+    "ei": {
+      "type": "int",
+      "default": "59",
+      "description": "结束时刻·分"
+    }
+  }
+}

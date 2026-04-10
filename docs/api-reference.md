@@ -460,7 +460,7 @@
 | `script` | `string` | 否 | `js` 模式下执行的表达式；可使用注入的 `__BODY__` / `__BODY_STR__` |
 | `navigate_url` | `string` | 否 | 若当前 URL 不匹配则先导航到此地址 |
 
-**返回**：`string` — JSON，含 `ok`、`status`、`statusText`、`body`（响应正文文本）或 `error`
+**返回**：`string` — JSON，含 `ok`、`status`、`statusText`、`body`（可读正文）、**`body_b64`**（响应体字节 Base64，避免错误 charset 破坏二进制/日文）、`content_type`（若有）、或 `error`
 
 ---
 

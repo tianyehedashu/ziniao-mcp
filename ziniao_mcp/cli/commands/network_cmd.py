@@ -229,6 +229,7 @@ def fetch_cmd(
     def _fetch_sync(s: dict) -> dict:
         return run_command("page_fetch", s)
 
+    preset_decode = spec.get("_ziniao_output_decode_encoding")
     result = run_site_fetch(spec, plugin, _fetch_sync, fetch_all=fetch_all)
 
     if output and (result.get("body") or result.get("body_b64")):
@@ -238,7 +239,7 @@ def fetch_cmd(
             body_b64=result.get("body_b64", ""),
             content_type=result.get("content_type", ""),
             output_encoding=output_encoding or "",
-            decode_encoding=decode_encoding or "",
+            decode_encoding=decode_encoding or preset_decode or "",
         ))
         return
 

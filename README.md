@@ -430,6 +430,7 @@ ziniao network route "*.ads.*" --abort
 ziniao site list
 ziniao rakuten rpp-search -V start_date=2026-03-01 -V end_date=2026-03-07
 ziniao network fetch -p rakuten/rpp-search -V start_date=2026-03-01 --all -o out.json
+ziniao rakuten reviews-csv -o reviews.csv   # RMS 评论 CSV；`-o` 编码见 docs/site-fetch-and-presets.md
 
 # 录制操作
 ziniao rec start

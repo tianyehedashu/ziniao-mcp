@@ -17,6 +17,7 @@ Optional JSON fields on presets:
 from __future__ import annotations
 
 import asyncio
+import base64
 import copy
 import json
 import re
@@ -62,6 +63,31 @@ def decode_body_bytes(raw: bytes, content_type: str) -> str:
         return raw.decode("utf-8")
     except UnicodeDecodeError:
         return raw.decode("utf-8", errors="replace")
+
+
+def coerce_page_fetch_eval_result(result: Any) -> dict[str, Any]:
+    """Normalize ``tab.evaluate`` return from fetch/js wrappers into a page_fetch dict."""
+    if not isinstance(result, str):
+        return {"ok": True, "body": str(result) if result else ""}
+    try:
+        parsed = json.loads(result)
+    except (json.JSONDecodeError, TypeError):
+        return {"ok": True, "body": result}
+    if isinstance(parsed, dict) and "body_b64" in parsed:
+        raw = base64.b64decode(parsed["body_b64"])
+        ct = parsed.get("content_type", "")
+        body_str = decode_body_bytes(raw, ct)
+        return {
+            "ok": True,
+            "status": parsed.get("status"),
+            "statusText": parsed.get("statusText", ""),
+            "body": body_str,
+            "body_b64": parsed["body_b64"],
+            "content_type": ct,
+        }
+    if isinstance(parsed, dict):
+        return {"ok": True, **parsed}
+    return {"ok": True, "body": result}
 
 _SKIP_DIRS = {"__pycache__"}
 _VAR_RE = re.compile(r"\{\{(\w+)\}\}")
@@ -210,13 +236,42 @@ def _scan_ep_presets() -> dict[str, Path]:
 def get_plugin(site_name: str) -> SitePlugin | None:
     """Try to load a ``SitePlugin`` subclass for *site_name*.
 
-    Checks user-local → entry_points → builtin ``__init__.py``.
+    Checks user-local file → builtin package ``ziniao_mcp.sites.<site>`` → entry_points.
+    Builtin plugins use normal package import so relative imports (e.g. ``from .._base``) work;
+    file-only loading would fail on those.
     Returns ``None`` if no plugin is defined (JSON-only preset).
     """
-    for base in (USER_DIR, BUILTIN_DIR):
-        init_py = base / site_name / "__init__.py"
-        if init_py.is_file():
-            return _load_plugin_from_file(init_py, site_name)
+    user_init = USER_DIR / site_name / "__init__.py"
+    if user_init.is_file():
+        loaded = _load_plugin_from_file(user_init, site_name)
+        if loaded is not None:
+            return loaded
+
+    if (BUILTIN_DIR / site_name / "__init__.py").is_file():
+        import importlib  # pylint: disable=import-outside-toplevel
+
+        try:
+            mod = importlib.import_module(f"ziniao_mcp.sites.{site_name}")
+        except ModuleNotFoundError:
+            pass
+        else:
+            explicit = getattr(mod, "SITE_PLUGIN", None)
+            if explicit is not None:
+                if not (isinstance(explicit, type) and issubclass(explicit, SitePlugin) and explicit is not SitePlugin):
+                    raise TypeError(f"{mod.__name__}.SITE_PLUGIN must be a SitePlugin subclass")
+                return explicit()
+            subs: list[type] = []
+            for attr in dir(mod):
+                obj = getattr(mod, attr)
+                if isinstance(obj, type) and issubclass(obj, SitePlugin) and obj is not SitePlugin:
+                    subs.append(obj)
+            if len(subs) == 1:
+                return subs[0]()
+            if len(subs) > 1:
+                names = ", ".join(s.__name__ for s in subs)
+                raise ValueError(
+                    f"Sites package {site_name!r} defines multiple SitePlugin classes ({names}); set SITE_PLUGIN"
+                )
 
     try:
         from importlib.metadata import entry_points  # pylint: disable=import-outside-toplevel
@@ -395,9 +450,19 @@ def prepare_request(
     elif file:
         spec = json.loads(Path(file).read_text(encoding="utf-8"))
 
-    merged_vars = dict(var_values or {})
+    merged_input = dict(var_values or {})
+    merged_for_plugin: dict[str, str] = {}
     if spec.get("vars"):
-        spec = render_vars(spec, merged_vars)
+        var_defs = spec["vars"]
+        defaults = {k: v["default"] for k, v in var_defs.items() if "default" in v}
+        merged_for_plugin = {**defaults, **merged_input}
+        for k, vdef in var_defs.items():
+            if vdef.get("required") and k not in merged_for_plugin:
+                raise ValueError(f"Required variable missing: {k}")
+        spec = render_vars(spec, merged_input)
+        spec["_ziniao_merged_vars"] = merged_for_plugin
+
+    cli_output_decode = spec.pop("output_decode_encoding", None)
 
     if script:
         spec["mode"] = "js"
@@ -425,6 +490,10 @@ def prepare_request(
 
     if plugin:
         spec = plugin.before_fetch(spec)
+
+    spec.pop("_ziniao_merged_vars", None)
+    if cli_output_decode:
+        spec["_ziniao_output_decode_encoding"] = cli_output_decode
 
     return spec, plugin
 
@@ -459,8 +528,6 @@ def save_response_body(
 
     Returns a human-readable confirmation message.
     """
-    import base64  # pylint: disable=import-outside-toplevel
-
     dest = Path(output_path)
 
     if body_b64:
@@ -565,6 +632,15 @@ def _spec_with_body_dict(spec: dict, body: dict) -> dict:
     return s
 
 
+def _spec_for_page_fetch(spec: dict) -> dict:
+    """Deep-copy *spec* for ``page_fetch`` / daemon; drop CLI-only ``_ziniao_*`` keys."""
+    out = copy.deepcopy(spec)
+    for k in list(out.keys()):
+        if k.startswith("_ziniao_"):
+            out.pop(k, None)
+    return out
+
+
 def paginate_all_generic(
     spec: dict,
     pagination: dict,
@@ -595,7 +671,7 @@ def _paginate_body_field(
 
     body = _parse_body_dict(spec)
     body[page_field] = start
-    first = fetch_sync(_spec_with_body_dict(spec, body))
+    first = fetch_sync(_spec_for_page_fetch(_spec_with_body_dict(spec, body)))
 
     status = int(first.get("status", 200))
     if first.get("error") or status >= 400:
@@ -624,7 +700,7 @@ def _paginate_body_field(
             break
         b2 = _parse_body_dict(spec)
         b2[page_field] = pnum
-        page_results.append(fetch_sync(_spec_with_body_dict(spec, b2)))
+        page_results.append(fetch_sync(_spec_for_page_fetch(_spec_with_body_dict(spec, b2))))
 
     merged = _merge_page_bodies(page_results, merge_items_field)
     return merged, status, len(page_results)
@@ -646,7 +722,7 @@ def _paginate_offset(
     body = _parse_body_dict(spec)
     body[offset_field] = start_offset
     body[limit_field] = limit
-    first = fetch_sync(_spec_with_body_dict(spec, body))
+    first = fetch_sync(_spec_for_page_fetch(_spec_with_body_dict(spec, body)))
     status = int(first.get("status", 200))
     if first.get("error") or status >= 400:
         try:
@@ -674,7 +750,7 @@ def _paginate_offset(
         b2 = _parse_body_dict(spec)
         b2[offset_field] = off
         b2[limit_field] = limit
-        page_results.append(fetch_sync(_spec_with_body_dict(spec, b2)))
+        page_results.append(fetch_sync(_spec_for_page_fetch(_spec_with_body_dict(spec, b2))))
 
     merged = _merge_page_bodies(page_results, merge_items_field)
     return merged, status, len(page_results)
@@ -714,7 +790,7 @@ async def _async_plugin_paginate_collect(
 ) -> dict:
     async def fetch_fn(s: dict) -> dict:
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, lambda: fetch_sync(copy.deepcopy(s)))
+        return await loop.run_in_executor(None, lambda: fetch_sync(_spec_for_page_fetch(s)))
 
     pages: list[dict] = []
     async for p in plugin.paginate(fetch_fn, copy.deepcopy(spec), copy.deepcopy(first_response)):
@@ -748,14 +824,14 @@ def run_site_fetch(
 ) -> dict:
     """Run one page or all pages; ``plugin.after_fetch`` runs once at the end."""
     if not fetch_all:
-        out = fetch_sync(copy.deepcopy(spec))
+        out = fetch_sync(_spec_for_page_fetch(spec))
         if plugin and "body" in out:
             out = plugin.after_fetch(out, spec)
         return out
 
     if plugin_overrides_paginate(plugin):
         assert plugin is not None
-        first = fetch_sync(copy.deepcopy(spec))
+        first = fetch_sync(_spec_for_page_fetch(spec))
         out = asyncio.run(_async_plugin_paginate_collect(plugin, spec, first, fetch_sync))
         if plugin and "body" in out:
             out = plugin.after_fetch(out, spec)
@@ -778,7 +854,7 @@ def run_site_fetch(
             out = plugin.after_fetch(out, spec)
         return out
 
-    out = fetch_sync(copy.deepcopy(spec))
+    out = fetch_sync(_spec_for_page_fetch(spec))
     if plugin and "body" in out:
         out = plugin.after_fetch(out, spec)
     return out

@@ -105,6 +105,7 @@ TESTS: list[tuple[str, list[str]]] = [
         ],
     ),
     ("tda-reports-search", ["-V", "start_date=2026-03-01", "-V", "end_date=2026-03-07"]),
+    ("reviews-csv", ["-V", "last_days=7"]),
 ]
 
 
