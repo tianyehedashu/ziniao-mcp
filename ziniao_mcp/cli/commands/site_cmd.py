@@ -415,10 +415,17 @@ def _register_action(
         var: Optional[List[str]] = typer.Option(None, "--var", "-V", help="Variable key=value (repeatable)."),
         page: Optional[int] = typer.Option(None, "--page", help="Override page number (paginated presets)."),
         fetch_all: bool = typer.Option(False, "--all", help="Fetch and merge all pages (needs pagination in template)."),
-        output: Optional[str] = typer.Option(None, "--output", "-o", help="Save response body to file."),
+        output: Optional[str] = typer.Option(
+            None, "--output", "-o",
+            help="Save response body: UTF-8 text if body is valid UTF-8 (JSON pretty-printed), else raw bytes; use --decode-encoding for CP932 etc.",
+        ),
         output_encoding: Optional[str] = typer.Option(
             None, "--output-encoding",
-            help="Transcode output to this encoding (e.g. utf-8). Default: write raw bytes.",
+            help="File encoding when saving decoded text (e.g. utf-8). Default with --decode-encoding: utf-8.",
+        ),
+        decode_encoding: Optional[str] = typer.Option(
+            None, "--decode-encoding",
+            help="Decode raw body with this codec before saving (e.g. cp932 for Rakuten CSV). Default: raw bytes or charset from Content-Type.",
         ),
     ) -> None:
         from ...sites import (  # pylint: disable=import-outside-toplevel
@@ -458,6 +465,7 @@ def _register_action(
                 body_b64=result.get("body_b64", ""),
                 content_type=result.get("content_type", ""),
                 output_encoding=output_encoding or "",
+                decode_encoding=decode_encoding or "",
             ))
             return
 

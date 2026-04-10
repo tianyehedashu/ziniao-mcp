@@ -4,6 +4,20 @@
 
 ## [Unreleased]
 
+## [0.2.38] - 2026-04-10
+
+### Changed
+
+- **`-o` / `save_response_body`**：无 **`--decode-encoding`** / **`--output-encoding`** 时，若响应体为 **严格 UTF-8** 则默认写入 **UTF-8 文本**（JSON 仍自动 **pretty-print**）；否则写入 **原始字节**（如未声明 charset 的 **CP932** CSV，需 **`--decode-encoding cp932`** 再得 UTF-8 文件）
+
+### Added
+
+- **`--decode-encoding`**（`ziniao network fetch` / `ziniao <site> <action>`）：按指定 codec 解码 **`body_b64`** 后再落盘（与 **`--output-encoding`** 配合；未指定时文件编码默认 **utf-8**）
+
+### 工程
+
+- **`pyproject.toml` / `.cursor-plugin/plugin.json` / Git tag**：与 **`v0.2.38`** 对齐
+
 ## [0.2.37] - 2026-04-09
 
 ### Fixed

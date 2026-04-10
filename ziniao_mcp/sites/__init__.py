@@ -436,16 +436,23 @@ def save_response_body(
     body_b64: str = "",
     content_type: str = "",
     output_encoding: str = "",
+    decode_encoding: str = "",
 ) -> str:
-    """Write response body to *output_path*, preserving original bytes.
+    """Write response body to *output_path*.
 
-    When *body_b64* (base64 of raw bytes) is available and no
-    *output_encoding* is requested, the raw bytes are written as-is (like
-    ``curl -o``).  This avoids Shift-JIS / Latin-1 / binary corruption.
+    When *body_b64* is present and neither *decode_encoding* nor *output_encoding*
+    is set: if raw bytes are **strict UTF-8**, write a UTF-8 text file (JSON is
+    pretty-printed when valid); otherwise write **raw bytes** unchanged (e.g.
+    CP932 CSV — use ``--decode-encoding cp932`` to get a UTF-8 file).
 
-    If *output_encoding* is given (e.g. ``"utf-8"``), raw bytes are decoded
-    via the response charset then re-encoded to that encoding; JSON pretty-
-    printing is attempted when the result is valid JSON.
+    If *decode_encoding* is set (e.g. ``"cp932"`` for Rakuten CSV), raw bytes
+    are decoded with that codec and written as text; the file encoding is
+    *output_encoding* or ``utf-8``.  Use this when the server omits charset
+    in ``Content-Type`` but the body is not UTF-8.
+
+    If only *output_encoding* is given (no *decode_encoding*), raw bytes are
+    decoded via ``Content-Type`` charset / UTF-8 (:func:`decode_body_bytes`),
+    then re-encoded; JSON pretty-printing is attempted when valid.
 
     Falls back to the legacy ``body_text`` path when *body_b64* is absent
     (e.g. merged pagination results that are already UTF-8 JSON).
@@ -458,6 +465,16 @@ def save_response_body(
 
     if body_b64:
         raw = base64.b64decode(body_b64)
+        if decode_encoding:
+            text = raw.decode(decode_encoding)
+            try:
+                parsed = json.loads(text)
+                text = json.dumps(parsed, ensure_ascii=False, indent=2)
+            except (json.JSONDecodeError, TypeError):
+                pass
+            enc = output_encoding or "utf-8"
+            dest.write_text(text, encoding=enc)
+            return f"Saved to {output_path} ({len(text)} chars, {decode_encoding} → {enc})"
         if output_encoding:
             text = decode_body_bytes(raw, content_type)
             try:
@@ -467,16 +484,20 @@ def save_response_body(
                 pass
             dest.write_text(text, encoding=output_encoding)
             return f"Saved to {output_path} ({len(text)} chars, {output_encoding})"
-        # Try JSON pretty-print: only when raw bytes are valid UTF-8 JSON
         try:
-            parsed = json.loads(raw)
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            dest.write_bytes(raw)
+            return f"Saved to {output_path} ({len(raw)} bytes)"
+        try:
+            parsed = json.loads(text)
             pretty = json.dumps(parsed, ensure_ascii=False, indent=2)
             dest.write_text(pretty, encoding="utf-8")
             return f"Saved to {output_path} ({len(pretty)} chars, JSON pretty-printed)"
-        except (json.JSONDecodeError, TypeError, UnicodeDecodeError):
+        except (json.JSONDecodeError, TypeError):
             pass
-        dest.write_bytes(raw)
-        return f"Saved to {output_path} ({len(raw)} bytes)"
+        dest.write_text(text, encoding="utf-8")
+        return f"Saved to {output_path} ({len(text)} chars, utf-8)"
 
     # Fallback: body_text only (pagination-merged results, legacy callers)
     try:

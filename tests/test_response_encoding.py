@@ -111,6 +111,16 @@ def test_save_raw_bytes_utf8_json_prettified(tmp_path: Path) -> None:
     assert "\n" in written  # indented
 
 
+def test_save_utf8_plain_text_default(tmp_path: Path) -> None:
+    """Non-JSON UTF-8 body is written as UTF-8 text (default -o behaviour)."""
+    text = "hello,世界,csv-line\n"
+    raw = text.encode("utf-8")
+    b64 = base64.b64encode(raw).decode()
+    out = tmp_path / "out.txt"
+    save_response_body("", str(out), body_b64=b64)
+    assert out.read_text(encoding="utf-8") == text
+
+
 def test_save_raw_shift_jis_not_corrupted_as_json(tmp_path: Path) -> None:
     """Non-UTF-8 body that isn't JSON → raw bytes, no U+FFFD."""
     original = "商品名：テスト".encode("shift_jis")
@@ -133,6 +143,16 @@ def test_save_with_output_encoding_transcodes(tmp_path: Path) -> None:
     ct = "text/html; charset=shift_jis"
     out = tmp_path / "out.txt"
     save_response_body("", str(out), body_b64=b64, content_type=ct, output_encoding="utf-8")
+    assert out.read_text(encoding="utf-8") == text
+
+
+def test_save_with_decode_encoding_cp932_no_content_type(tmp_path: Path) -> None:
+    """Rakuten-style CSV: server omits charset; explicit cp932 → utf-8 file."""
+    text = "レビュータイプ,商品名"
+    raw = text.encode("cp932")
+    b64 = base64.b64encode(raw).decode()
+    out = tmp_path / "reviews.csv"
+    save_response_body("", str(out), body_b64=b64, content_type="text/csv", decode_encoding="cp932")
     assert out.read_text(encoding="utf-8") == text
 
 
