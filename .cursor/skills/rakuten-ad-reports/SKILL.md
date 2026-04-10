@@ -93,12 +93,12 @@ allowed-tools: Bash(ziniao:*)
 
 ### 按商品（`*-item`）一行例
 
-```bash
+```powershell
 ziniao rakuten rpp-search-item -V start_date=2026-03-01 -V end_date=2026-03-31 --all
 ziniao rakuten cpnadv-performance-retrieve-item -V start_date=2026-03-01 -V end_date=2026-03-07 -V page=0
 ziniao rakuten tda-reports-search-item -V start_date=2026-03-01 -V end_date=2026-03-07
-ziniao rakuten rpp-exp-report-item  -V start_date=2026-03-01 -V end_date=2026-03-05 -V shop_url=<slug>
-ziniao rakuten tda-exp-report-item  -V start_date=2026-03-01 -V end_date=2026-03-05 -V shop_url=<slug>
+ziniao rakuten rpp-exp-report-item -V start_date=2026-03-01 -V end_date=2026-03-05 -V shop_url=<slug>
+ziniao rakuten tda-exp-report-item -V start_date=2026-03-01 -V end_date=2026-03-05 -V shop_url=<slug>
 # 可选 -V search_product_name=
 ```
 
@@ -122,18 +122,17 @@ $d = (Get-Date).AddDays(-1).ToString('yyyy-MM-dd')
 ziniao rakuten rpp-search -V start_date=$d -V end_date=$d --all
 ```
 
-Bash（Linux / Git Bash，`date` 为 GNU 版时）：
+`datatool-deal-csv` 用 **无横杠** `YYYYMMDD`。若已有 `$start`/`$end`（`yyyy-MM-dd`），可先转格式再传参，例如：
 
-```bash
-end=$(date +%F); start=$(date -d '6 days ago' +%F)
-ziniao rakuten rpp-search -V start_date=$start -V end_date=$end --all
+```powershell
+$dealStart = $start.Replace('-', '')
+$dealEnd = $end.Replace('-', '')
+ziniao rakuten datatool-deal-csv -V start_date=$dealStart -V end_date=$dealEnd -V period=daily
 ```
-
-`datatool-deal-csv` 用 **无横杠** `YYYYMMDD`，需把上面日期去掉 `-` 再传。
 
 ## 常用一行命令
 
-```bash
+```powershell
 ziniao rakuten rpp-search -V start_date=2026-03-01 -V end_date=2026-03-31 --all
 ziniao rakuten rpp-search-item -V start_date=2026-03-01 -V end_date=2026-03-31 --all
 ziniao --json rakuten rpp-exp-merchant
@@ -156,7 +155,7 @@ ziniao rakuten afl-report-pending -V date=2026-03
 
 ## 典型流程
 
-```bash
+```powershell
 ziniao open-store rakuten-shop-001
 ziniao rakuten rpp-search -V start_date=2026-03-01 -V end_date=2026-03-31 --all -o rpp.json
 ziniao rakuten rpp-search-item -V start_date=2026-03-01 -V end_date=2026-03-31 --all -o rpp_item.json
@@ -314,6 +313,7 @@ ziniao rakuten rpp-exp-report-item -V start_date=2026-03-01 -V end_date=2026-03-
 
 ## 注意
 
+- **PowerShell**：示例中多条命令请**逐行执行**，或同一行用 **分号 `;`** 串联；**不要**使用 **`&&`**（Windows PowerShell 5.1 不支持；PowerShell 7+ 支持 `&&`，为兼容 5.1 文档统一用分号或换行）。  
 - **`shop_url`**：店铺 slug（如 `pettena-collections`）→ 头 `x-shop-url`；不明则先 `rpp-exp-merchant` 读 `result.shopUrl`。  
 - **日期**：DEAL 用 `YYYYMMDD`；购入/联盟月维度用 `YYYY-MM`；其余多为 `YYYY-MM-DD`。  
 - **`--all`**：仅 **`rpp-search`**、**`rpp-search-item`**。其它用 `page` / `page_no`。

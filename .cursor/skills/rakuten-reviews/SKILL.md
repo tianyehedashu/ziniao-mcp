@@ -58,10 +58,15 @@ allowed-tools: Bash(ziniao:*)
 
 ## 速查（执行参考）
 
-```bash
+```powershell
 ziniao rakuten reviews-csv -o reviews_last7.csv -V last_days=7
 ziniao rakuten reviews-csv -o reviews_march.csv -V start_date=2026-03-01 -V end_date=2026-03-31
 ```
+
+## 注意
+
+- **CLI 与预设**：子命令来自内置 `ziniao_mcp/sites/rakuten/reviews-csv.json`。若 `ziniao site list` / `ziniao rakuten --help` 中**没有** `reviews-csv`，说明当前可执行文件对应的是**旧版包**；请在本仓库执行 **`pip install -e .`**（或安装与仓库一致的发行版）后重开终端，或用 **`python -m ziniao_mcp.cli`**。若使用 **`uv tool install`** 到 `~/.local/bin`，升级时 exe 被占用需先结束进程再 **`uv tool install . --force`**。  
+- **PowerShell**：多条命令请**逐行执行**，或同一行用 **分号 `;`** 串联；**不要**使用 **`&&`**（Windows PowerShell 5.1 不支持；PowerShell 7+ 支持 `&&`，为兼容 5.1 文档统一用分号或换行）。
 
 ## 管理
 
