@@ -169,11 +169,17 @@ def print_result(data: dict[str, Any], *, json_mode: bool = False) -> None:
 
 
 def _print_error(msg: str) -> None:
+    hint = ""
+    if msg.startswith("Unknown command:"):
+        hint = (
+            "\n提示: 后台 daemon 版本过旧，不认识该命令。请执行 `ziniao quit` 结束旧进程后再运行命令"
+            "（CLI 会自动拉起新 daemon）；若仍失败，请升级包：`pip install -U ziniao` 或 `uv tool upgrade ziniao`。"
+        )
     try:
         from rich.console import Console  # pylint: disable=import-outside-toplevel
-        Console(stderr=True).print(f"[bold red]Error:[/] {msg}")
+        Console(stderr=True).print(f"[bold red]Error:[/] {msg}{hint}")
     except ImportError:
-        print(f"Error: {msg}", file=sys.stderr)
+        print(f"Error: {msg}{hint}", file=sys.stderr)
 
 
 def _emit_large_text(*, origin: str, text: str, console: Any) -> None:

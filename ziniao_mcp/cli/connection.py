@@ -137,6 +137,7 @@ _SLOW_COMMANDS = frozenset({
     "screenshot", "snapshot", "snapshot_enhanced",
     "navigate", "wait", "recorder",
     "launch_chrome", "open_store",
+    "page_fetch",
 })
 
 
