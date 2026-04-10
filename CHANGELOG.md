@@ -4,6 +4,21 @@
 
 ## [Unreleased]
 
+## [0.2.42] - 2026-04-10
+
+### Added
+
+- **Cursor skill `rakuten-ad-reports`**：`references/SCRIPTS.md`；可执行脚本 `run_ad_batch.ps1`、`aggregate_ad_exports.py`、`merge_rpp_search_json.py`、`merge_cpnadv_report_json.py`、`fetch_rpp_search_slices.ps1`
+- **Cursor skill `rakuten-reviews`**：`references/SCRIPTS.md`；`analyze_reviews_csv.py`
+
+### Changed
+
+- **`rakuten-ad-reports` / `rakuten-reviews` SKILL**：交付规范、与 SCRIPTS/scripts 的交叉引用及目录结构与广告技能对齐
+
+### 工程
+
+- **`pyproject.toml` / `.cursor-plugin/plugin.json`**：与 **`v0.2.42`** 对齐（补齐此前与变更日志的插件版本差）
+
 ## [0.2.39] - 2026-04-11
 
 ### Added

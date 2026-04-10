@@ -1,6 +1,6 @@
 ---
 name: rakuten-ad-reports
-description: 乐天 RMS 广告数据与决策：选项化菜单（复盘、SKU 加减投、RPP 日/计划/商品体检、Expert、CPA、券、DEAL、邮件、购入、联盟、策略清单）。触发词：乐天广告、RPP、TDA、ROAS、优惠券、DEAL、联盟、购入明细、广告复盘。
+description: 乐天 RMS 广告数据与决策：选项化菜单（A～K）；**run_ad_batch.ps1 一键批次**（JST 区间 + Pack 字母 + 自动 aggregate）；**店铺隔离目录**（`-SiteSlug`）；Expert 默认 `rpp-exp-merchant` 取 slug；交付四块 + **Markdown 表格**呈现数值结论、按需下钻。触发词：乐天广告、RPP、TDA、ROAS、优惠券、DEAL、联盟、购入明细、广告复盘。
 allowed-tools: Bash(ziniao:*)
 ---
 
@@ -8,22 +8,44 @@ allowed-tools: Bash(ziniao:*)
 
 `ziniao rakuten <子命令>`：在已登录 RMS 的浏览器会话中请求后台接口，拉取 JSON/HTML/CSV。
 
-**Expert（エキスパート）**：乐天广告后台的增强型报表产品线，与标准 RPP/TDA 报表并列；域名与路径里常见 `rppexp`、`tdaexp`，子命令对应 **`rpp-exp-*`**、**`tda-exp-*`**（须传 `shop_url`）。**RPP-EXP** = 检索型广告的 Expert 版，**TDA-EXP** = 展示型广告的 Expert 版。
+**文档与工具**：主说明见本文；[`references/SCRIPTS.md`](references/SCRIPTS.md) 载 **接口集計窗长**、合并/汇总脚本用法、**`rpp-search-item` 跨自然月标准流程**（与 `merge_rpp_search_json.py` / `run_ad_batch` 边界对齐）；可执行脚本在 **`scripts/`**（**`run_ad_batch.ps1` 一键批次**、`aggregate_ad_exports.py`、`merge_*.py` 等）。扩展细节仅从本文链入 SCRIPTS，不叠套多级引用。
+
+**Expert（エキスパート）**：乐天广告后台的**增强型报表**产品线，与标准 RPP/TDA 并列；接口路径常见 `rppexp`、`tdaexp`，对应 **`rpp-exp-*`**、**`tda-exp-*`**。调用报表类子命令须在请求头携带店铺 **`shop_url`（slug）**。**RPP-EXP** = 检索 Expert，**TDA-EXP** = 展示 Expert。slug **默认由 Agent 执行** `ziniao --json rakuten rpp-exp-merchant` 读取 `result.shopUrl`，**勿要求用户手填**；仅当**多店并行、代运营、不确定当前活动标签对应哪一家店**时，再请用户确认站点或切换 `open-store` 后重试。
 
 ## 前提
 
 1. 已 `open-store` / `launch` 并登录 RMS。  
-2. 活动标签在 `ad.rms.rakuten.co.jp` 等对应域（preset 会 `navigate_url`）。  
-3. `ad.*` 多数走 XSRF（Cookie 自动注入）；`auto-rmail` / `datatool` / `afl` 走 Cookie。  
-4. **`cpnadv-*`**：前置条件与异常响应判定见下文 **速查表 · 子命令附注** 中 **`cpnadv-performance-retrieve`** 条目。
+
+
+## 店铺与会话
+
+1. **站点与会话一致**：拉数前确保 ziniao 当前会话即目标店（`ziniao open-store <site>` 或等价流程）；切换店铺后**重新打开 RMS 广告域**再执行子命令。  
+2. **批次目录带店铺标识**：同一仓库内多店并存时，**必须**用 `run_ad_batch.ps1 -SiteSlug <slug>`（或手工将 `-o` 落在 `exports/<slug>/batch_<起>_<止>/`），避免 JSON 与 `summary.json` 混店。`slug` 可与 `shop_url`、店铺简称对齐，便于归档与对账。  
+3. **Expert 的 `shop_url`**：**标准流程**为在当前店已登录前提下执行 `rpp-exp-merchant`，将返回的 `shopUrl` 填入 `rpp-exp-report*` / `tda-exp-report*` 的 `-V shop_url=`。**不向用户索要 slug**，除非存在多店歧义或 merchant 返回异常。
 
 ## 业务能力菜单（默认以选项呈现给用户）
 
-### Agent 输出规范（必遵守）
+### 执行与交付规范（必遵守）
 
 1. **首次响应**（用户只说「乐天广告 / 拉报表 / 帮我看广告」等模糊需求时）：先给出下方 **A～K 编号菜单**，每项一行：**编号 + 短标题 + 一句业务价值**，末尾写「请回复 **编号**（可多项，如 `A+C`），并说明**统计区间**（起止日期或最近几周/几月）。」  
-2. **用户已点选编号**：再追问仅缺信息（主要是**日期区间**、是否要**按商品**、是否要看 **Expert**）；然后执行拉数并给出**业务结论**（预算建议、SKU 清单、风险点），避免堆砌技术细节。  
-3. **用户已说清目标**（例如「上周 RPP 按商品复盘」）：可跳过菜单，直接执行并回报结论。
+2. **用户已点选编号**：**默认不追问日期**——用户说「近7日/上周/本月/上月」等时，Agent **自行按 JST** 换算 `start_date`/`end_date`（`end_date`＝JST 前一自然日），并**优先**用 **`scripts/run_ad_batch.ps1 -Range … -Pack …`**（多店加 **`-SiteSlug`**）一键落盘+汇总（见下 **Agent 默认自动化**）。**Expert（D）** 由 Agent **自动** `rpp-exp-merchant` 取 slug，**不**因缺 slug 打断用户；仅 **区间含糊**（如「大促那段」）、**多店无法区分当前会话**时再简短确认。然后给出**业务结论**（预算建议、SKU 清单、风险点），避免堆砌技术细节。  
+3. **用户已说清目标**（例如「上周 RPP 按商品复盘」）：可跳过菜单，直接执行并回报结论。  
+4. **批次目录（防混入历史）**：本批所有 `ziniao … -o` 与合并产物落在**同一专用子目录**，勿与旧 JSON 混放在扁平 `exports/`。推荐：`exports/<店铺简写或 site>/batch_<start>_<end>/`（日期同 `-V` 的 `YYYY-MM-DD`）。**汇总只对该目录**执行 `aggregate_ad_exports.py -d <该目录>`（该脚本对 `-d` **不递归**，仅扫此目录一层内 `*.json`）。历史文件可移出批次目录，或将文件名改为 **`_` 开头**（`-d` 会跳过 `_*.json`）。备选：不扫目录，**显式传入本批文件列表**（见 [`references/SCRIPTS.md`](references/SCRIPTS.md)）。  
+5. **拉数后的数值汇总（必遵守）**：多文件落盘后**必须**运行 `scripts/aggregate_ad_exports.py`（**类型识别与字段口径**见 [`references/SCRIPTS.md`](references/SCRIPTS.md)）。接口窗长或分页产生的多段 JSON，先用同目录 **`merge_rpp_search_json.py` / `merge_cpnadv_report_json.py`** 合并，再汇总。**禁止**在业务目录（含 `exports/`）新增一次性汇总脚本。Windows PowerShell **避免**多行 `python -c "…"`；显式调用脚本路径（例：`.cursor/skills/rakuten-ad-reports/scripts/aggregate_ad_exports.py`）。汇总范围仅限 **第 4 条** 的批次目录或显式文件列表，避免混入历史 JSON。  
+6. **对用户的交付结构（可读性优先，不等于删减能力）**：**默认**按下列四块输出，避免整屏粘贴脚本 STDOUT：① **区间 + JST 截止说明**（一行，含「截止为 JST 前一自然日、不含当日」）；② **店铺 + 本批目录与关键文件名**（含 `-SiteSlug` 或路径中的店铺段）；③ **结论**；④ **行动**（**≤3 条**可执行项，与下文策略矩阵一致）。  
+   - **③ 结论的版式**：凡含**多项数值对比**（店汇总、按日 Top、按计划、按 SKU、RPP↔TDA↔券、券品与检索同 SKU 对照），**优先使用 Markdown 表格**呈现，列名用**业务语言**并注明**货币/单位**（如 花费(円)、ROAS、订单数）。表后以**短段落**归纳 2～4 句「结构 + 异常 + 交叉发现」，避免只有表没有判断。  
+   - **下钻**：用户要求下钻时，在表格外补充 Top/Bottom 清单、高花费日、计划二次聚合说明等；可引用 `summary*.json` 中的结构化结果。  
+   - **不要**把「默认简短」当成「省略分析义务」。
+
+### Agent 默认自动化（减负）
+
+1. **日期**：见上条第 2 点；`rpp-search-item` **不跨自然月**、超窗切段等**硬约束**仍以本文 **子命令附注** 与 SCRIPTS 表为准；脚本在「本月遇 JST 月初首日」时会 **Warning 并回退上月整月**（见脚本注释）。  
+2. **一键批次**：让用户（或 Agent 代跑 shell）执行  
+   `.\.cursor\skills\rakuten-ad-reports\scripts\run_ad_batch.ps1 -Range Last7|Last30|ThisMonth|PrevMonth -Pack <字母> [-SiteSlug <店铺slug或简称>]`  
+   字母与菜单对应：**A**＝复盘包（RPP/TDA item + 券店/券品），**B**＝仅 RPP+TDA item，**C**＝RPP 日+计划+item，**E**＝CPA，**F**＝仅券，**G**＝DEAL CSV；**H/I/J/K** 脚本内提示手工或另参；**D（Expert）** 不在此脚本内代跑，由 Agent 在批次目录落盘 **`rpp-exp-*` / `tda-exp-*`**（**先** `rpp-exp-merchant` 取 `shopUrl` 再传 `-V shop_url=`），再对**同一目录**跑 `aggregate_ad_exports.py`。  
+   `-DryRun` 只打印；`-SkipCpnadv` 跳过券；`-NoAggregate` 不自动跑汇总；**`-SiteSlug`** 生成 `exports/<slug>/batch_*/`（**多店强烈建议**）。  
+3. **回复忌冗长**：对用户说明「已用 `run_ad_batch -Pack AC -Range ThisMonth`（及 `-SiteSlug` 若有用）」即可，**勿重复**贴 6～8 条独立 `ziniao` 行，除非用户明确要求复制单条或脚本不可用。**结论层**用四块 + 表格，不把 `aggregate` 控制台全文当作交付正文。  
+4. **失败回退**：接口超窗/分页或响应异常时，再引用 **merge_*.py**、**fetch_rpp_search_slices.ps1** 与下文附注（保持原有排障能力，不删）。
 
 ### 可选业务能力一览（对用户展示的选项文案）
 
@@ -39,11 +61,11 @@ allowed-tools: Bash(ziniao:*)
 | **H** | 邮件（R-Mail）与广告节奏 | R-Mail 报告与广告高峰对照 | **错峰或统一主题**，减少顾客疲劳，分清邮件带来的量与广告带来的量 |
 | **I** | 月度广告购入与结构 | 广告购入明细（按月） | **财务对账、费用结构**、大促月与平月对比，支撑现金流与采购节奏 |
 | **J** | 联盟待结算跟进 | 联盟 pending | **回款预期、异常单**清理，避免 pending 堆积影响资金计划 |
-| **K** | 历史策略解读与行动清单 | 在已有或刚拉取的数据上，按本 Skill「运营策略」节输出 | 把数据落成**可执行三件事**（加预算/减预算/改商品），减少「有数没结论」 |
+| **K** | 历史策略解读与行动清单 | 在已有或刚拉取的数据上，按下文「运营策略」节输出 | 把数据落成**可执行三件事**（加预算/减预算/改商品），减少「有数没结论」 |
 
 **组合建议**：日常 **A+B**；大促前后 **C**；汇报 **D**；让利异常 **F**；对账 **I**；联盟 **J**。
 
-### 编号与数据来源对应（Agent 执行用；对用户的回复里不必展开命令）
+### 编号与数据来源对应（执行参考；对用户不必展开命令）
 
 | 编号 | 主要 `ziniao rakuten` 子命令 |
 |------|------------------------------|
@@ -61,9 +83,9 @@ allowed-tools: Bash(ziniao:*)
 
 ### 用户可说的极简话术（仍触发选项）
 
-- 「乐天广告帮我看看」→ Agent 先输出 **A～K 菜单**。  
+- 「乐天广告帮我看看」→ 先输出 **A～K 菜单**。  
 - 「只要按商品谁该加投」→ 对应 **B**（可再问日期）。  
-- 「券和广告一起复盘」→ **A** 或 **F**（Agent 确认是否要商品维度）。
+- 「券和广告一起复盘」→ **A** 或 **F**（确认是否要商品维度）。
 
 具体拉数用的子命令、参数与运营策略细节见下文 **速查表**（含 **子命令附注**）、**常用命令与附注**、**基于历史广告数据的运营策略**。
 
@@ -94,20 +116,21 @@ allowed-tools: Bash(ziniao:*)
 
 ### 子命令附注（约束、异常处置、示例）
 
-以下与上表 **子命令名** 一一对应；Agent 执行时**优先查阅对应命令本节**，再调用通用日期口径（见 **「广告报表的日期区间」**）。
+以下与上表 **子命令名** 一一对应；拉数前**优先查阅对应命令本节**，再套用通用日期口径（见 **「广告报表的日期区间」**）。
 
 #### `rpp-search`（表 `#1`）
 
 - **按商品（SKU）维度**：凡需要 **RPP 按商品** 列表、排行、加减投 SKU 等，**一律使用 `rpp-search-item`**（见表 `#1′`）。**不要**仅用 **`rpp-search -V selection_type=3`** 充当按商品主数据源：与请求体中的 **`periodType=2`** 等组合时易与乐天侧约定冲突，接口常返回 **`TODO`**（无效或未支持组合），表现为拉数失败、空表或不可解析占位，**不可靠**。
-- **参数**：`selection_type` — **1 按日 / 2 按计划**；`3` 在本文档中**不推荐**用于生产拉数（按商品请用 **`rpp-search-item`**）。另有 `campaign_type`（完整枚举以 `ziniao rakuten rpp-search --help` 为准）。**本 Skill 不约定通过 ziniao 拉取「按关键词」维度的 RPP 报表**；关键词级导出、否词与出价调整在 **RMS 检索广告后台**完成。  
+- **参数**：`selection_type` — **1 按日 / 2 按计划**；`3` 在本文档中**不推荐**用于生产拉数（按商品请用 **`rpp-search-item`**）。另有 `campaign_type`（完整枚举以 `ziniao rakuten rpp-search --help` 为准）。**本文不约定通过 ziniao 拉取「按关键词」维度的 RPP 报表**；关键词级导出、否词与出价调整在 **RMS 检索广告后台**完成。  
 - **`selection_type=2`（按计划）**：返回体常为 **「计划 × 日」多行明细**，汇总时需按 `campaignName`（及业务所需其它键）**二次聚合**，勿将单行误认为单计划全期总计。  
-- **按日（`selection_type=1`）**：单次请求跨度过大（实测约 **25～30** 自然日易触发）时，接口可能返回「リクエストは正常に処理できませんでした」类提示。处置：**拆分为 7～14 自然日**子区间分别 `-o` 落盘，离线合并；必要时先用短区间验证会话与 preset。  
-- **结束日**：相对 `rpp-search-item` 通常**允许 `end_date` 取 JST 当日**；若与 `rpp-search-item` 等同批次复盘，建议仍统一为 **「至前一自然日」闭区间**，避免口径错位。
+- **集計期間**：`終了は開始から3ヶ月以内`（自 `start_date` 起连续三个自然月；可跨月但不超窗）。超窗 → 分段 + `merge_rpp_search_json.py`（表见 [references/SCRIPTS.md](references/SCRIPTS.md)）。  
+- **`end_date`**：须 **JST 前一自然日**（非当日）；区间勿含**未来日**；否则常见 `集計期間の条件を正しく指定してください。`  
+- **仍失败**：在已满足上两条前提下，再 **7～14 自然日** 切段合并（大体量 / 计划×日维）。
 
-近 7 日、**结束日可为本地当日**（生产请按 **JST** 换算；起始日 = 当日 − 6 日）：
+近 7 日（**`end_date` = JST 前一自然日**；`start_date` = 该日前推 6 日；生产请按 **JST** 换算）：
 
 ```powershell
-$end = Get-Date -Format 'yyyy-MM-dd'
+$end = (Get-Date).AddDays(-1).ToString('yyyy-MM-dd')
 $start = (Get-Date).AddDays(-6).ToString('yyyy-MM-dd')
 ziniao rakuten rpp-search -V start_date=$start -V end_date=$end --all
 ```
@@ -115,10 +138,9 @@ ziniao rakuten rpp-search -V start_date=$start -V end_date=$end --all
 #### `rpp-search-item`（表 `#1′`）
 
 - **定位**：**RPP 按商品** 的**唯一推荐** ziniao 子命令；与 **`rpp-search` + `selection_type=3`** 不等价，后者易与 **`periodType=2`** 冲突导致乐天返回 **`TODO`**（见 **`rpp-search`** 附注）。
-- **`end_date` 禁止取 JST 当日**：否则常见业务错误 JSON：`集計期間の条件を正しく指定してください。`  
-- **Agent**：用户表述「截至今日」「包含今天」时，**`end_date` 一律取前一自然日**（`today(JST) − 1`），并在交付说明中**标明统计截止日**（如「数据截至 JST 前一自然日」）。  
-- **仍失败时**：在调整 `end_date` 后，可再按 **7～14 自然日**窗口分段拉取并合并。  
-- **近三十日（与 item 口径对齐）**：`end_date` = **JST 前一自然日**，`start_date` = 该日向前 **29** 日（闭区间约 30 自然日）。若同区间 **`rpp-search` 按日**仍失败，按 **周或双周**切片多次落盘后合并。
+- **`end_date`**：**JST 前一自然日**（非当日）；否则常见 `集計期間の条件を正しく指定してください。` 用户说「含今天」时仍传昨日并注明截止日。  
+- **集計期間**：`1ヶ月以内` = **不跨自然月**。跨自然月时：**按月切段**各拉一次 `rpp-search-item`，再用 **`merge_rpp_search_json.py`** 拼成单一 `rpp_item` 文件后汇总；**`run_ad_batch.ps1` 不会自动拆 item**，滚动 `Last30` 等跨月场景须按该流程补全。逐步说明、`_` 文件名约定与汇总解读见 [references/SCRIPTS.md](references/SCRIPTS.md) **「`rpp-search-item` 跨自然月：标准流程」**。  
+- **仍失败**：确认未跨月后，再 **7～14 日** 切段。同月内近 30 日：`end_date`=JST 昨日，`start_date`=该日 **前推 29 日**；跨月则按月拆段。同区间 `rpp-search` 按日仍失败则周/双周切片合并。
 
 近 7 日、**满足 item 结束日约束**（`end_date` = 本地**昨日**，`start_date` = 本地今日 − 7 日；生产请按 **JST**）：
 
@@ -130,13 +152,12 @@ ziniao rakuten rpp-search-item -V start_date=$start -V end_date=$end --all
 
 #### `cpnadv-performance-retrieve` / `cpnadv-performance-retrieve-item`（表 `#4` / `#4′`）
 
-- **浏览器上下文**：执行前须将活动标签页置于 **運用型クーポン広告**（`/cpnadv/`），并确认页面可正常渲染、无系统错误提示。仅在 RPP 等其它模块标签页调用时，响应体常被重写为 **整页 HTML**（如「システムエラー」「ユーザー情報が正しく取得できない」），**非 JSON**。  
-- **成功判定**：落盘内容为 **JSON**（含结构化 `errors` 亦为 JSON）；若以 `<!DOCTYPE html>` 起首，即视为本次拉取失败，应先完成登录与页面导航后重试。  
-- **分页**：可使用 `--all` 或 `-V page=`（item 变体同）。
+- **日期**：`start_date` / `end_date` 为 `YYYY-MM-DD`，JST 与 **广告报表的日期区间**一致；与 RPP/TDA 对照时**区间须对齐**。  
+- **分页**：`--all` 或 `-V page=`（item 变体同）。路由与请求由 **ziniao preset** 处理，与其它 `rakuten` 子命令一样在已登录会话中直接调用即可。
 
 #### `tda-reports-search-item`（表 `#5′`）
 
-- 支持 **`--all`** 合并分页；`start_date` / `end_date` 口径同 **「广告报表的日期区间」**（JST 自然日、`YYYY-MM-DD`）。
+- **`--all`** 分页；日期 JST、`YYYY-MM-DD`。**集計期間**：`開始から3ヶ月以内`（同 `rpp-search`，非 item 之 1 月）；见 [references/SCRIPTS.md](references/SCRIPTS.md)。
 
 #### 通用：极小响应体与 `"errors"`
 
@@ -144,7 +165,7 @@ ziniao rakuten rpp-search-item -V start_date=$start -V end_date=$end --all
 
 ### 按商品（`*-item`）一行例
 
-**`rpp-search-item` / `cpnadv-*`** 的结束日与浏览器上下文等约束，以 **上文「子命令附注」对应条目** 为准（勿仅照抄下列日期）。
+**`rpp-search-item` / `cpnadv-*`** 的结束日等专项约束，以 **上文「子命令附注」对应条目** 为准（勿仅照抄下列日期）。
 
 ```powershell
 ziniao rakuten rpp-search-item -V start_date=2026-03-01 -V end_date=2026-03-31 --all
@@ -178,117 +199,41 @@ $dealEnd = $end.Replace('-', '')
 ziniao rakuten datatool-deal-csv -V start_date=$dealStart -V end_date=$dealEnd -V period=daily
 ```
 
-## 常用命令与附注
+## 常用命令（缩略）
 
-下列示例中的日期、`shop_url`、店铺标识等 **仅作占位**，执行前须替换为实际值。 **`rpp-search` / `rpp-search-item` / `cpnadv-*` 的专项约束** 见 **速查表 · 子命令附注**。
+**日常优先**：`scripts/run_ad_batch.ps1`（见 **Agent 默认自动化**）+ 失败时再查本节与附注。
 
-### `rpp-search`
+| 场景 | 命令入口 |
+|------|-----------|
+| 标准 RPP 日/计划 | `ziniao rakuten rpp-search` · `selection_type` **1**＝按日 **2**＝按计划 |
+| RPP 按商品（唯一推荐） | `ziniao rakuten rpp-search-item … --all`（勿用 `selection_type=3`） |
+| TDA 按商品 | `ziniao rakuten tda-reports-search-item … --all` |
+| 券 | `cpnadv-performance-retrieve` / `cpnadv-performance-retrieve-item` · `--all` 与分页见 `--help` |
+| Expert | `rpp-exp-merchant` → `rpp-exp-report*` / `tda-exp-report*`（`shop_url`） |
+| CPA / DEAL / 邮件 / 购入 / 联盟 | `cpa-reports-search`、`datatool-deal-csv`（`YYYYMMDD`）、`rmail-reports`、`shared-purchase-detail`、`afl-report-pending` |
 
-标准 RPP 汇总与下钻（`selection_type`：**日 / 计划**；**按商品请用 `rpp-search-item`**，勿依赖 `selection_type=3`，见附注）。大跨度 **按日** 请求须分段，见附注。
+分页与可选参数以 `ziniao rakuten <子命令> --help` 为准。
 
-```powershell
-ziniao rakuten rpp-search -V start_date=2026-03-01 -V end_date=2026-03-31 --all
-```
+## 典型流程（Expert 示例）
 
-### `rpp-search-item`
-
-RPP **按商品**（**正式入口**；勿用 `rpp-search` + `selection_type=3` 替代）；全量分页请使用 `--all`。**`end_date` 不得取 JST 当日**，见附注。
-
-```powershell
-ziniao rakuten rpp-search-item -V start_date=2026-03-01 -V end_date=2026-03-31 --all
-```
-
-### `rpp-exp-merchant`
-
-获取当前会话店铺的 `shopUrl` 等，供 Expert 报表 **`shop_url`** 传参；输出建议配合 `--json` 解析。
+非 Expert 的 A/B/C 组合**不要用下面长脚本**，改用 `run_ad_batch.ps1`。Expert 追加拉取时，**`-o` 必须与该批 `batch_*` 目录一致**（多店用 `-SiteSlug`）。
 
 ```powershell
+ziniao open-store <site>
+$start="2026-03-01"; $end="2026-03-31"
+# 与 rpp-exp-merchant 返回的 shopUrl 一致；多店时与 -SiteSlug 对齐
+$slug="pettena-collections"
+$out="exports/$slug/batch_${start}_${end}"
+.\.cursor\skills\rakuten-ad-reports\scripts\run_ad_batch.ps1 -Range Custom -StartDate $start -EndDate $end -Pack AC -SiteSlug $slug -NoAggregate
+# Agent：解析下行 JSON 的 result.shopUrl，勿让用户手填
 ziniao --json rakuten rpp-exp-merchant
-```
-
-### `rpp-exp-report` / `rpp-exp-report-item`
-
-RPP Expert（须 **`shop_url`**）；按店或按商品趋势、分页参数见 `ziniao rakuten rpp-exp-report --help`。
-
-```powershell
-ziniao rakuten rpp-exp-report -V start_date=2026-03-01 -V end_date=2026-03-31 -V shop_url=<slug>
-ziniao rakuten rpp-exp-report-item -V start_date=2026-03-01 -V end_date=2026-03-05 -V shop_url=<slug>
-```
-
-### `cpa-reports-search`
-
-CPA 报表；与 RPP/TDA 同区间对照时使用。
-
-```powershell
-ziniao rakuten cpa-reports-search -V start_date=2026-03-01 -V end_date=2026-03-31
-```
-
-### `cpnadv-performance-retrieve` / `cpnadv-performance-retrieve-item`
-
-运用型优惠券效果；**须先处于 `/cpnadv/` 浏览器上下文**，见附注。分页可用 `--all` 或 `-V page=`。
-
-```powershell
-ziniao rakuten cpnadv-performance-retrieve -V start_date=2026-03-01 -V end_date=2026-03-29 -V page=0
-ziniao rakuten cpnadv-performance-retrieve-item -V start_date=2026-03-01 -V end_date=2026-03-29 -V page=0
-```
-
-### `tda-reports-search` / `tda-reports-search-item`
-
-定向展示（TDA）标准报表；按商品视图支持 `--all`。
-
-```powershell
-ziniao rakuten tda-reports-search -V start_date=2026-03-01 -V end_date=2026-03-05
-ziniao rakuten tda-reports-search-item -V start_date=2026-03-01 -V end_date=2026-03-05
-```
-
-### `tda-exp-report` / `tda-exp-report-item`
-
-TDA Expert（须 **`shop_url`**）。
-
-```powershell
-ziniao rakuten tda-exp-report -V start_date=2026-03-01 -V end_date=2026-03-05 -V shop_url=<slug>
-ziniao rakuten tda-exp-report-item -V start_date=2026-03-01 -V end_date=2026-03-05 -V shop_url=<slug>
-```
-
-### `rmail-reports`
-
-R-Mail 报表页，响应体多为 HTML，建议 `-o` 落盘后再做离线解析。
-
-```powershell
-ziniao rakuten rmail-reports
-```
-
-### `datatool-deal-csv`
-
-DEAL 导出；日期为 **`YYYYMMDD`**，与广告类 `YYYY-MM-DD` 口径不同。
-
-```powershell
-ziniao rakuten datatool-deal-csv -V start_date=20260301 -V end_date=20260331 -V period=daily
-```
-
-### `shared-purchase-detail` / `afl-report-pending`
-
-按月维度：`target_month` / `date` 格式 **`YYYY-MM`**。
-
-```powershell
-ziniao rakuten shared-purchase-detail -V target_month=2026-03
-ziniao rakuten afl-report-pending -V date=2026-03
-```
-
-**其余参数**：`rpp-exp-report` / `tda-exp-report` 支持 `page_no`、`page_size`、`aggregation_period`；`*-exp-report-item` 支持 `search_product_name` 等，以 `--help` 为准。
-
-## 典型流程
-
-```powershell
-ziniao open-store rakuten-shop-001
-ziniao rakuten rpp-search -V start_date=2026-03-01 -V end_date=2026-03-31 --all -o rpp.json
-ziniao rakuten rpp-search-item -V start_date=2026-03-01 -V end_date=2026-03-31 --all -o rpp_item.json
-ziniao --json rakuten rpp-exp-merchant
-ziniao rakuten rpp-exp-report -V start_date=2026-03-01 -V end_date=2026-03-05 -V shop_url=<slug>
-ziniao rakuten rpp-exp-report-item -V start_date=2026-03-01 -V end_date=2026-03-05 -V shop_url=<slug>
+ziniao rakuten rpp-exp-report -V start_date=$start -V end_date=$end -V shop_url=<上一步 shopUrl> -o "$out/rpp_exp.json"
+python .cursor/skills/rakuten-ad-reports/scripts/aggregate_ad_exports.py -d $out -o "$out/summary.json"
 ```
 
 ## 基于历史广告数据的运营策略
+
+**Agent 可读性减负**：用户未要求「展开策略全书 / 诊断 SOP / 写培训稿」时，**勿大段复述**本节；交付以 **四块结构** + **常见症状→运营动作** 表中命中 **1～2 条** + **≤3 行动** 为限。用户点 **K**、明确下钻或问「为什么」时，再引用下文矩阵与分节。
 
 以下与上文 **同一套 ziniao 拉数能力** 衔接：先把**同一店铺、同一日期区间**的多份报表落盘，再在表外做透视与决策。具体字段名以各接口返回 JSON 为准；策略是**框架**，需结合品类、客单、库存与乐天活动规则裁剪。
 
@@ -308,20 +253,9 @@ ziniao rakuten rpp-exp-report-item -V start_date=2026-03-01 -V end_date=2026-03-
 | 联盟结算 | `afl-report-pending` | pending 清理、异常跟踪 |
 | 邮件触达 | `rmail-reports` | 与广告排期协同或错峰，避免同一人群过度轰炸 |
 
-`rpp-exp-merchant` 用于确认 **`shop_url`**，保证 Expert 与店铺上下文一致。
+`rpp-exp-merchant` 用于从**当前会话**读取 **`shopUrl`（即 Expert 所需的 `shop_url`）**，保证与活动标签所在店铺一致；**Agent 默认自动调用**，无需用户粘贴。
 
-**按子命令再细一层（落地时怎么用）**
-
-- **`rpp-search`**：先看店铺或计划侧汇总，再以 `selection_type` 在 **日 / 计划** 间下钻。**日粒度**适用于大促、改价、改标题后的短周期波动；**计划粒度**用于预算集中度与计划结构。**按商品** 请用 **`rpp-search-item`**，勿用 `selection_type=3`（易与 **`periodType=2`** 冲突，乐天返回 **`TODO`**）。**关键词级**分析、否词与出价细则在 **RMS 检索广告后台**完成，本 Skill 不通过 ziniao 约定该维度拉数。  
-- **`rpp-search-item`**：以 SKU 为单位的「花费—销售额—订单」效率表，适合做 **ABC 分层**（见下）与备货联动；务必 `--all` 拉全以免截断长尾。  
-- **`*-exp-report*`**：标准报表不够用时，用 Expert 做 **分页全量**（`page_no`/`page_size`）与 **聚合周期**（`aggregation_period`）趋势；按商品的 `search_product_name` 适合盯爆款或问题款。  
-- **`tda-reports-search` / `tda-reports-search-item`**：重点看展示类渠道的 **CTR、CPC、转化效率** 与 RPP 的差异；商品维度用于判断「适合展示引流的 SKU」与「只适合搜索的 SKU」。  
-- **`cpa-reports-search`**：当 RPP/TDA 显示「点击多、订单少」时，用 CPA 视角核对是否 **落地页或类目** 导致转化断层。  
-- **`cpnadv-performance-retrieve(-item)`**：按商品看 **券带来的流量/成交** 是否侵蚀广告效率；item 版配合 `-V page=` 翻页拉全。  
-- **`datatool-deal-csv`**：DEAL 报名前后各拉一段 **对称区间**（如前后各 14 天），与广告报表同区间对比，避免把自然大促增量误归为 DEAL。  
-- **`shared-purchase-detail`**：按月对齐 **财务复盘**；与广告 JSON 中的花费字段对照，检查是否有异常月份需人工核对账单。  
-- **`afl-report-pending`**：列出待结算联盟单；与店铺运营活动对照，识别异常高峰或规则变更影响。  
-- **`rmail-reports`**：保存 HTML 后关注发送窗口与活动重叠度；与 `rpp-search` 按日对照，判断邮件是否挤压或放大广告高峰。
+**子命令落地细则**（与上表重复处已删）：按日/计划/商品分工、券分页、Expert 分页与 `aggregation_period`、关键词在 RMS 后台维护等，**下钻时**查阅 **速查表 · 子命令附注** 与 `ziniao --help`。
 
 ### 分析前提（避免误判）
 
@@ -336,7 +270,7 @@ ziniao rakuten rpp-exp-report-item -V start_date=2026-03-01 -V end_date=2026-03-
 
 ### 指标阅读（通用）
 
-在落盘 JSON 中优先构造（或脚本聚合）这些衍生量（分母为 0 时跳过）：
+在落盘 JSON 中计算下列衍生量（分母为 0 时跳过）；**店侧批量汇总**用 `scripts/aggregate_ad_exports.py`，**仅针对本批目录或本批文件列表**（见 [`references/SCRIPTS.md`](references/SCRIPTS.md)），勿手写重复逻辑。
 
 - **CTR** = 点击 / 展示；**CPC** = 花费 / 点击；**CPM** = 花费 / 展示 × 1000（衡量展示类「买量贵贱」）。  
 - **CVR（点击→订单）** = 订单数 / 点击（字段名以实际 JSON 为准），区分「流量质量差」与「落地页/商详差」。  
@@ -392,7 +326,7 @@ ziniao rakuten rpp-exp-report-item -V start_date=2026-03-01 -V end_date=2026-03-
 **展示型（TDA）**
 
 - 对比不同素材/版位（以后台实际维度为准）的 CTR 与 ROAS；低效素材轮换或下线。  
-- 与 RPP 重复触达过高时，考虑频次与人群排除（在 RMS 内操作，非本 skill 命令）。  
+- 与 RPP 重复触达过高时，考虑频次与人群排除（在 RMS 内操作，无对应 ziniao 子命令）。  
 - **创意迭代**：一次只改一个变量（主图/文案/落地 SKU），区间对齐前后两周做对照。
 
 **优惠券与广告协同**
@@ -424,12 +358,13 @@ ziniao rakuten rpp-exp-report-item -V start_date=2026-03-01 -V end_date=2026-03-
 
 ### 可复现的数据习惯（配合 CLI）
 
-- 目录建议：`exports/<店铺>/<YYYY-MM>/`，文件名 **`报表类型_起止日期.json`**（例如 `rpp_item_20260301_20260331.json`），便于脚本 join。  
-- **同一批次**决策使用同一 `start_date`/`end_date` 拉齐 RPP、TDA、优惠券，避免「用两周 RPP 对比一周优惠券」。  
-- 需要全量时：`rpp-search` / `rpp-search-item` 用 `--all`；其余按 `page` / `page_no` 分页直至无数据。  
-- **元数据**：每次拉数记录命令行（或 shell history）、`ziniao` 版本、是否大促；大文件可选 md5，避免覆盖后扯不清。  
-- 大文件用 `jq`、Python pandas 等在仓库外部分析即可；本 skill 不绑定特定 BI 工具。  
-- **周报应答三问**：① 本周 ROAS 相对上周，变化主要来自哪些 SKU？② RPP/TDA 花费结构是否更健康？③ 下周唯一要动的 **三件事** 是什么？
+- **目录与一批一档**：与 **执行与交付规范 · 批次目录** 一致。长期归档建议 `exports/<店铺>/<YYYY-MM>/`，其下再建 **`batch_<起>_<止>/`**，避免同月多次拉数混文件。文件名 **`报表类型_起止日期.json`**（如 `rpp_item_20260301_20260331.json`、`tda_item_20260301_20260307.json`），便于按区间 join 与审计。  
+- **同一批次决策**须使用**同一** `start_date`/`end_date` 拉齐 RPP、TDA、优惠券（及 CPA 等对照项），避免「两周 RPP 对比一周券」类错配。  
+- **全量**：`rpp-search`、`rpp-search-item`、`tda-reports-search-item`、`cpnadv-performance-retrieve` 等适用子命令用 **`--all`**；其余按 `page` / `page_no` 分页直至无数据。  
+- **元数据**：每次拉数记录完整命令行（或 shell history）、`ziniao`/preset 版本、店铺标识、是否大促；大文件可选 **md5**，避免覆盖后无法对账。  
+- **分析与汇总分工**：自定义透视、图表可用 `jq`、pandas 等在**仓库外**或独立分析目录进行；**同一批次落盘的广告 JSON 数值汇总**仍须先对本批目录跑 `aggregate_ad_exports.py`，再按需接 BI 或二次建模。  
+- **配套脚本**：[references/SCRIPTS.md](references/SCRIPTS.md) — `aggregate_ad_exports.py`、`merge_rpp_search_json.py`、`merge_cpnadv_report_json.py`、`fetch_rpp_search_slices.ps1`。  
+- **周报应答三问**（与第 6 条交付结构呼应）：① 本周（或本区间）ROAS/成效相对对照期，变化主要来自哪些 SKU 或计划？② RPP 与 TDA 花费结构是否更健康、是否需腾挪？③ 下周（或下一阶段）**最值得做的三件事**是什么（加预算 / 减预算 / 改商品或素材 / 券政）？
 
 ## 管理
 
@@ -438,6 +373,7 @@ ziniao rakuten rpp-exp-report-item -V start_date=2026-03-01 -V end_date=2026-03-
 ## 注意
 
 - **PowerShell**：示例中多条命令请**逐行执行**，或同一行用 **分号 `;`** 串联；**不要**使用 **`&&`**（Windows PowerShell 5.1 不支持；PowerShell 7+ 支持 `&&`，为兼容 5.1 文档统一用分号或换行）。  
-- **`shop_url`**：店铺 slug（如 `pettena-collections`）→ 头 `x-shop-url`；不明则先 `rpp-exp-merchant` 读 `result.shopUrl`。  
+- **`shop_url`（Expert）**：即店铺 slug，请求头 `x-shop-url`。**默认** `ziniao --json rakuten rpp-exp-merchant` → `result.shopUrl`；仅多店/会话不明时让用户确认或重开正确店铺。  
 - **日期口径**：DEAL 使用 `YYYYMMDD`；广告购入、联盟等按月使用 `YYYY-MM`；其余多为 `YYYY-MM-DD`。**`rpp-search-item` 的 `end_date` 等专项规则** 见 **速查表 · 子命令附注 · `rpp-search-item`**。  
-- **`--all`**：适用子命令见 **速查表 · 子命令附注**（`rpp-search`、`rpp-search-item`、`tda-reports-search-item`、`cpnadv-performance-retrieve` 等）；其余以 `page` / `page_no` 翻页为准。
+- **`--all`**：适用子命令见 **速查表 · 子命令附注**（`rpp-search`、`rpp-search-item`、`tda-reports-search-item`、`cpnadv-performance-retrieve` 等）；其余以 `page` / `page_no` 翻页为准。  
+- **交付**：默认 **Markdown 表格 + 短解读**；路径写全（或相对仓库根目录），便于用户打开 `summary.json` 与原始 JSON。
