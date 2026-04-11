@@ -4,6 +4,18 @@
 
 ## [Unreleased]
 
+## [0.2.43] - 2026-04-11
+
+### Added
+
+- **仓库文档索引**：根与各包 **`CLAUDE.md`**（`ziniao` / `ziniao_mcp` / `ziniao_webdriver` / `tests` / `scripts` / `docs`）
+- **`docs/directory-conventions.md`**：物理目录用途、wheel 边界与 `exports/` 等落盘约定
+- **Cursor skills**：`engineering-lint-test`（Ruff/Pylint/uv 约定）、`strict-code-review`（Diff 评审）
+
+### 工程
+
+- **`pyproject.toml` / `.cursor-plugin/plugin.json`**：与 **`v0.2.43`** 对齐
+
 ## [0.2.42] - 2026-04-10
 
 ### Added
