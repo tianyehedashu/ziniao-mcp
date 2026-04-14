@@ -20,7 +20,7 @@ dependencies = [
     "PyYAML>=6.0",
     "mcp>=1.0.0",
     "httpx>=0.27.0",
-    "nodriver>=0.48.0",
+    "nodriver>=0.48.1",
     "typer>=0.12.0",
     "rich>=13.0.0",
     # Windows 默认无系统 IANA 时区库；zoneinfo 需 tzdata 才能解析 Asia/Tokyo（乐天日界）。
