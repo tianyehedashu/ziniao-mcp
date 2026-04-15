@@ -111,11 +111,26 @@ def _scan_dir(base: Path) -> dict[str, Path]:
     return result
 
 
+def _source_for_path(p: Path) -> str:
+    if p.is_relative_to(USER_DIR):
+        return "local"
+    from . import repo as _repo_mod  # pylint: disable=import-outside-toplevel
+    if p.is_relative_to(_repo_mod.REPOS_DIR):
+        return "repo"
+    if p.is_relative_to(BUILTIN_DIR):
+        return "builtin"
+    return "unknown"
+
+
 def list_presets() -> list[dict[str, Any]]:
-    """Return metadata for all discovered presets (user > entry_points > builtin)."""
+    """Return metadata for all discovered presets (user > repos > entry_points > builtin)."""
+    from . import repo as _repo_mod  # pylint: disable=import-outside-toplevel
+
     merged: dict[str, Path] = {}
     merged.update(_scan_dir(BUILTIN_DIR))
     for pid, path in _scan_ep_presets().items():
+        merged[pid] = path
+    for pid, path in _repo_mod.scan_repos().items():
         merged[pid] = path
     for pid, path in _scan_dir(USER_DIR).items():
         merged[pid] = path
@@ -136,6 +151,7 @@ def list_presets() -> list[dict[str, Any]]:
             "vars": list((data.get("vars") or {}).keys()),
             "var_defs": data.get("vars") or {},
             "path": str(merged[pid]),
+            "source": _source_for_path(merged[pid]),
             "auth": auth.get("type", "cookie"),
             "auth_hint": auth.get("hint", ""),
             "paginated": ptype not in ("", "none", None),
@@ -146,18 +162,27 @@ def list_presets() -> list[dict[str, Any]]:
 def load_preset(preset_id: str) -> dict[str, Any]:
     """Load a preset by ID (e.g. ``rakuten/rpp-search``).
 
+    Search order: user-local → repos → entry_points → builtin.
     Raises ``FileNotFoundError`` if not found.
     """
-    for source in (USER_DIR, None, BUILTIN_DIR):
-        if source is None:
-            ep = _scan_ep_presets()
-            if preset_id in ep:
-                return json.loads(ep[preset_id].read_text(encoding="utf-8"))
-            continue
-        path = source / preset_id.replace("/", str(Path("/"))).rstrip("/")
-        json_path = path.with_suffix(".json")
-        if json_path.is_file():
-            return json.loads(json_path.read_text(encoding="utf-8"))
+    path = USER_DIR / preset_id.replace("/", str(Path("/"))).rstrip("/")
+    json_path = path.with_suffix(".json")
+    if json_path.is_file():
+        return json.loads(json_path.read_text(encoding="utf-8"))
+
+    from . import repo as _repo_mod  # pylint: disable=import-outside-toplevel
+    for repo_preset_path in _repo_mod.scan_repos().get(preset_id, []),:
+        if isinstance(repo_preset_path, Path):
+            return json.loads(repo_preset_path.read_text(encoding="utf-8"))
+
+    ep = _scan_ep_presets()
+    if preset_id in ep:
+        return json.loads(ep[preset_id].read_text(encoding="utf-8"))
+
+    builtin_path = BUILTIN_DIR / preset_id.replace("/", str(Path("/"))).rstrip("/")
+    builtin_json = builtin_path.with_suffix(".json")
+    if builtin_json.is_file():
+        return json.loads(builtin_json.read_text(encoding="utf-8"))
     raise FileNotFoundError(f"Preset not found: {preset_id}")
 
 
@@ -236,9 +261,9 @@ def _scan_ep_presets() -> dict[str, Path]:
 def get_plugin(site_name: str) -> SitePlugin | None:
     """Try to load a ``SitePlugin`` subclass for *site_name*.
 
-    Checks user-local file → builtin package ``ziniao_mcp.sites.<site>`` → entry_points.
-    Builtin plugins use normal package import so relative imports (e.g. ``from .._base``) work;
-    file-only loading would fail on those.
+    Checks user-local file → repo dirs → builtin package ``ziniao_mcp.sites.<site>``
+    → entry_points.  Builtin plugins use normal package import so relative imports
+    work; file-only loading is used for user-local and repo plugins.
     Returns ``None`` if no plugin is defined (JSON-only preset).
     """
     user_init = USER_DIR / site_name / "__init__.py"
@@ -246,6 +271,19 @@ def get_plugin(site_name: str) -> SitePlugin | None:
         loaded = _load_plugin_from_file(user_init, site_name)
         if loaded is not None:
             return loaded
+
+    from . import repo as _repo_mod  # pylint: disable=import-outside-toplevel
+    if _repo_mod.REPOS_DIR.is_dir():
+        for repo_dir in sorted(_repo_mod.REPOS_DIR.iterdir()):
+            if not repo_dir.is_dir() or repo_dir.name.startswith((".", "_")):
+                continue
+            if repo_dir.name == "__pycache__":
+                continue
+            repo_init = repo_dir / site_name / "__init__.py"
+            if repo_init.is_file():
+                loaded = _load_plugin_from_file(repo_init, site_name)
+                if loaded is not None:
+                    return loaded
 
     if (BUILTIN_DIR / site_name / "__init__.py").is_file():
         import importlib  # pylint: disable=import-outside-toplevel

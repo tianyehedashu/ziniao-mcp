@@ -1,10 +1,21 @@
-"""Unit tests for site preset pagination helpers."""
+"""Unit tests for site preset pagination helpers.
+
+Uses the fake repo from the ``rakuten_repo`` fixture in ``conftest.py``
+so that ``rakuten/rpp-search`` is discoverable.
+"""
 
 from __future__ import annotations
 
 import json
 
+import pytest
+
 from ziniao_mcp.sites import list_presets, paginate_all_generic, run_site_fetch
+
+
+@pytest.fixture(autouse=True)
+def _setup(rakuten_repo):
+    pass
 
 
 def test_list_presets_auth_and_paginated() -> None:

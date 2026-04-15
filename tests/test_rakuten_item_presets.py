@@ -1,6 +1,11 @@
-"""Built-in Rakuten ad presets: product-dimension (*-item) discovery."""
+"""Rakuten ad presets: product-dimension (*-item) discovery.
+
+Uses the fake repo from the ``rakuten_repo`` fixture in ``conftest.py``.
+"""
 
 from __future__ import annotations
+
+import pytest
 
 from ziniao_mcp.sites import list_presets
 
@@ -13,6 +18,11 @@ _ITEM_IDS = frozenset(
         "rakuten/tda-exp-report-item",
     }
 )
+
+
+@pytest.fixture(autouse=True)
+def _setup(rakuten_repo):
+    pass
 
 
 def test_rakuten_item_presets_registered() -> None:

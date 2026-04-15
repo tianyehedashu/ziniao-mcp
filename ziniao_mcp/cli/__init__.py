@@ -179,6 +179,7 @@ def _register_commands() -> None:
         scroll,
         session,
         site_cmd,
+        skill_cmd,
         store,
         update_cmd,
     )
@@ -212,6 +213,12 @@ def _register_commands() -> None:
     )
 
     site_cmd.register_site_commands(app)
+
+    app.add_typer(
+        skill_cmd.app,
+        name="skill",
+        help="Manage AI agent skills (install/remove for Cursor, Trae, etc.).",
+    )
 
     # Top-level shortcuts for the most common commands
     store.register_top_level(app)

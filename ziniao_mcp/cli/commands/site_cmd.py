@@ -31,6 +31,8 @@ _PRESET_LIST_LEGEND = (
     "  Columns: [mode] fetch | js — how the page issues HTTP (default fetch; js uses `script` in JSON).\n"
     "           [auth] cookie | xsrf | token | none — preset `auth.type` (documentation taxonomy, not the injector).\n"
     "                    In fetch mode, xsrf presets use declarative `header_inject` for CSRF/session headers; see docs/page-fetch-auth.md.\n"
+    "           [source] local | repo | builtin — where the preset comes from.\n"
+    "                    local: ~/.ziniao/sites/ (user override). repo: git-managed repo in ~/.ziniao/repos/. builtin: shipped with the package.\n"
     "           (paginated) — template defines pagination; use --page or --all on ziniao <site> <action>.\n"
     "           (vars: …) — template placeholders; pass -V name=value. Details: ziniao site show <id>\n"
     "           Leading x — preset disabled via `ziniao site disable` (hidden from ziniao <site> shortcuts).\n"
@@ -67,12 +69,14 @@ def is_preset_enabled(preset_id: str) -> bool:
 # ---------------------------------------------------------------------------
 
 def _preset_listing_suffix(p: dict) -> str:
-    """One-line summary after the preset name: [mode] [auth] (paginated) desc (vars: …)."""
+    """One-line summary after the preset name: [mode] [auth] [source] (paginated) desc (vars: …)."""
     mode_tag = f"[{p['mode']}]"
     auth_tag = f"[{p.get('auth', 'cookie')}]"
+    source = p.get("source", "builtin")
+    source_tag = f"[{source}]"
     pag_note = " (paginated)" if p.get("paginated") else ""
     vars_str = ", ".join(p.get("vars", [])) if p.get("vars") else ""
-    line = f"{mode_tag:<8} {auth_tag:<8}{pag_note}  {p.get('description', '')}"
+    line = f"{mode_tag:<8} {auth_tag:<8} {source_tag:<10}{pag_note}  {p.get('description', '')}"
     if vars_str:
         line += f"  (vars: {vars_str})"
     return line
@@ -243,6 +247,142 @@ app.command("copy", hidden=True)(_site_fork)
 
 
 # ---------------------------------------------------------------------------
+# site add / update / remove / repos — git repo management
+# ---------------------------------------------------------------------------
+
+
+@app.command("add")
+def site_add(
+    url: str = typer.Argument(..., help="Git repository URL (HTTPS)."),
+    name: Optional[str] = typer.Option(None, "--name", "-n", help="Local repo name (default: derived from URL)."),
+    branch: str = typer.Option("main", "--branch", "-b", help="Branch to clone."),
+) -> None:
+    """Add a git repository as a site preset source.
+
+    The repo is cloned into ~/.ziniao/repos/<name>/ and its JSON presets
+    become available via ``ziniao <site> <action>`` alongside built-in and
+    user-local presets.
+
+    Examples:
+        ziniao site add https://github.com/myorg/ziniao-sites.git
+        ziniao site add https://github.com/myorg/ziniao-sites.git --name my-sites
+        ziniao site add https://github.com/myorg/ziniao-sites.git --branch dev
+    """
+    from ...sites.repo import add_repo  # pylint: disable=import-outside-toplevel
+
+    try:
+        entry = add_repo(url, name=name, branch=branch)
+    except (ValueError, RuntimeError) as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1) from exc
+
+    if get_json_mode():
+        print_result({"status": "added", **entry}, json_mode=True)
+        return
+
+    typer.echo(f"  Added: {entry['name']}")
+    typer.echo(f"  URL:   {entry['url']}")
+    typer.echo(f"  Branch: {entry['branch']}")
+    typer.echo("  Run 'ziniao site list' to see newly available presets.")
+
+
+def _refresh_installed_skills() -> None:
+    from .skill_cmd import refresh_symlinks
+
+    refreshed = refresh_symlinks(silent_errors=True)
+    if refreshed:
+        typer.echo(f"  ↻ Refreshed {refreshed} installed skill symlink(s).")
+
+
+@app.command("update")
+def site_update(
+    name: Optional[str] = typer.Argument(None, help="Repo name to update (default: all repos)."),
+) -> None:
+    """Pull latest changes from registered site repositories.
+
+    Without arguments, updates all registered repos.
+    Specify a repo name to update only that one.
+
+    Examples:
+        ziniao site update
+        ziniao site update site-hub
+    """
+    from ...sites.repo import update_repo  # pylint: disable=import-outside-toplevel
+
+    try:
+        results = update_repo(name)
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1) from exc
+
+    if get_json_mode():
+        print_result({"results": results}, json_mode=True)
+        return
+
+    for r in results:
+        status = r["status"]
+        if status == "updated":
+            commit = r.get("commit", "")
+            typer.echo(f"  ✓ {r['name']}: {status}  {commit}")
+        else:
+            err = r.get("error", "")
+            typer.echo(f"  ✗ {r['name']}: {status}  {err}")
+
+    _refresh_installed_skills()
+
+
+@app.command("remove")
+def site_remove(
+    name: str = typer.Argument(..., help="Repo name to remove."),
+) -> None:
+    """Remove a registered site repository.
+
+    Deletes the local clone directory and removes the repo from the registry.
+
+    Example: ziniao site remove my-company-sites
+    """
+    from ...sites.repo import remove_repo  # pylint: disable=import-outside-toplevel
+
+    try:
+        result = remove_repo(name)
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(1) from exc
+
+    if get_json_mode():
+        print_result({"status": "removed", **result}, json_mode=True)
+        return
+
+    typer.echo(f"  Removed: {result['name']}")
+    if result.get("dir_removed"):
+        typer.echo("  Directory deleted.")
+
+
+@app.command("repos")
+def site_repos() -> None:
+    """List registered site repositories.
+
+    Example: ziniao site repos
+    """
+    from ...sites.repo import list_repos  # pylint: disable=import-outside-toplevel
+
+    repos = list_repos()
+
+    if get_json_mode():
+        print_result({"repos": repos, "count": len(repos)}, json_mode=True)
+        return
+
+    if not repos:
+        typer.echo("  No repos registered. Use 'ziniao site add <url>' to add one.")
+        return
+
+    max_name = max(len(r["name"]) for r in repos)
+    for r in repos:
+        typer.echo(f"  {r['name']:<{max_name}}  {r['url']}  ({r['branch']})")
+    typer.echo(f"\n  Total: {len(repos)}")
+
+
+# ---------------------------------------------------------------------------
 # site enable / disable
 # ---------------------------------------------------------------------------
 
@@ -276,6 +416,61 @@ def site_disable(
         typer.echo(f"Disabled: {preset_id}")
     else:
         typer.echo(f"Already disabled: {preset_id}")
+
+
+# ---------------------------------------------------------------------------
+# site skills — list / show skills discovered from repos
+# ---------------------------------------------------------------------------
+
+
+@app.command("skills")
+def site_skills(
+    site_name: Optional[str] = typer.Argument(None, help="Site name to show skill details (omit to list all)."),
+) -> None:
+    """List or show site skills discovered from registered repos.
+
+    Skills are ``SKILL.md`` files inside site directories (e.g.
+    ``~/.ziniao/repos/site-hub/rakuten/SKILL.md``).  They provide AI agents
+    with contextual knowledge about how to use a site's presets and workflows.
+
+    Examples:
+        ziniao site skills
+        ziniao site skills rakuten
+    """
+    from ...sites.repo import scan_skills, parse_skill_meta  # pylint: disable=import-outside-toplevel
+
+    skills = scan_skills()
+
+    if site_name:
+        skill_path = skills.get(site_name)
+        if not skill_path:
+            typer.echo(f"No skill found for site '{site_name}'.", err=True)
+            raise typer.Exit(1)
+        if get_json_mode():
+            meta = parse_skill_meta(skill_path)
+            meta["content"] = skill_path.read_text(encoding="utf-8")
+            print_result(meta, json_mode=True)
+            return
+        typer.echo(skill_path.read_text(encoding="utf-8"))
+        return
+
+    if not skills:
+        typer.echo("  No site skills found. Add a repo with SKILL.md files: ziniao site add <url>")
+        return
+
+    if get_json_mode():
+        print_result({
+            "skills": [parse_skill_meta(p) for p in skills.values()],
+            "count": len(skills),
+        }, json_mode=True)
+        return
+
+    for name, path in sorted(skills.items()):
+        meta = parse_skill_meta(path)
+        desc = meta.get("description", "")
+        typer.echo(f"  {name:<20} {desc}")
+    typer.echo(f"\n  Total: {len(skills)}  |  Details: ziniao site skills <name>")
+    typer.echo("  Install to agent: ziniao skill install <name>  |  List: ziniao skill list")
 
 
 # ---------------------------------------------------------------------------

@@ -387,6 +387,39 @@ ziniao config env [--shell powershell|bash|json|mcp]  # 输出环境变量导出
 ziniao update [--git] [--sync] [--dry-run]  # 用 uv 升级 CLI（Windows 默认新窗口避免 exe 自占用）
 ```
 
+#### 站点预设 `site`
+
+通过 JSON 模板 + 浏览器登录态调用站点接口，无需 API Key。
+
+```bash
+ziniao site list                        # 列出所有预设
+ziniao site show rakuten/rpp-search     # 查看预设详情
+ziniao site repos                       # 查看已注册仓库
+ziniao site update                      # 更新仓库（拉取最新预设）
+ziniao site skills                      # 列出站点 AI skills
+```
+
+运行预设（顶层快捷命令）：
+
+```bash
+ziniao rakuten rpp-search -V start_date=2026-03-01 -V end_date=2026-03-07
+ziniao rakuten reviews-csv -o reviews.csv
+```
+
+#### AI Agent Skill 管理 `skill`
+
+将站点业务 skills 安装到 Cursor / Trae / Claude Code 等 agent 的全局目录。
+
+```bash
+ziniao skill agents                     # 查看支持的 agent
+ziniao skill list                       # 列出可安装的 skills
+ziniao skill install rakuten-ads        # 安装到默认 agent (cursor)
+ziniao skill install rakuten-ads -a all # 安装到所有 agent
+ziniao skill update                     # 刷新已安装的 symlink
+ziniao skill remove rakuten-ads -a all  # 移除
+ziniao skill installed                  # 查看已安装
+```
+
 #### MCP 服务 `serve`
 
 ```bash
@@ -453,7 +486,9 @@ ziniao --json --content-boundaries --max-output 8000 info snapshot
 - **紫鸟可选**：不配置紫鸟也能使用全部 Chrome 浏览器功能（启动/连接/页面操作/录制回放），零配置即可上手
 - **统一浏览器支持**：紫鸟店铺（多店铺、WebDriver）与本地 Chrome（启动/连接 CDP）同一套 MCP 工具
 - **全部 MCP 工具**：店铺管理、Chrome 管理、统一会话、页面导航、输入自动化、录制回放、网络监控、调试截图等
-- **4 个 AI 技能（Skills）**：浏览器自动化、店铺管理、亚马逊运营、店铺运营 RPA 脚本生成
+- **站点预设（Site Presets）**：JSON 模板 + 浏览器登录态，免 API Key 调用站点接口（如 Rakuten 广告报表、评论下载等），支持分页、CSRF 注入、Python 插件扩展
+- **AI Agent Skill 管理**：`ziniao skill install/remove` 一键将业务 skills 安装到 Cursor / Trae / Claude Code 等 agent 的全局目录
+- **7+ 个 AI 技能（Skills）**：浏览器自动化、店铺管理、亚马逊运营、RPA 脚本生成、Rakuten 广告、Rakuten 评论、站点开发指南等
 - **1 个专用 Agent**：紫鸟运营专家角色，具备跨境电商领域知识
 - **2 个快捷命令（Commands）**：一键检查店铺状态、批量截图
 - **跨会话状态持久化**：MCP 进程重启后可恢复已打开店铺或 Chrome 的 CDP 连接
@@ -675,6 +710,11 @@ ziniao-mcp/
 | `store-management` | 多店铺管理、会话恢复、批量操作 |
 | `amazon-operations` | 亚马逊 Listing 管理、订单处理、广告分析 |
 | `store-rpa-scripting` | RPA 脚本生成：用 MCP 工具探索页面 → 确认步骤 → 生成可独立运行的 Python 脚本（nodriver + ziniao_webdriver）及复现文档 |
+| `rakuten-ads` | Rakuten 广告报表（RPP / TDA / CPA / 优惠券），通过 `ziniao skill install rakuten-ads` 安装到 agent |
+| `rakuten-reviews` | Rakuten 评论 CSV 下载与分析 |
+| `site-development` | 站点适配器开发指南：6 步工作流、3 层认证、JSON 字段参考 |
+
+业务 skills 存放在 [site-hub](https://github.com/tianyehedashu/site-hub) 仓库，`ziniao site update` 拉取最新版本，`ziniao skill install` 安装到 AI agent。
 
 ### Agents（专用角色）
 

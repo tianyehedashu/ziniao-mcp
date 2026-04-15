@@ -1,4 +1,8 @@
-"""Rakuten RMS review CSV preset + plugin URL build."""
+"""Rakuten RMS review CSV preset + plugin URL build.
+
+The rakuten preset and plugin are loaded from the fake repo provided
+by the ``rakuten_repo`` fixture in ``conftest.py``.
+"""
 
 from __future__ import annotations
 
@@ -8,12 +12,22 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from ziniao_mcp.sites import _spec_for_page_fetch, load_preset, prepare_request
-from ziniao_mcp.sites.rakuten import RakutenPlugin
+from ziniao_mcp.sites import _spec_for_page_fetch, get_plugin, load_preset, prepare_request
 
 
-def test_reviews_csv_rejects_start_after_end() -> None:
-    plugin = RakutenPlugin()
+@pytest.fixture(autouse=True)
+def _setup(rakuten_repo):
+    pass
+
+
+@pytest.fixture()
+def plugin():
+    p = get_plugin("rakuten")
+    assert p is not None, "RakutenPlugin not found — check rakuten_repo fixture"
+    return p
+
+
+def test_reviews_csv_rejects_start_after_end(plugin) -> None:
     spec = {
         "rakuten_review_csv": True,
         "url": "",
@@ -35,8 +49,7 @@ def test_reviews_csv_rejects_start_after_end() -> None:
         plugin.before_fetch(spec)
 
 
-def test_rakuten_plugin_builds_review_csv_url() -> None:
-    plugin = RakutenPlugin()
+def test_rakuten_plugin_builds_review_csv_url(plugin) -> None:
     spec = {
         "rakuten_review_csv": True,
         "url": "",

@@ -1,4 +1,8 @@
-"""Unit tests for fork_preset."""
+"""Unit tests for fork_preset.
+
+Uses the fake repo from the ``rakuten_repo`` fixture in ``conftest.py``
+so that ``rakuten/rpp-search`` is discoverable.
+"""
 
 from __future__ import annotations
 
@@ -12,7 +16,7 @@ from ziniao_mcp.sites import fork_preset
 
 
 @pytest.fixture(autouse=True)
-def _patch_user_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def _setup(rakuten_repo, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sites_mod, "USER_DIR", tmp_path)
 
 

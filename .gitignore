@@ -52,3 +52,8 @@ out/
 
 # Local Chrome profile (e.g. README / MCP examples)
 .chrome-test-profile/
+
+# Symlinked skills from site-hub submodule (developers create locally)
+skills/rakuten-ads/
+skills/rakuten-reviews/
+skills/site-development/

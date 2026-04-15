@@ -1,0 +1,3 @@
+[submodule "site-hub"]
+	path = site-hub
+	url = https://github.com/tianyehedashu/site-hub.git
