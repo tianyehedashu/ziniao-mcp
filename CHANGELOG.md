@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+## [0.2.46] - 2026-04-15
+
+### Changed
+
+- **`ziniao site update` 自动安装新 skill**：更新 repo 后自动将新发现的 skill 通过 junction 链接到所有已配置的 agent 目录，无需手动 `ziniao skill install`
+- **`refresh_symlinks` 返回值变更**：从 `int` 改为 `tuple[int, int]`（refreshed, installed），支持 `auto_install` 参数
+
 ## [0.2.45] - 2026-04-15
 
 ### Fixed

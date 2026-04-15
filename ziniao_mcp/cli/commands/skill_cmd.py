@@ -98,10 +98,11 @@ def refresh_symlinks(
     silent_errors: bool = False,
     agent_filter: list[tuple[str, Path]] | None = None,
     reporter: Any | None = None,
-) -> int:
+    auto_install: bool = False,
+) -> tuple[int, int]:
     """Re-symlink all ziniao-managed skills across agent directories.
 
-    Returns the number of refreshed symlinks.  Used by both ``skill update``
+    Returns ``(refreshed, installed)`` counts.  Used by both ``skill update``
     and ``site update`` (auto-refresh).
 
     Args:
@@ -111,15 +112,18 @@ def refresh_symlinks(
             which agents are scanned.  Defaults to all agents.
         reporter: Optional callable ``reporter(agent_name, skill_name, error)``
             invoked on failure when *silent_errors* is True.
+        auto_install: If True, also install (symlink) skills that are
+            discovered from repos but not yet present in the agent directory.
     """
     from ...sites.repo import scan_skills
 
     skills = scan_skills()
     if not skills:
-        return 0
+        return 0, 0
 
     targets = agent_filter or list(AGENT_SKILLS_DIRS.items())
     refreshed = 0
+    installed = 0
     for agent_name, agent_dir in targets:
         if not agent_dir.is_dir():
             continue
@@ -136,7 +140,22 @@ def refresh_symlinks(
                     raise
                 if reporter:
                     reporter(agent_name, d.name, exc)
-    return refreshed
+
+        if auto_install:
+            for skill_name, skill_path in skills.items():
+                target = agent_dir / skill_name
+                if target.exists() or target.is_symlink():
+                    continue
+                try:
+                    _symlink_skill(skill_path.parent, target)
+                    installed += 1
+                except Exception as exc:
+                    if not silent_errors:
+                        raise
+                    if reporter:
+                        reporter(agent_name, skill_name, exc)
+
+    return refreshed, installed
 
 
 @app.command("agents")
@@ -315,7 +334,7 @@ def skill_update(
     def _reporter(agent_name: str, skill_name: str, exc: Exception) -> None:
         errors.append(f"  ✗ {agent_name}/{skill_name}: {exc}")
 
-    total = refresh_symlinks(silent_errors=True, agent_filter=targets, reporter=_reporter)
+    total, _installed = refresh_symlinks(silent_errors=True, agent_filter=targets, reporter=_reporter)
 
     for agent_name, agent_dir in targets:
         if not agent_dir.is_dir():
