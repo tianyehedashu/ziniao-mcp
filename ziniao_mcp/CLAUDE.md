@@ -2,7 +2,7 @@
 
 ## 职责
 
-**CLI**（`ziniao` 命令）、**MCP 服务**（`ziniao serve` / `ziniao-mcp`）、**后台 daemon**、**会话与工具编排**：连接紫鸟店铺或独立 Chrome，经 `nodriver` 执行页面自动化；站点预设、网络拦截、`page_fetch`、录制 IR 与多目标 emit 等。
+**CLI**（`ziniao` 命令）、**MCP 服务**（`ziniao serve` / `python -m ziniao_mcp`）、**后台 daemon**、**会话与工具编排**：连接紫鸟店铺或独立 Chrome，经 `nodriver` 执行页面自动化；站点预设、网络拦截、`page_fetch`、录制 IR 与多目标 emit 等。
 
 ## 入口
 

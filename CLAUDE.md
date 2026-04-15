@@ -3,7 +3,7 @@
 *
 ## 愿景与定位
 
-**紫鸟与 Chrome 浏览器 AI 自动化**：让 Cursor / Claude 等 Agent 通过 **MCP** 与 **CLI** 统一操控紫鸟多店会话与本地 Chrome（CDP），覆盖导航、输入、截图、网络抓取、站点预设、录制回放等能力。PyPI 发行名为 [`ziniao`](https://pypi.org/project/ziniao/)，控制台入口为 `ziniao`（兼容 `ziniao-mcp` → `python -m ziniao_mcp`）。
+**紫鸟与 Chrome 浏览器 AI 自动化**：让 Cursor / Claude 等 Agent 通过 **MCP** 与 **CLI** 统一操控紫鸟多店会话与本地 Chrome（CDP），覆盖导航、输入、截图、网络抓取、站点预设、录制回放等能力。PyPI 发行名为 [`ziniao`](https://pypi.org/project/ziniao/)，控制台入口为 `ziniao`（MCP 服务通过 `ziniao serve` 或 `python -m ziniao_mcp` 启动）。
 
 ## 架构总览（高层）
 

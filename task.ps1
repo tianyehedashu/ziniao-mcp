@@ -20,7 +20,7 @@ switch ($Task.ToLower()) {
     "help" {
         Write-Host "常用任务："
         Write-Host "  .\task.ps1 install         - 安装依赖"
-        Write-Host "  .\task.ps1 run             - 启动 MCP 服务器 (ziniao-mcp)"
+        Write-Host "  .\task.ps1 run             - 启动 MCP 服务器 (ziniao serve)"
         Write-Host "  .\task.ps1 test            - 运行单元/常规测试（不含集成）"
         Write-Host "  .\task.ps1 test-all        - 运行全部测试（含集成，需 .env）"
         Write-Host "  .\task.ps1 test-integration - 仅运行集成测试（需配置 .env）"
@@ -36,7 +36,7 @@ switch ($Task.ToLower()) {
     }
     "run" {
         Push-Location $ProjectRoot
-        try { Invoke-Uv run ziniao-mcp } finally { Pop-Location }
+        try { Invoke-Uv run ziniao serve } finally { Pop-Location }
     }
     "test" {
         Push-Location $ProjectRoot

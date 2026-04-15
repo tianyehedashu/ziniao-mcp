@@ -262,7 +262,7 @@ git push origin main
 
 ### 发布到 PyPI
 
-PyPI 包名为 **`ziniao`**。用户可通过 `uvx ziniao serve` 或 `pip install ziniao` 后执行 `ziniao serve` / `ziniao-mcp` 使用 MCP Server（不含 Plugin 组件）。`ziniao-mcp` 为控制台别名，与 `python -m ziniao_mcp` 等价。
+PyPI 包名为 **`ziniao`**。用户可通过 `uvx ziniao serve` 或 `pip install ziniao` 后执行 `ziniao serve` 使用 MCP Server（不含 Plugin 组件）。也可通过 `python -m ziniao_mcp` 启动。
 
 #### 前提：注册 PyPI 账号并配置 API Token
 
@@ -331,7 +331,7 @@ uvx ziniao serve --help
 # 或通过 pip 安装
 pip install ziniao
 ziniao serve --help
-# 或（兼容入口）ziniao-mcp --help
+# 或 python -m ziniao_mcp --help
 ```
 
 #### 通过 GitHub Actions 自动发布

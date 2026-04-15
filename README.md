@@ -4,7 +4,7 @@
 
 **GitHub**：[https://github.com/tianyehedashu/ziniao-mcp](https://github.com/tianyehedashu/ziniao-mcp)
 
-**PyPI 包名**：[`ziniao`](https://pypi.org/project/ziniao/)（与仓库名 `ziniao-mcp` 不同；控制台命令为 `ziniao`，另提供 `ziniao-mcp` 作为 `python -m ziniao_mcp` 的兼容入口）。
+**PyPI 包名**：[`ziniao`](https://pypi.org/project/ziniao/)（与仓库名 `ziniao-mcp` 不同；控制台命令为 `ziniao`，MCP 服务通过 `ziniao serve` 或 `python -m ziniao_mcp` 启动）。
 
 ## 快速使用
 

@@ -6,7 +6,7 @@
 
 ### debug_mcp.py
 
-MCP 通信调试代理：在 Cursor 与 `ziniao serve`（或兼容入口 `ziniao-mcp`）之间做管道转发，并把所有 stdin/stdout 写入 `scripts/mcp_debug.log`，便于排查 Cursor-MCP 协议交互问题。
+MCP 通信调试代理：在 Cursor 与 `ziniao serve`（或 `python -m ziniao_mcp`）之间做管道转发，并把所有 stdin/stdout 写入 `scripts/mcp_debug.log`，便于排查 Cursor-MCP 协议交互问题。
 
 **使用方式**
 
@@ -43,7 +43,7 @@ uv run python scripts/test_spawn.py
 python scripts/test_spawn.py
 ```
 
-（需保证当前环境能正确找到 `ziniao-mcp`，建议用 `uv run`。）
+（需保证当前环境能正确找到 `ziniao`，建议用 `uv run`。）
 
 **依赖**
 

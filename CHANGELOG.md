@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+## [0.2.44] - 2026-04-15
+
+### Changed
+
+- **移除 `ziniao-mcp` 可执行文件入口**：统一为单一入口 `ziniao`；MCP 服务通过 `ziniao serve` 或 `python -m ziniao_mcp` 启动，架构更清晰，安装更快、进程占用更少
+- **`task.ps1 run`**：`ziniao-mcp` → `ziniao serve`
+- **文档统一**：README / CLAUDE / docs / scripts 中可执行文件引用全部对齐为 `ziniao` / `ziniao serve` / `python -m ziniao_mcp`
+
 ## [0.2.43] - 2026-04-11
 
 ### Added
@@ -535,7 +543,7 @@
 ### 新增
 
 - **`ziniao update`**：通过本机 `uv tool install` 自升级 CLI（`--git` 从 GitHub `main`，`--dry-run` 仅打印命令）
-- **控制台别名 `ziniao-mcp`**：与 `python -m ziniao_mcp` 等价，便于兼容旧文档与 MCP 配置
+- **控制台入口统一为 `ziniao`**：MCP 服务通过 `ziniao serve` 或 `python -m ziniao_mcp` 启动（已移除 `ziniao-mcp` 别名）
 
 ### 修复
 
