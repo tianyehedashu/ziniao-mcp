@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [0.2.45] - 2026-04-15
+
+### Fixed
+
+- **`is_junction` AttributeError**：`skill_cmd.py` 中 `Path.is_junction()` 仅在 Python 3.12+ 可用，改为兼容 3.10+ 的检测方式，修复 `ziniao site update` 在旧 Python 上崩溃的问题
+
 ## [0.2.44] - 2026-04-15
 
 ### Changed

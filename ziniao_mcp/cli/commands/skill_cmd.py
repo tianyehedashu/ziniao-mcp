@@ -78,8 +78,19 @@ def _symlink_skill(source_dir: Path, target_dir: Path) -> None:
         target_dir.symlink_to(source_dir)
 
 
+def _is_junction(path: Path) -> bool:
+    if hasattr(path, "is_junction"):
+        return path.is_junction()
+    if path.is_symlink():
+        return False
+    try:
+        return str(path.resolve()) != str(path) and not path.is_symlink()
+    except OSError:
+        return False
+
+
 def _is_symlink_or_junction(path: Path) -> bool:
-    return path.is_symlink() or path.is_junction()
+    return path.is_symlink() or _is_junction(path)
 
 
 def refresh_symlinks(
