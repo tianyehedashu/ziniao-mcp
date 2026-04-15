@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import os
+import signal
+import subprocess
+import sys
+import time
 from typing import Optional
 
 import typer
@@ -13,11 +18,51 @@ from ..output import print_result
 app = typer.Typer(no_args_is_help=True, epilog=GROUP_CLI_EPILOG)
 
 
+def _kill_stale_ziniao_processes() -> int:
+    """Kill all ziniao.exe processes except the current one. Returns count killed."""
+    if os.name != "nt":
+        return 0
+    try:
+        result = subprocess.run(
+            ["tasklist", "/FI", "IMAGENAME eq ziniao.exe", "/FO", "CSV", "/NH"],
+            capture_output=True, text=True, timeout=5,
+        )
+    except Exception:
+        return 0
+    pids = []
+    for line in result.stdout.strip().splitlines():
+        parts = line.split(",")
+        if len(parts) >= 2 and "ziniao.exe" in parts[0].strip('"').lower():
+            try:
+                pid = int(parts[1].strip('"'))
+                if pid != os.getpid():
+                    pids.append(pid)
+            except ValueError:
+                continue
+    killed = 0
+    for pid in pids:
+        try:
+            subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True, timeout=3)
+            killed += 1
+        except Exception:
+            continue
+    return killed
+
+
 @app.command("quit")
 def quit_cmd() -> None:
     """Shut down the daemon and release all sessions."""
-    result = run_command("quit")
-    print_result(result, json_mode=get_json_mode())
+    try:
+        result = run_command("quit")
+        print_result(result, json_mode=get_json_mode())
+    except Exception:
+        typer.echo("Daemon not reachable, cleaning up stale processes.")
+        result = None
+
+    time.sleep(0.5)
+    killed = _kill_stale_ziniao_processes()
+    if killed:
+        typer.echo(f"  Killed {killed} stale ziniao process(es).")
 
 
 @app.command("emulate")

@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [0.2.48] - 2026-04-15
+
+### Fixed
+
+- **`ziniao quit` 自动清理残留进程**：daemon 关闭后自动 kill 所有残留 ziniao.exe 进程，解决升级时文件锁定（os error 32）的问题。即使 daemon 不可达也会执行清理
+
 ## [0.2.47] - 2026-04-15
 
 ### Added
