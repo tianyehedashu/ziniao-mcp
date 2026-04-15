@@ -31,6 +31,7 @@ AGENT_SKILLS_DIRS: dict[str, Path] = {
     "trae": _HOME / ".trae" / "skills",
     "cursor": _HOME / ".cursor" / "skills",
     "claude": _HOME / ".claude" / "skills",
+    "openclaw": _HOME / ".openclaw" / "skills",
     "copilot": _HOME / ".github" / "skills",
     "windsurf": _HOME / ".windsurf" / "skills",
     "codex": _HOME / ".codex" / "skills",

@@ -414,6 +414,8 @@ ziniao rakuten reviews-csv -o reviews.csv
 ziniao skill agents                     # 查看支持的 agent
 ziniao skill list                       # 列出可安装的 skills
 ziniao skill install rakuten-ads        # 安装到默认 agent (cursor)
+ziniao skill install rakuten-ads -a trae # 安装到 Trae
+ziniao skill install rakuten-ads -a openclaw # 安装到 OpenClaw
 ziniao skill install rakuten-ads -a all # 安装到所有 agent
 ziniao skill update                     # 刷新已安装的 symlink
 ziniao skill remove rakuten-ads -a all  # 移除

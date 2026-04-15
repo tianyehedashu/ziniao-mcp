@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [0.2.47] - 2026-04-15
+
+### Added
+
+- **OpenClaw agent 支持**：`ziniao skill install <name> -a openclaw` 安装 skill 到 `~/.openclaw/skills`（OpenClaw 共享 skill 目录）
+
 ## [0.2.46] - 2026-04-15
 
 ### Changed
