@@ -185,12 +185,19 @@ class ZiniaoClient:
         name = self._process_name
         try:
             if self._is_windows:
+                ps_command = f'@(Get-Process | Where-Object {{ $_.Path -eq "{self.client_path}" }}).Count'
+                
                 ret = subprocess.run(
-                    ["tasklist", "/FI", f"IMAGENAME eq {name}"],
-                    capture_output=True, text=True, timeout=10, check=False,
-                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                    ["powershell", "-NoProfile", "-Command", ps_command],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    check=False,
+                    creationflags=0x08000000,
                 )
-                return name.lower() in ret.stdout.lower()
+                
+                output = ret.stdout.strip()
+                return output.isdigit() and int(output) > 0
             ret = subprocess.run(
                 ["pgrep", "-x", name],
                 capture_output=True, timeout=10, check=False,
