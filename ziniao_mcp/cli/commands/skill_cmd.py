@@ -21,7 +21,8 @@ app = typer.Typer(
     no_args_is_help=True,
     help=(
         "Manage AI agent skills (install/remove for Cursor, Trae, etc.). "
-        "Skills are discovered from site repos; `install` symlinks them to agent directories."
+        "Skills are discovered from built-in, repos, and user directories; "
+        "`install` symlinks them to agent directories."
     ),
 )
 
@@ -100,10 +101,10 @@ def refresh_symlinks(
     agent_filter: list[tuple[str, Path]] | None = None,
     reporter: Any | None = None,
     auto_install: bool = False,
-) -> tuple[int, int]:
+) -> tuple[int, int, int]:
     """Re-symlink all ziniao-managed skills across agent directories.
 
-    Returns ``(refreshed, installed)`` counts.  Used by both ``skill update``
+    Returns ``(refreshed, installed, removed)`` counts.  Used by both ``skill update``
     and ``site update`` (auto-refresh).
 
     Args:
@@ -120,11 +121,12 @@ def refresh_symlinks(
 
     skills = scan_skills()
     if not skills:
-        return 0, 0
+        return 0, 0, 0
 
     targets = agent_filter or list(AGENT_SKILLS_DIRS.items())
     refreshed = 0
     installed = 0
+    removed = 0
     for agent_name, agent_dir in targets:
         if not agent_dir.is_dir():
             continue
@@ -132,6 +134,9 @@ def refresh_symlinks(
             if not d.is_dir() or not _is_symlink_or_junction(d):
                 continue
             if d.name not in skills:
+                if not d.resolve().exists():
+                    d.unlink()
+                    removed += 1
                 continue
             try:
                 _symlink_skill(skills[d.name].parent, d)
@@ -156,7 +161,7 @@ def refresh_symlinks(
                     if reporter:
                         reporter(agent_name, skill_name, exc)
 
-    return refreshed, installed
+    return refreshed, installed, removed
 
 
 @app.command("agents")
@@ -178,12 +183,12 @@ def skill_agents() -> None:
 
 @app.command("list")
 def skill_list() -> None:
-    """List all discoverable skills from registered repos."""
+    """List all discoverable skills from built-in, repos, and user directories."""
     from ...sites.repo import scan_skills, parse_skill_meta
 
     skills = scan_skills()
     if not skills:
-        typer.echo("  No skills found. Add a repo: ziniao site add <url>")
+        typer.echo("  No skills found. Install ziniao first, or add a repo: ziniao site add <url>")
         return
 
     if get_json_mode():
@@ -196,9 +201,10 @@ def skill_list() -> None:
     for name, path in sorted(skills.items()):
         meta = parse_skill_meta(path)
         desc = meta.get("description", "")
-        if len(desc) > 72:
-            desc = desc[:69] + "..."
-        typer.echo(f"  {name:<20} {desc}")
+        if len(desc) > 62:
+            desc = desc[:59] + "..."
+        source = meta.get("source", "?")
+        typer.echo(f"  {name:<20} [{source:<7}] {desc}")
     typer.echo(f"\n  Total: {len(skills)}  |  Install: ziniao skill install <name> [--agent cursor]")
 
 
@@ -318,10 +324,10 @@ def skill_installed(
 def skill_update(
     agent: Optional[str] = AGENT_CHOICES,
 ) -> None:
-    """Re-symlink all ziniao-managed skills for an agent.
+    """Re-symlink and auto-install all ziniao-managed skills for an agent.
 
-    After `ziniao site update` pulls new skill content from repos, run this
-    to refresh the symlinks. Also useful if a symlink is broken.
+    Refreshes existing symlinks and installs any newly discovered skills
+    (from built-in, repos, or user directories) that are not yet present.
 
     Default agent: cursor.
 
@@ -335,7 +341,12 @@ def skill_update(
     def _reporter(agent_name: str, skill_name: str, exc: Exception) -> None:
         errors.append(f"  ✗ {agent_name}/{skill_name}: {exc}")
 
-    total, _installed = refresh_symlinks(silent_errors=True, agent_filter=targets, reporter=_reporter)
+    total, installed, removed = refresh_symlinks(
+        silent_errors=True,
+        agent_filter=targets,
+        reporter=_reporter,
+        auto_install=True,
+    )
 
     for agent_name, agent_dir in targets:
         if not agent_dir.is_dir():
@@ -345,7 +356,14 @@ def skill_update(
         for e in errors:
             typer.echo(e, err=True)
 
+    parts = []
     if total:
-        typer.echo(f"\n  Total: {total} skill(s) refreshed. Restart agent to take effect.")
+        parts.append(f"{total} refreshed")
+    if installed:
+        parts.append(f"{installed} installed")
+    if removed:
+        parts.append(f"{removed} removed (orphan)")
+    if parts:
+        typer.echo(f"\n  Total: {', '.join(parts)}. Restart agent to take effect.")
     else:
         typer.echo("\n  No ziniao-managed skills found. Install with: ziniao skill install <name>")

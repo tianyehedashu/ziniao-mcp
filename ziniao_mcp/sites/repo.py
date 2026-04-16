@@ -20,9 +20,20 @@ import requests
 
 REPOS_DIR = Path.home() / ".ziniao" / "repos"
 REPOS_JSON = REPOS_DIR / "repos.json"
+USER_SKILLS_DIR = Path.home() / ".ziniao" / "skills"
 
 _OFFICIAL_REPO_URL = "https://github.com/tianyehedashu/site-hub.git"
 _OFFICIAL_REPO_NAME = "site-hub"
+
+
+def _builtin_skills_dir() -> Path | None:
+    try:
+        from ziniao_mcp import __file__ as _mod_file
+        base = Path(_mod_file).resolve().parent
+    except Exception:
+        return None
+    candidate = base.parent / "skills"
+    return candidate if candidate.is_dir() else None
 
 
 def _repos_state() -> dict[str, Any]:
@@ -230,23 +241,28 @@ def scan_repos() -> dict[str, Path]:
     return result
 
 
-def scan_skills() -> dict[str, Path]:
-    """Return ``{skill_name: SKILL.md_path}`` for all repo directories.
+def _scan_flat_skills(base: Path, result: dict[str, Path]) -> None:
+    for skill_dir in sorted(base.iterdir()):
+        if not skill_dir.is_dir() or skill_dir.name.startswith(("_", ".")):
+            continue
+        skill_file = skill_dir / "SKILL.md"
+        if skill_file.is_file():
+            result.setdefault(skill_dir.name, skill_file)
 
-    Looks for ``<site>/skills/<skill-name>/SKILL.md`` (agentskills.io layout)
-    and falls back to ``<site>/SKILL.md`` (flat layout).
-    """
-    ensure_official_repo()
-    result: dict[str, Path] = {}
-    if not REPOS_DIR.is_dir():
-        return result
-    for repo_dir in sorted(REPOS_DIR.iterdir()):
+
+def _scan_repo_skills(base: Path, result: dict[str, Path]) -> None:
+    for repo_dir in sorted(base.iterdir()):
         if not repo_dir.is_dir() or repo_dir.name.startswith((".", "_")):
             continue
         if repo_dir.name == "__pycache__":
             continue
+        repo_skills = repo_dir / "skills"
+        if repo_skills.is_dir():
+            _scan_flat_skills(repo_skills, result)
         for site_dir in sorted(repo_dir.iterdir()):
             if not site_dir.is_dir() or site_dir.name.startswith(("_", ".")):
+                continue
+            if site_dir.name == "skills":
                 continue
             skills_dir = site_dir / "skills"
             if skills_dir.is_dir():
@@ -260,6 +276,36 @@ def scan_skills() -> dict[str, Path]:
                 skill_file = site_dir / "SKILL.md"
                 if skill_file.is_file():
                     result.setdefault(site_dir.name, skill_file)
+
+
+def _skill_source(skill_path: Path) -> str:
+    builtin_dir = _builtin_skills_dir()
+    if builtin_dir and skill_path.is_relative_to(builtin_dir):
+        return "builtin"
+    if skill_path.is_relative_to(USER_SKILLS_DIR):
+        return "local"
+    if skill_path.is_relative_to(REPOS_DIR):
+        return "repo"
+    return "unknown"
+
+
+def scan_skills() -> dict[str, Path]:
+    """Return ``{skill_name: SKILL.md_path}`` for all skill sources.
+
+    Discovery order (first match wins — ``setdefault`` preserves earliest):
+    1. Built-in     ``<package_root>/skills/<name>/SKILL.md``
+    2. Repos        ``~/.ziniao/repos/<repo>/<site>/skills/<name>/SKILL.md``
+    3. User-local   ``~/.ziniao/skills/<name>/SKILL.md``
+    """
+    ensure_official_repo()
+    result: dict[str, Path] = {}
+    builtin_dir = _builtin_skills_dir()
+    if builtin_dir:
+        _scan_flat_skills(builtin_dir, result)
+    if REPOS_DIR.is_dir():
+        _scan_repo_skills(REPOS_DIR, result)
+    if USER_SKILLS_DIR.is_dir():
+        _scan_flat_skills(USER_SKILLS_DIR, result)
     return result
 
 
@@ -283,4 +329,5 @@ def parse_skill_meta(skill_path: Path) -> dict[str, str]:
         meta[key.strip()] = value.strip()
     if "name" not in meta:
         meta["name"] = skill_path.parent.name
+    meta["source"] = _skill_source(skill_path)
     return meta

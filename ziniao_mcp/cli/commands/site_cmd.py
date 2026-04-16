@@ -289,11 +289,13 @@ def site_add(
 def _refresh_installed_skills() -> None:
     from .skill_cmd import refresh_symlinks
 
-    refreshed, installed = refresh_symlinks(silent_errors=True, auto_install=True)
+    refreshed, installed, removed = refresh_symlinks(silent_errors=True, auto_install=True)
     if refreshed:
         typer.echo(f"  ↻ Refreshed {refreshed} installed skill symlink(s).")
     if installed:
         typer.echo(f"  ✓ Auto-installed {installed} new skill(s).")
+    if removed:
+        typer.echo(f"  ✗ Removed {removed} orphan skill symlink(s).")
 
 
 @app.command("update")
