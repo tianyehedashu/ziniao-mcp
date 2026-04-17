@@ -919,6 +919,15 @@ class SessionManager:
         """daemon 内存中是否已有可操作的浏览器会话。"""
         return bool(self._active_store_id and self._active_store_id in self._stores)
 
+    def active_store_count(self) -> int:
+        """当前 daemon 持有的浏览器会话总数（含 Ziniao 店铺与 Chrome 实例）。
+
+        idle watchdog 用它判断是否可以安全停机：有任何会话存在时，自动停机会
+        触发 ``cleanup`` → ``close_store`` → 实际关闭用户的紫鸟店铺 / 强杀
+        ``launch_chrome`` 启动的 Chrome 进程，属于不可逆的用户数据风险。
+        """
+        return len(self._stores)
+
     async def attach_from_recording_context(self, ctx: RecordingBrowserContext) -> None:
         """按录制保存的会话信息连接浏览器（connect_store / connect_chrome）。"""
         if ctx.backend_type == "chrome":

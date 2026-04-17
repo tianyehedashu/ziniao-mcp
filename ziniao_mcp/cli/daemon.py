@@ -57,6 +57,8 @@ class DaemonServer:
         self._server: asyncio.AbstractServer | None = None
         self._last_activity: float = time.monotonic()
         self._shutting_down = False
+        # 在途请求计数：watchdog 须在命令处理期间避让，避免中途 shutdown 把会话拆掉。
+        self._inflight: int = 0
 
     async def setup(self) -> None:
         from ..server import _resolve_config, _has_ziniao_config  # pylint: disable=import-outside-toplevel
@@ -99,9 +101,23 @@ class DaemonServer:
     ) -> None:
         self._last_activity = time.monotonic()
         addr = writer.get_extra_info("peername")
+        # 必须在 try 之前初始化：空数据分支会 return，finally 里仍会引用 response；
+        # None 表示"无需回写响应"（客户端未发送任何数据），避免历史上靠 broad-except
+        # 吞 NameError 导致的静默失败。
+        response: dict | None = None
+        # 规范写法：+1 紧贴 try 前、-1 在 finally。Python 保证 finally 只在
+        # 进入 try 之后才执行，所以任何在 +1 之前抛出的异常都不会触发"白 -1"。
+        # 不要把 +1 挪到 try 内：万一未来在 += 1 之前加了会抛的同步代码，
+        # finally 反而会在没 +1 的情况下 -1，真的造成计数错位。
+        self._inflight += 1
         try:
             data = await asyncio.wait_for(reader.read(1024 * 1024), timeout=5.0)
             if not data:
+                # 空包通常意味着客户端异常断开 / 旧 PowerShell 发送空行 / 端口嗅探。
+                # 既然路径已显式处理，必须留下可观测的痕迹，避免未来排查时再次踩坑。
+                _logger.debug(
+                    "空连接来自 %s，立即关闭（客户端未发送数据）", addr,
+                )
                 return
             raw = data.decode("utf-8").strip()
             request = json.loads(raw)
@@ -115,14 +131,24 @@ class DaemonServer:
             _logger.exception("Error handling request")
             response = {"error": str(exc)}
         finally:
+            # 请求完成后再刷一次活跃时间：长耗时命令期间 watchdog 不会误判空闲。
+            self._last_activity = time.monotonic()
+            self._inflight = max(0, self._inflight - 1)
+            if response is not None:
+                try:
+                    payload = (
+                        json.dumps(response, ensure_ascii=False, default=str) + "\n"
+                    )
+                    writer.write(payload.encode("utf-8"))
+                    await writer.drain()
+                except Exception:  # pylint: disable=broad-exception-caught
+                    _logger.debug("写回响应失败 (addr=%s)", addr, exc_info=True)
             try:
-                payload = json.dumps(response, ensure_ascii=False, default=str) + "\n"
-                writer.write(payload.encode("utf-8"))
-                await writer.drain()
                 writer.close()
                 await writer.wait_closed()
-            except Exception:
-                pass
+            except Exception:  # pylint: disable=broad-exception-caught
+                # 与"写回响应失败"对齐，留诊断信息；close 失败通常是对端已经 RST。
+                _logger.debug("关闭连接失败 (addr=%s)", addr, exc_info=True)
 
     async def _dispatch(self, request: dict) -> dict:
         from .dispatch import dispatch  # pylint: disable=import-outside-toplevel
@@ -159,10 +185,32 @@ class DaemonServer:
         while not self._shutting_down:
             await asyncio.sleep(60)
             idle = time.monotonic() - self._last_activity
-            if idle > _IDLE_TIMEOUT:
-                _logger.info("Idle timeout reached (%.0fs), shutting down", idle)
-                await self.shutdown()
-                break
+            if idle <= _IDLE_TIMEOUT:
+                continue
+            # 有在途请求：正在跑长耗时命令（flow_run / 批量上传等），不能打断。
+            if self._inflight > 0:
+                _logger.debug(
+                    "Idle %.0fs 但仍有 %d 个在途请求，跳过自动关机",
+                    idle, self._inflight,
+                )
+                continue
+            # 有活跃会话：强关会误杀用户的 Ziniao 店铺 / Chrome 进程，
+            # 必须由用户显式 close_store / stop_client 结束，不走 idle 清理路径。
+            active = 0
+            try:
+                if self._session_manager is not None:
+                    active = self._session_manager.active_store_count()
+            except Exception:  # pylint: disable=broad-exception-caught
+                _logger.debug("读取活跃会话数失败", exc_info=True)
+            if active > 0:
+                _logger.debug(
+                    "Idle %.0fs 但仍有 %d 个活跃浏览器会话，跳过自动关机",
+                    idle, active,
+                )
+                continue
+            _logger.info("Idle timeout reached (%.0fs), shutting down", idle)
+            await self.shutdown()
+            break
 
     async def shutdown(self) -> None:
         if self._shutting_down:

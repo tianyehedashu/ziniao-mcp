@@ -4,6 +4,23 @@
 
 ## [Unreleased]
 
+## [0.2.51] - 2026-04-17
+
+### Fixed
+
+- **Windows `ziniao store start-client` 静默退出**：`kill_process` 不再使用 `taskkill /im` 误杀 uv CLI 壳；按 `ExecutablePath` 过滤后用 `taskkill /f /t /pid` 精确终止紫鸟客户端
+- **`kill_process` 返回值**：Mac/Linux 在 `killall` 未命中时返回 `False` 且不再无意义 `sleep(3)`；与 Windows「至少杀到一个才 True」语义对齐
+- **daemon 空闲关机误判**：`_inflight` 与活跃店铺计数参与 idle watchdog；长耗时命令期间刷新 `_last_activity`
+- **`handle_client` 空连接**：初始化 `response`、可选写回、调试日志；`writer` 写回/关闭失败可观测
+
+### Added
+
+- **测试**：`tests/test_daemon_idle.py`（idle watchdog 与 `handle_client` 边界）
+
+### Changed
+
+- **README**：围绕 CLI / Site Presets / Skills 重组安装与命令说明
+
 ## [0.2.50] - 2026-04-17
 
 ### Added

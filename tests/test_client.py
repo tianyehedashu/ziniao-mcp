@@ -316,43 +316,73 @@ class TestKillProcess:
 
     @patch("ziniao_webdriver.client.time.sleep")
     @patch("ziniao_webdriver.client.subprocess.run")
-    def test_v5_windows(self, mock_run, mock_sleep, client_v5):
+    def test_v5_windows_kills_by_pid_filtered_by_path(
+        self, mock_run, mock_sleep, client_v5,
+    ):
+        """按 PID 精确终止：只打到 ExecutablePath 匹配 client_path 的进程，
+        不会按 /im 模糊匹配到同名的 CLI 壳 (~/.local/bin/ziniao.exe)。
+        """
         mock_run.return_value = MagicMock(returncode=0)
         client_v5._is_windows, client_v5._is_mac, client_v5._is_linux = True, False, False
-        assert client_v5.kill_process(skip_confirm=True) is True
+        with patch.object(client_v5, "_find_client_pids", return_value=[1234, 5678]):
+            assert client_v5.kill_process(skip_confirm=True) is True
+        assert mock_run.call_count == 2
+        # 都必须走 /pid，绝不能再出现 /im
+        for call in mock_run.call_args_list:
+            argv = call[0][0]
+            assert "/im" not in argv, "Windows 下按名称模糊终止会误杀 CLI 壳"
+            assert argv[:4] == ["taskkill", "/f", "/t", "/pid"]
+            assert argv[4] in ("1234", "5678")
+
+    @patch("ziniao_webdriver.client.time.sleep")
+    @patch("ziniao_webdriver.client.subprocess.run")
+    def test_v6_windows_kills_by_pid_filtered_by_path(
+        self, mock_run, mock_sleep, client_v6,
+    ):
+        mock_run.return_value = MagicMock(returncode=0)
+        client_v6._is_windows, client_v6._is_mac, client_v6._is_linux = True, False, False
+        with patch.object(client_v6, "_find_client_pids", return_value=[9999]):
+            assert client_v6.kill_process(skip_confirm=True) is True
         mock_run.assert_called_once()
-        assert mock_run.call_args[0][0] == ["taskkill", "/f", "/t", "/im", "SuperBrowser.exe"]
+        assert mock_run.call_args[0][0] == [
+            "taskkill", "/f", "/t", "/pid", "9999",
+        ]
         assert mock_run.call_args.kwargs.get("check") is False
 
     @patch("ziniao_webdriver.client.time.sleep")
     @patch("ziniao_webdriver.client.subprocess.run")
-    def test_v6_windows(self, mock_run, mock_sleep, client_v6):
-        mock_run.return_value = MagicMock(returncode=0)
+    def test_windows_returns_false_and_skips_taskkill_when_no_matching_pids(
+        self, mock_run, mock_sleep, client_v6,
+    ):
+        """回归：_find_client_pids 返回空列表时必须提前返回 False，
+        不得继续走 taskkill（避免误暗示"已终止"语义，同时避免未来出现任何
+        隐式 /im 回退带来的误杀风险）。
+        """
         client_v6._is_windows, client_v6._is_mac, client_v6._is_linux = True, False, False
-        assert client_v6.kill_process(skip_confirm=True) is True
-        mock_run.assert_called_once()
-        assert mock_run.call_args[0][0] == ["taskkill", "/f", "/t", "/im", "ziniao.exe"]
-        assert mock_run.call_args.kwargs.get("check") is False
+        with patch.object(client_v6, "_find_client_pids", return_value=[]):
+            assert client_v6.kill_process(skip_confirm=True) is False
+        mock_run.assert_not_called()
 
     @patch("ziniao_webdriver.client.time.sleep")
     @patch("ziniao_webdriver.client.subprocess.run")
     def test_v5_mac(self, mock_run, mock_sleep, client_v5):
         mock_run.return_value = MagicMock(returncode=0)
         client_v5._is_windows, client_v5._is_mac, client_v5._is_linux = False, True, False
-        client_v5.kill_process(skip_confirm=True)
+        assert client_v5.kill_process(skip_confirm=True) is True
         mock_run.assert_called_once_with(
             ["killall", "SuperBrowser"],
             capture_output=True,
             timeout=10,
             check=False,
         )
+        mock_sleep.assert_called_once_with(3)
 
     @patch("ziniao_webdriver.client.time.sleep")
     @patch("ziniao_webdriver.client.subprocess.run")
     def test_v6_mac(self, mock_run, mock_sleep, client_v6):
         mock_run.return_value = MagicMock(returncode=0)
         client_v6._is_windows, client_v6._is_mac, client_v6._is_linux = False, True, False
-        client_v6.kill_process(skip_confirm=True)
+        assert client_v6.kill_process(skip_confirm=True) is True
         mock_run.assert_called_once_with(
             ["killall", "ziniao"],
             capture_output=True,
@@ -365,13 +395,36 @@ class TestKillProcess:
     def test_v6_linux(self, mock_run, mock_sleep, client_v6):
         mock_run.return_value = MagicMock(returncode=0)
         client_v6._is_windows, client_v6._is_mac, client_v6._is_linux = False, False, True
-        client_v6.kill_process(skip_confirm=True)
+        assert client_v6.kill_process(skip_confirm=True) is True
         mock_run.assert_called_once_with(
             ["killall", "ziniaobrowser"],
             capture_output=True,
             timeout=10,
             check=False,
         )
+
+    @patch("ziniao_webdriver.client.time.sleep")
+    @patch("ziniao_webdriver.client.subprocess.run")
+    def test_mac_returns_false_and_does_not_sleep_when_killall_misses(
+        self, mock_run, mock_sleep, client_v6,
+    ):
+        """跨平台语义对齐：Mac 下 killall 未找到进程（rc=1）时必须返回 False，
+        与 Windows 的"未匹配 PID → False"行为一致；且不应该白等 3s。
+        """
+        mock_run.return_value = MagicMock(returncode=1)
+        client_v6._is_windows, client_v6._is_mac, client_v6._is_linux = False, True, False
+        assert client_v6.kill_process(skip_confirm=True) is False
+        mock_sleep.assert_not_called()
+
+    @patch("ziniao_webdriver.client.time.sleep")
+    @patch("ziniao_webdriver.client.subprocess.run")
+    def test_linux_returns_false_and_does_not_sleep_when_killall_misses(
+        self, mock_run, mock_sleep, client_v6,
+    ):
+        mock_run.return_value = MagicMock(returncode=1)
+        client_v6._is_windows, client_v6._is_mac, client_v6._is_linux = False, False, True
+        assert client_v6.kill_process(skip_confirm=True) is False
+        mock_sleep.assert_not_called()
 
 
 # ------------------------------------------------------------------ #

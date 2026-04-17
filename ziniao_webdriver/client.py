@@ -185,12 +185,9 @@ class ZiniaoClient:
         name = self._process_name
         try:
             if self._is_windows:
-                ret = subprocess.run(
-                    ["tasklist", "/FI", f"IMAGENAME eq {name}"],
-                    capture_output=True, text=True, timeout=10, check=False,
-                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-                )
-                return name.lower() in ret.stdout.lower()
+                # Windows 下需按 ExecutablePath 过滤：uv 安装的 CLI 壳本身也叫 ziniao.exe，
+                # 仅按名称判定会把自身/其他同名进程误识为浏览器客户端。
+                return len(self._find_client_pids()) > 0
             ret = subprocess.run(
                 ["pgrep", "-x", name],
                 capture_output=True, timeout=10, check=False,
@@ -198,6 +195,47 @@ class ZiniaoClient:
             return ret.returncode == 0
         except (subprocess.SubprocessError, FileNotFoundError):
             return False
+
+    def _find_client_pids(self) -> list[int]:
+        """Windows 专用：列出 ``name == _process_name`` 且路径命中 ``client_path`` 的 PID。
+
+        CLI 入口 (``~/.local/bin/ziniao.exe``) 与紫鸟浏览器 (``<client_path>/ziniao.exe``)
+        同名，直接 ``taskkill /im ziniao.exe`` 会连带杀掉 CLI 壳及其 daemon 子进程，
+        表现为 ``ziniao store start-client`` 静默退出 1。此方法按完整路径精确匹配，
+        从而只终止真正的浏览器客户端进程。
+        """
+        if not self._is_windows:
+            return []
+        name = self._process_name
+        target = os.path.abspath(self.client_path).lower() if self.client_path else ""
+        pids: list[int] = []
+        try:
+            ret = subprocess.run(
+                ["wmic", "process", "where", f"name='{name}'",
+                 "get", "ProcessId,ExecutablePath", "/format:csv"],
+                capture_output=True, text=True, timeout=10, check=False,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        except (subprocess.SubprocessError, FileNotFoundError) as e:
+            _logger.debug("wmic 列出进程失败: %s", e)
+            return pids
+        for line in ret.stdout.splitlines():
+            parts = [p.strip() for p in line.split(",")]
+            # CSV header: Node,ExecutablePath,ProcessId（表头行会被 isdigit 过滤掉）
+            if len(parts) < 3 or not parts[-1].isdigit():
+                continue
+            exe_path = parts[1].lower()
+            try:
+                pid = int(parts[-1])
+            except ValueError:
+                continue
+            # 配置了 client_path 时必须严格匹配，避免误杀同名进程（如 CLI 壳自身）。
+            if target:
+                if exe_path and exe_path == target:
+                    pids.append(pid)
+            else:
+                pids.append(pid)
+        return pids
 
     def start_browser(self) -> None:
         """以 WebDriver 模式启动紫鸟客户端。"""
@@ -249,8 +287,16 @@ class ZiniaoClient:
     def kill_process(self, skip_confirm: bool = True) -> bool:
         """
         终止紫鸟客户端已启动的进程。
+
         :param skip_confirm: 若为 True 则跳过确认（默认 True，适用于 MCP 服务器场景）
-        :return: 是否已执行终止
+        :return: ``True`` 表示至少有一个目标进程被成功终止；``False`` 表示没有
+            找到匹配进程、或全部终止均失败。跨平台语义一致。调用方据此决定是否
+            继续走"进程已清理 → 重启"路径。
+
+        历史陷阱：Windows 下 ``ziniao.exe`` 同时被 uv CLI 壳 (``~/.local/bin``)
+        和紫鸟浏览器使用；早期按 ``/im ziniao.exe`` 终止会连带杀掉 CLI 壳及
+        daemon，表现为 ``ziniao store start-client`` 静默退出。现在按 PID
+        + ``ExecutablePath`` 精确过滤。
         """
         if not skip_confirm:
             confirmation = input(
@@ -260,16 +306,31 @@ class ZiniaoClient:
                 return False
 
         name = self._process_name
+        killed_any = False
         try:
             if self._is_windows:
-                # 使用 subprocess 并吞掉 stderr，避免 taskkill 的 GBK 输出混入 MCP UTF-8 导致乱码
-                ret = subprocess.run(
-                    ["taskkill", "/f", "/t", "/im", name],
-                    capture_output=True,
-                    timeout=10,
-                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-                    check=False,
-                )
+                # 按 PID 精确终止，避免与同名 CLI 壳 (~/.local/bin/ziniao.exe) 冲突。
+                pids = self._find_client_pids()
+                if not pids:
+                    _logger.debug(
+                        "终止进程 %s: 未发现与 client_path 匹配的进程 (path=%s)",
+                        name, self.client_path or "<unset>",
+                    )
+                    return False
+                for pid in pids:
+                    ret = subprocess.run(
+                        ["taskkill", "/f", "/t", "/pid", str(pid)],
+                        capture_output=True,
+                        timeout=10,
+                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                        check=False,
+                    )
+                    if ret.returncode == 0:
+                        killed_any = True
+                    else:
+                        _logger.debug(
+                            "终止 pid=%s 失败 (returncode=%s)", pid, ret.returncode,
+                        )
             elif self._is_mac or self._is_linux:
                 ret = subprocess.run(
                     ["killall", name],
@@ -277,14 +338,25 @@ class ZiniaoClient:
                     timeout=10,
                     check=False,
                 )
+                if ret.returncode == 0:
+                    killed_any = True
+                else:
+                    # Mac/Linux 未匹配进程时 killall 返回 ≥1。对齐 Windows：
+                    # 没杀到就不白等 3s，直接返回 False。
+                    _logger.debug(
+                        "终止进程 %s: 未在运行或已退出 (returncode=%s)",
+                        name, ret.returncode,
+                    )
+                    return False
             else:
                 return False
-            if ret.returncode != 0:
-                _logger.debug("终止进程 %s: 未在运行或已退出 (returncode=%s)", name, ret.returncode)
         except (subprocess.TimeoutExpired, FileNotFoundError) as e:
             _logger.debug("kill_process: %s", e)
-        time.sleep(3)
-        return True
+            return False
+        if killed_any:
+            # 仅在实际杀到进程后等待 OS 回收资源，避免后续立即重启时端口仍被占用。
+            time.sleep(3)
+        return killed_any
 
     def update_core(self, max_retries: int = 90) -> bool:
         """

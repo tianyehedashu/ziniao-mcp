@@ -1,164 +1,95 @@
 # ziniao
 
-紫鸟与 Chrome 浏览器 AI 自动化 — 让 AI Agent（Cursor、Claude 等）操控紫鸟店铺与本地 Chrome，统一会话、统一工具。
+紫鸟与 Chrome 浏览器 AI 自动化 — 让 AI Agent（Cursor、Claude 等）和终端用户共用同一套 CLI 操控紫鸟店铺与本地 Chrome。
 
-**GitHub**：[https://github.com/tianyehedashu/ziniao-mcp](https://github.com/tianyehedashu/ziniao-mcp)
+- **GitHub**：[tianyehedashu/ziniao-mcp](https://github.com/tianyehedashu/ziniao-mcp)
+- **PyPI**：[`ziniao`](https://pypi.org/project/ziniao/) — 控制台命令 `ziniao`；可选 MCP 服务通过 `ziniao serve` 启动
 
-**PyPI 包名**：[`ziniao`](https://pypi.org/project/ziniao/)（与仓库名 `ziniao-mcp` 不同；控制台命令为 `ziniao`，MCP 服务通过 `ziniao serve` 或 `python -m ziniao_mcp` 启动）。
+## 一等公民
 
-## 快速使用
+本项目围绕三个一等公民构建，按优先级使用即可：
 
-只需两步即可在 Cursor 中使用全部 MCP 工具。紫鸟配置**可选**——不配置紫鸟也能使用全部 Chrome 浏览器功能。
+1. **CLI（`ziniao …`）** — 完整的浏览器自动化命令行，人和 Agent 共享同一入口；首条命令自动拉起后台 daemon，多会话复用。
+2. **Site Presets（`ziniao site …`）** — JSON 模板 + 浏览器登录态，免 API Key 直接调用站点接口（Rakuten 广告、评论、Amazon 后台等），支持分页、CSRF、Python 插件。
+3. **Skills（`ziniao skill …`）** — 把 `ziniao-cli` 等业务技能一键安装到 Cursor / Claude Code / Trae / OpenClaw 等 Agent 的全局目录。
 
-**1. 安装 [uv](https://docs.astral.sh/uv/)**
+> MCP 工具集是**可选的备选路径**，仅在 Agent 无终端权限或你明确需要 MCP 协议时使用，能力覆盖小于 CLI，详见文末「MCP 服务器（可选）」。
 
-```bash
-# Windows (PowerShell)
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-
-# macOS / Linux
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
-
-**2. 安装 ziniao**
+## 安装
 
 ```bash
-uv tool install ziniao
-```
+# 1) 安装 uv（推荐：已有 Python 时用 pipx/pip，免过 PowerShell / curl|sh 执行策略）
+pipx install uv                                # 推荐
+python -m pip install --user uv               # 没有 pipx 时
+# 备选（官方 standalone 安装器，升级走 uv self update）
+#   Windows:      powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+#   macOS/Linux:  curl -LsSf https://astral.sh/uv/install.sh | sh
 
-若终端无法识别 `ziniao`，请将 `uv tool dir` 输出的目录加入 PATH（见下方「命令行全局使用」）。
-
-**3. 配置 MCP**
-
-打开 `Cursor Settings → MCP → New MCP Server`，根据你的使用场景选择配置：
-
-**仅使用 Chrome 浏览器**（无需紫鸟账号）：
-
-```json
-{
-  "mcpServers": {
-    "ziniao": {
-      "command": "ziniao",
-      "args": ["serve"]
-    }
-  }
-}
-```
-
-**Chrome 路径与用户数据目录**（登录态、Cookie 等）：用 `ziniao config init` 或 `ziniao config set chrome.executable_path` / `chrome.user_data_dir` 写入 `~/.ziniao/config.yaml`（亦可用 `~/.ziniao/.env` 中的 `CHROME_PATH`、`CHROME_USER_DATA`，见下表），MCP 与 CLI 共用。仅在 IDE 内覆盖时，再在 `mcp.json` 增加 `env`。
-
-配置完成后即可使用 `launch_chrome`、`connect_chrome` 及所有页面操作、录制回放等工具。
-
-**紫鸟店铺 + Chrome 浏览器**（完整功能）：MCP 配置与上方「仅 Chrome」相同，**紫鸟账号与客户端路径**请用 `ziniao config init` 写入 `~/.ziniao/.env`（或 `config.yaml`），启动 MCP 时会自动加载，并与终端 CLI 共用。若仅在 IDE 内覆盖，可在 `mcp.json` 增加 `env` 块，键名见下表；也可用 `ziniao config env --shell mcp` 导出后粘贴。
-
-```json
-{
-  "mcpServers": {
-    "ziniao": {
-      "command": "ziniao",
-      "args": ["serve"]
-    }
-  }
-}
-```
-
-| 环境变量 | 说明 |
-|----------|------|
-| `ZINIAO_COMPANY` | 紫鸟企业名 |
-| `ZINIAO_USERNAME` | 登录用户名 |
-| `ZINIAO_PASSWORD` | 登录密码 |
-| `ZINIAO_CLIENT_PATH` | 紫鸟客户端可执行文件路径 |
-| `ZINIAO_SOCKET_PORT` | （可选）与客户端通信的 HTTP 端口。**不配置时自动检测运行中的客户端端口**，检测不到则默认 `16851` |
-| `ZINIAO_VERSION` | 客户端版本，默认 `v6` |
-
-**Chrome 环境变量**（可选，紫鸟配置和 Chrome 配置可同时使用）：
-
-| 环境变量 | 说明 |
-|----------|------|
-| `CHROME_PATH` | Chrome 可执行文件路径。不设置时自动检测（注册表 > 常见路径 > PATH） |
-| `CHROME_USER_DATA` | Chrome 用户数据目录（profile）。设置后可复用登录态、Cookie、扩展等状态。不设置时使用 `~/.ziniao/chrome-profile` |
-| `CHROME_CDP_PORT` | （可选）Chrome CDP 调试端口，不设置时自动分配 |
-
-> **MCP `env` 与终端 CLI**：`mcp.json` 里的 `env` 只注入 **Cursor 启动的 MCP 服务进程**，会参与配置解析；与 `~/.ziniao/.env` 并存时，**进程里已有的变量不会被 .env 覆盖**。终端执行 `ziniao …` 时走**独立的后台 daemon**，不读取 mcp.json。需要 IDE 与命令行行为一致时，优先用 `ziniao config init` 写入 `~/.ziniao/.env` / `config.yaml`，或用 `ziniao config env --shell mcp` 导出后粘贴到 MCP 配置。
-
-配置完成后，在 Cursor 对话框中试试：
-
-```
-启动 Chrome 浏览器，打开百度
-```
-
-```
-列出我所有的紫鸟店铺
-```
-
-```
-打开第一个亚马逊店铺，截图看看当前页面
-```
-
-> **版本**：`ziniao --help`。升级 CLI：优先 `ziniao update`（从 PyPI 升级；**Windows** 下默认会**新开控制台、延迟约 2 秒后执行 uv**，并让当前进程立即退出，从而避免 **`ziniao.exe` 自占用**导致的错误 32；需要在本终端同步执行并得到退出码时用 `ziniao update --sync`）。若要从 **GitHub `main`** 安装，使用 `ziniao update --git`。升级后请 **`ziniao quit`** 并新开终端，使用 MCP 时**重启 Cursor MCP**。若仍有**其它进程**占用 `ziniao.exe`（多开终端、Cursor MCP 等），请先关闭后再试；失败时 `ziniao update` 会打印可复制的 `uv` 命令。
->
-> **紫鸟前提**：使用紫鸟店铺功能需安装 [紫鸟客户端](https://www.ziniao.com/) 并**开启 WebDriver 权限**（[开通说明](https://open.ziniao.com/docSupport?docId=99)）。不使用紫鸟功能时无需安装。
->
-> 更多安装方式与故障排查见 [安装与使用](docs/installation.md)。
-
-### 命令行全局使用（ziniao）
-
-若希望在任意目录直接使用 `ziniao` 命令（而不通过 Cursor MCP），推荐用 **uv 工具安装**，一次配置、全局可用：
-
-```bash
-# 从 PyPI 安装（推荐）
+# 2) 安装 ziniao CLI
 uv tool install ziniao
 
-# 或从源码安装（克隆后在该目录执行）
-uv tool install .
+# 3) 必装两件套：ziniao-cli（Agent 调 CLI） + site-development（新站点适配）
+#    默认装到 Cursor，`-a claude` / `-a all` 可指定 Agent
+ziniao skill install ziniao-cli
+ziniao skill install site-development
+# 可选：业务 skills，用到哪个装哪个
+ziniao skill install rakuten-ads              # Rakuten 广告报表
+ziniao skill install store-rpa-scripting      # RPA 脚本固化
+# 更多：ziniao skill list
 ```
 
-已安装后升级（需本机 PATH 中有 `uv`）：
+> **为什么 `ziniao-cli` 和 `site-development` 是必装**：前者让 Agent 知道如何正确调 `ziniao` 全部命令与 JSON 输出约定；后者是站点扩展的"入场券"——用户要你加一个新站点适配时，Agent 会按它的 6 步工作流（逆向 → 选 Tier → 写 preset → 可选 plugin → CLI 测试 → 提交 site-hub）来工作，避免瞎写。
+
+若终端识别不到 `ziniao`，把 `uv tool dir` 输出的目录加入 PATH；升级用 `ziniao update`（Windows 默认新窗口延迟执行以避开 `ziniao.exe` 自占用，脚本/CI 用 `--sync`）。
+
+> **uv 升级**：脚本/WinGet/Scoop 安装的 uv 用 `uv self update`；**pipx / pip 安装的 uv 不支持 `uv self update`**，请改用 `pipx upgrade uv` 或 `pip install -U uv`。
+
+**紫鸟店铺**（可选）：安装 [紫鸟客户端](https://www.ziniao.com/) 并开启 WebDriver 权限，再执行 `ziniao config init` 写入账号信息。仅用 Chrome 时无需任何紫鸟配置。
+
+## 三行上手
 
 ```bash
-ziniao update              # PyPI 最新版（Windows 默认新窗口延迟安装并退出本进程）
-ziniao update --sync       # 在当前进程同步执行 uv（脚本/CI；Win 上可能遇 exe 占用）
-ziniao update --git        # GitHub 仓库 main 最新提交
-ziniao update --dry-run    # 仅打印将执行的 uv 命令（可在另一终端手动执行）
+ziniao launch --url https://example.com        # 启动 Chrome
+ziniao snapshot --interactive                  # 查看可交互元素（自动给出 CSS selector）
+ziniao click "#submit" && ziniao screenshot after.png
 ```
 
-安装后会在 uv 工具目录生成 `ziniao` 可执行文件。若终端提示「无法将 ziniao 项识别为…」，请将 uv 工具目录加入 PATH：
+## 配置
 
-- 查看工具目录：`uv tool dir`（Windows 常见为 `%APPDATA%\uv\tools` 或 `%USERPROFILE%\.local\bin`）
-- 将该目录加入 [用户环境变量 Path](https://learn.microsoft.com/zh-cn/windows/win32/procthread/environment-variables)  
-新开终端后即可直接运行 `ziniao --help`、`ziniao serve` 等。
-
-### 快速配置（ziniao config）
-
-安装后可通过交互式向导一键生成全局配置，CLI 和 MCP Server 共享：
+纯 Chrome 场景零配置即可跑。需要 profile 复用、紫鸟账号或 CDP 端口控制时，`ziniao config init` 写入 `~/.ziniao/.env` / `config.yaml`（CLI 与 MCP 共用）。
 
 ```bash
-ziniao config init          # 交互式向导 → 生成 ~/.ziniao/config.yaml 和 .env
-ziniao config show          # 查看当前生效配置及来源
-ziniao config set chrome.executable_path "C:\Program Files\Google\Chrome\Application\chrome.exe"
-ziniao config env --shell mcp   # 输出可粘贴到 mcp.json 的 env 配置
+ziniao config init [--force]                  # 交互向导 → ~/.ziniao/config.yaml + .env
+ziniao config show                            # 查看生效配置及来源
+ziniao config set chrome.user_data_dir "C:\Users\me\.ziniao\chrome-profile"
+ziniao config env --shell powershell|bash|json|mcp
+ziniao config path
 ```
 
-向导会自动检测 Chrome 路径，询问是否配置紫鸟，然后生成两个文件：
+**生效优先级**：环境变量 > CLI 参数 > `~/.ziniao/.env` > 项目 `config/config.yaml` > `~/.ziniao/config.yaml`。
 
-- `~/.ziniao/config.yaml` — 全局配置（CLI daemon + MCP Server 自动读取）
-- `~/.ziniao/.env` — 环境变量版本（自动加载，也可复制到 MCP json `env` 中）
+**Chrome 环境变量**（纯 Chrome 场景可全部省略）：
 
-**配置优先级**：环境变量 > CLI 参数 > `~/.ziniao/.env` > 项目 `config/config.yaml` > `~/.ziniao/config.yaml`
+| 环境变量 | 说明 |
+|---------|------|
+| `CHROME_PATH` | Chrome 可执行文件路径；不设置时自动检测（注册表 > 常见路径 > PATH） |
+| `CHROME_USER_DATA` | Chrome 用户数据目录（profile），用于复用登录态 / Cookie / 扩展；默认 `~/.ziniao/chrome-profile` |
+| `CHROME_CDP_PORT` | Chrome CDP 调试端口；不设置时自动分配 |
 
-**仅用 Chrome（零配置）**：不需要任何配置，直接 `ziniao launch` 即可。Chrome 路径自动检测。
+**紫鸟环境变量**（使用紫鸟店铺功能时必需，仅用 Chrome 可全部省略）：
 
-**Chrome + 状态复用**：设置 `user_data_dir` 即可跨次启动复用登录态、Cookie、扩展：
+| 环境变量 | 必填 | 说明 |
+|---------|------|------|
+| `ZINIAO_COMPANY` | ✅ | 紫鸟企业名 |
+| `ZINIAO_USERNAME` | ✅ | 紫鸟登录用户名 |
+| `ZINIAO_PASSWORD` | ✅ | 紫鸟登录密码 |
+| `ZINIAO_CLIENT_PATH` | ✅ | 紫鸟客户端可执行文件路径 |
+| `ZINIAO_SOCKET_PORT` | — | 与客户端通信的 HTTP 端口；不设置时自动检测运行中的客户端端口，检测不到则默认 `16851` |
+| `ZINIAO_VERSION` | — | 客户端版本，默认 `v6` |
 
-```bash
-ziniao config set chrome.user_data_dir "C:\Users\你的用户名\.ziniao\chrome-profile"
-```
+> 使用紫鸟需先安装 [紫鸟客户端](https://www.ziniao.com/) 并开启 WebDriver 权限（[开通说明](https://open.ziniao.com/docSupport?docId=99)）。
 
-**紫鸟 + Chrome 全功能**：`ziniao config init` 向导中选择配置紫鸟即可。
-
-## CLI 命令行工具
-
-除了 MCP 工具（给 AI Agent 用），ziniao 还提供完整的命令行界面，可在终端直接操控浏览器。首次执行任意命令时会自动启动后台 daemon。
+## CLI
 
 ### 全局选项
 
@@ -168,609 +99,222 @@ ziniao [全局选项] <命令> [参数]
 
 | 选项 | 说明 |
 |------|------|
-| `--store <id>` | 指定目标紫鸟店铺（不切换活动会话）；与 `--session` 互斥 |
-| `--session <id>` | 指定目标会话（店铺或 Chrome）；与 `--store` 互斥 |
-| `--json` | 机器可读 JSON，固定信封 `{"success": bool, "data": object\|null, "error": string\|null}`（与 agent-browser CLI 一致）；成功时 `data` 为 daemon 返回体 |
-| `--json-legacy` | 输出 daemon 原始 JSON（无信封）；与 `--json` 互斥 |
-| `--content-boundaries` | 与 **agent-browser** 相同：JSON 增加 **`_boundary`**；页面类 stdout 加边界行。环境变量 `ZINIAO_CONTENT_BOUNDARIES=1` |
-| `--max-output <N>` | 限制快照 HTML / `eval` 在 **stdout** 的字符数；**未设置时默认 2000**（终端安全）；**`0` 表示不截断**。`ZINIAO_MAX_OUTPUT`。`-o` 写文件为全量 |
-| `--timeout <秒>` | 命令超时；`0` 表示自动（navigate/click/snapshot/screenshot 等慢命令 120s，其余 60s） |
-| `--help` | 查看帮助；根命令底部会列出上述全局选项摘要 |
+| `--store <id>` / `--session <id>` | 指定目标店铺 / 会话（互斥） |
+| `--json` | 机器可读信封 `{success, data, error}`（与 agent-browser 一致） |
+| `--json-legacy` | daemon 原始 JSON（无信封），与 `--json` 互斥 |
+| `--content-boundaries` | JSON 加 `_boundary`；stdout 加边界行（`ZINIAO_CONTENT_BOUNDARIES=1`） |
+| `--max-output <N>` | 限制快照 / `eval` 在 **stdout** 的字符数；默认 2000，`0` 不截断；`-o` 写文件始终全量 |
+| `--timeout <秒>` | `0` 自动（navigate/click/snapshot 等 120s，其余 60s） |
 
-环境变量 **`ZINIAO_JSON=1`** 等价于 **`--json`**（对齐 **`AGENT_BROWSER_JSON`**）。终端着色遵循 **`NO_COLOR`**（与 agent-browser 文档一致）。
+环境变量 `ZINIAO_JSON=1` 等价 `--json`，`NO_COLOR` 关闭着色。详见 [docs/cli-json.md](docs/cli-json.md)、[docs/cli-llm.md](docs/cli-llm.md)。
 
-详见 [docs/cli-json.md](docs/cli-json.md)、[docs/cli-llm.md](docs/cli-llm.md)（Agent 如何用 CLI，**不**引入自创 JSON 字段）。
+### 站点预设 `site`（一等公民）
 
-### 命令概览
+**JSON 模板 + 浏览器登录态**，免 API Key 直接调站点接口。一个预设就是一个 JSON 文件，声明 URL / 方法 / 变量 / 鉴权 / 分页 / 输出约定，执行时复用当前浏览器 Cookie、`localStorage`、CSRF token。预设支持三种模式，覆盖从纯接口到纯 UI 的所有场景：
 
-#### 店铺管理 `store`
-
-```bash
-ziniao store list [--opened-only]        # 列出店铺
-ziniao store open <store_id>             # 打开店铺
-ziniao store close <store_id>            # 关闭店铺
-ziniao store start-client                # 启动紫鸟客户端
-ziniao store stop-client                 # 停止紫鸟客户端
-```
-
-> 顶层快捷：`ziniao list-stores`、`ziniao open-store <id>`、`ziniao close-store <id>`
-
-#### Chrome 管理 `chrome`
-
-```bash
-ziniao chrome launch [--url <url>] [--name <名称>]    # 启动 Chrome
-ziniao chrome connect <cdp_port> [--name <名称>]      # 连接已有 Chrome
-ziniao chrome list                                     # 列出 Chrome 会话
-ziniao chrome close <session_id>                       # 关闭 Chrome 会话
-```
-
-> 顶层快捷：`ziniao launch`、`ziniao connect <port>`
-
-**launch vs connect**：`launch` 由 ziniao 启动 Chrome 进程，`close` 时会终止该进程；`connect` 连接外部已有 Chrome，`close` 时仅断开 CDP 连接，不杀进程。若 `launch` 检测到 profile 已被占用（如 Chrome 已在运行），会自动降级为 connect 模式。
-
-Chrome 路径和 profile 目录通过环境变量 `CHROME_PATH` / `CHROME_USER_DATA` 配置（见上方环境变量表），设置 `CHROME_USER_DATA` 可跨次启动复用登录态和 Cookie。
-
-#### 会话管理 `session`
-
-```bash
-ziniao session list                      # 列出所有会话（紫鸟 + Chrome）
-ziniao session switch <session_id>       # 切换活动会话
-ziniao session info <session_id>         # 查看会话详情
-```
-
-#### 导航 `nav`
-
-```bash
-ziniao nav go <url>                      # 导航到 URL
-ziniao nav tab list                      # 标签页列表
-ziniao nav tab new [url]                 # 新建标签页
-ziniao nav tab switch --index <i>        # 切换标签页
-ziniao nav tab close                     # 关闭当前标签页
-ziniao nav frame list                    # iframe 列表
-ziniao nav wait <selector>               # 等待元素
-ziniao nav back                          # 后退
-ziniao nav forward                       # 前进
-ziniao nav reload [--ignore-cache]       # 刷新
-```
-
-> 顶层快捷：`ziniao navigate <url>`、`ziniao tab`、`ziniao wait`、`ziniao back`、`ziniao forward`、`ziniao reload`
-
-#### 页面交互 `act`
-
-```bash
-ziniao act click <selector>              # 点击
-ziniao act fill <selector> <value>       # 填写输入框
-ziniao act type <text> [-s <selector>]   # 逐字输入
-ziniao act press <key>                   # 按键（Enter, Tab, Ctrl+a 等）
-ziniao act hover <selector>              # 悬停
-ziniao act dblclick <selector>           # 双击
-ziniao act drag <source> <target>        # 拖拽
-ziniao act upload <selector> <file...>   # 上传文件
-ziniao act dialog [accept|dismiss]       # 弹窗处理
-ziniao act focus <selector>              # 聚焦
-ziniao act select <selector> <value>     # 下拉选择
-ziniao act check <selector>              # 勾选
-ziniao act uncheck <selector>            # 取消勾选
-ziniao act keydown <key>                 # 按下键
-ziniao act keyup <key>                   # 释放键
-```
-
-> 顶层快捷：`ziniao click`、`ziniao fill`、`ziniao type`、`ziniao press`、`ziniao hover`、`ziniao dblclick`
-
-#### 页面信息 `info`
-
-```bash
-ziniao info snapshot [-o file.html]      # HTML 快照
-ziniao info screenshot [file.png]        # 截图
-ziniao info eval <js_expression>         # 执行 JavaScript
-ziniao info url                          # 当前 URL
-ziniao info console [--level error]      # 控制台消息
-ziniao info network [--id <id>]          # 网络请求
-ziniao info errors                       # 页面错误
-ziniao info highlight <selector>         # 高亮元素
-ziniao info cookies [--action list|set|clear]   # Cookie 管理
-ziniao info storage [--type local|session]      # Storage 管理
-ziniao info clipboard [--action read|write]     # 剪贴板
-```
-
-> 顶层快捷：`ziniao snapshot`、`ziniao screenshot`、`ziniao eval`、`ziniao url`
-
-#### 获取元素信息 `get`
-
-```bash
-ziniao get text <selector>               # 元素文本
-ziniao get html <selector>               # 元素 HTML
-ziniao get value <selector>              # 输入框值
-ziniao get attr <selector> <attribute>   # 元素属性
-ziniao get title                         # 页面标题
-ziniao get url                           # 页面 URL
-ziniao get count <selector>              # 匹配元素数量
-```
-
-> 顶层快捷：`ziniao title`、`ziniao url`（即 `get title` / `get url`）
-
-#### 查找元素 `find`
-
-```bash
-ziniao find text <文本> [--action click]       # 按文本查找
-ziniao find role <角色> [--name <名称>]        # 按 ARIA 角色查找
-ziniao find first <selector>                   # 第一个匹配元素
-ziniao find last <selector>                    # 最后一个匹配元素
-ziniao find nth <selector> --index <n>         # 第 N 个匹配元素
-```
-
-#### 状态检查 `is`
-
-```bash
-ziniao is visible <selector>             # 是否可见
-ziniao is enabled <selector>             # 是否可用
-ziniao is checked <selector>             # 是否选中
-```
-
-#### 滚动 `scroll`
-
-```bash
-ziniao scroll down [--pixels 300]        # 向下滚动
-ziniao scroll up [--pixels 300]          # 向上滚动
-ziniao scroll left / right               # 左右滚动
-ziniao scroll into <selector>            # 滚动到元素
-```
-
-> 顶层快捷：`ziniao scrollinto <selector>`
-
-#### 鼠标 `mouse`
-
-```bash
-ziniao mouse move <x> <y>               # 移动到坐标
-ziniao mouse down [--button left|right]  # 按下
-ziniao mouse up [--button left|right]    # 释放
-ziniao mouse wheel --delta-y <n>         # 滚轮
-```
-
-#### 网络拦截 `network`
-
-```bash
-ziniao network list [--filter <pattern>] # 请求列表
-ziniao network list --id <request_id>    # 请求详情
-ziniao network route <pattern> --abort   # 拦截请求
-ziniao network unroute [<pattern>]       # 移除拦截
-ziniao network routes                    # 查看拦截规则
-ziniao network har-start                 # 开始 HAR 录制
-ziniao network har-stop [<file>]         # 停止并保存 HAR
-```
-
-#### 录制回放 `rec`
-
-```bash
-ziniao rec start [--engine legacy|dom2] [--scope active|all] [--max-tabs N]
-ziniao rec stop [--name <名称>] [--emit nodriver,playwright] [--redact-secrets]
-ziniao rec replay <名称> [--speed 1.0]   # 回放
-ziniao rec list                          # 列出录制
-ziniao rec delete <名称>                 # 删除录制
-ziniao rec status                        # 录制中引擎、scope、缓冲条数等
-```
-
-- **dom2**（默认）：CDP `Runtime.addBinding` 将事件送入 daemon 缓冲，避免切错标签导致空录；`scope=all` 可挂多个标签（受 `--max-tabs` 限制）；轮询会为新开页面补挂桩。
-- **legacy**（`--engine legacy`）：页内 Symbol 缓冲，`stop` 时从当前活动页读取（旧行为）。
-
-#### 批量执行 `batch`
-
-```bash
-echo '[{"command":"navigate","args":{"url":"https://example.com"}}]' | ziniao batch run
-```
-
-从 stdin 读取 JSON 命令数组，依次执行。配合 `--bail` 可在首个错误时停止。
-
-#### 系统 `sys`
-
-```bash
-ziniao sys quit                          # 关闭 daemon
-ziniao sys emulate --device "iPhone 15"  # 设备模拟
-ziniao sys emulate --width 800 --height 600   # 自定义视口
-```
-
-> 顶层快捷：`ziniao quit`、`ziniao emulate`
-
-#### 配置管理 `config`
-
-```bash
-ziniao config init [--force]             # 交互式向导 → 生成 ~/.ziniao/config.yaml
-ziniao config show                       # 显示当前生效配置及来源
-ziniao config set <key> <value>          # 修改配置（dotted key: chrome.path）
-ziniao config path                       # 显示配置文件路径
-ziniao config env [--shell powershell|bash|json|mcp]  # 输出环境变量导出语句
-```
-
-#### 升级 `update`
-
-```bash
-ziniao update [--git] [--sync] [--dry-run]  # 用 uv 升级 CLI（Windows 默认新窗口避免 exe 自占用）
-```
-
-#### 站点预设 `site`
-
-通过 JSON 模板 + 浏览器登录态调用站点接口，无需 API Key。
+| 模式 | 适用 | 说明 |
+|------|------|------|
+| `mode: fetch` | 登录态 API | 通过浏览器 `fetch` 发请求，声明式 header 注入（cookie / storage / eval），支持 offset / cursor 分页 |
+| `mode: js` | 特殊场景 | 在页面里执行自定义 JS 胶水（如 GCS 签名 URL 下载、富文本交互） |
+| `mode: ui` | 非 API / 混合 | 声明式 UI 步骤（点击、填表、`type: secret` 安全输入、DOM `extract`、内联 `fetch`），带 bezier 轨迹反风控、失败快照自动脱敏 |
 
 ```bash
 ziniao site list                        # 列出所有预设
 ziniao site show rakuten/rpp-search     # 查看预设详情
-ziniao site repos                       # 查看已注册仓库
-ziniao site update                      # 更新仓库（拉取最新预设）
-ziniao site skills                      # 列出站点 AI skills
+ziniao site repos                       # 已注册仓库
+ziniao site update                      # 拉取仓库最新预设（含 skills）
+ziniao site skills                      # 列出仓库内 AI skills
 ```
 
-运行预设（顶层快捷命令）：
+运行预设（顶层快捷自动生成为 `ziniao <site> <action>`）：
 
 ```bash
 ziniao rakuten rpp-search -V start_date=2026-03-01 -V end_date=2026-03-07
 ziniao rakuten reviews-csv -o reviews.csv
-```
-
-#### AI Agent Skill 管理 `skill`
-
-将站点业务 skills 安装到 Cursor / Trae / Claude Code 等 agent 的全局目录。
-
-```bash
-ziniao skill agents                     # 查看支持的 agent
-ziniao skill list                       # 列出可安装的 skills
-ziniao skill install rakuten-ads        # 安装到默认 agent (cursor)
-ziniao skill install rakuten-ads -a trae # 安装到 Trae
-ziniao skill install rakuten-ads -a openclaw # 安装到 OpenClaw
-ziniao skill install rakuten-ads -a all # 安装到所有 agent
-ziniao skill update                     # 刷新已安装的 symlink
-ziniao skill remove rakuten-ads -a all  # 移除
-ziniao skill installed                  # 查看已安装
-```
-
-#### MCP 服务 `serve`
-
-```bash
-ziniao serve [--config config.yaml]      # 启动 MCP Server
-```
-
-### 常用示例
-
-```bash
-# 启动 Chrome 并打开百度
-ziniao launch --url https://www.baidu.com
-
-# 连接已有 Chrome（需以 --remote-debugging-port 启动）
-ziniao connect 9222
-
-# 查看当前所有会话
-ziniao session list
-
-# 导航、交互、获取信息
-ziniao navigate https://example.com
-ziniao click "button.submit"
-ziniao fill "input[name=search]" "关键词"
-ziniao press Enter
-ziniao title
-ziniao --json url
-
-# 截图与快照
-ziniao screenshot page.png
-ziniao snapshot -o page.html
-
-# 执行 JavaScript
-ziniao eval "document.title"
-ziniao eval --await "fetch('/api/me').then(r => r.text())"
-ziniao --json eval "document.querySelectorAll('a').length"
-
-# 网络监控
-ziniao --json network list --limit 10
-ziniao network route "*.ads.*" --abort
-
-# 页面内请求（复用登录会话；架构与鉴权策略见 docs/site-fetch-and-presets.md）
-ziniao site list
-ziniao rakuten rpp-search -V start_date=2026-03-01 -V end_date=2026-03-07
 ziniao network fetch -p rakuten/rpp-search -V start_date=2026-03-01 --all -o out.json
-ziniao rakuten reviews-csv -o reviews.csv   # RMS 评论 CSV；`-o` 编码见 docs/site-fetch-and-presets.md
-
-# 录制操作
-ziniao rec start
-# ...在浏览器中操作...
-ziniao rec stop --name my-flow
-ziniao rec replay my-flow
-
-# JSON 输出（与 agent-browser 相同信封；业务字段在 .data）
-ziniao --json session list
-ziniao --json get title
-# 与 agent-browser 一致：边界标记 + 截断
-ziniao --json --content-boundaries --max-output 8000 info snapshot
-# 旧脚本扁平 JSON：ziniao --json-legacy session list
 ```
 
-> **提示**：所有命令均支持 `--help` 查看详细参数，如 `ziniao chrome launch --help`。
+#### site-hub — 业务预设 + 业务 skills 仓库
 
-## 特性
+[`site-hub`](https://github.com/tianyehedashu/site-hub) 是与主仓库解耦的**业务预设仓库**，通过 `ziniao site update` 按需拉取，避免主仓库膨胀：
 
-- **紫鸟可选**：不配置紫鸟也能使用全部 Chrome 浏览器功能（启动/连接/页面操作/录制回放），零配置即可上手
-- **统一浏览器支持**：紫鸟店铺（多店铺、WebDriver）与本地 Chrome（启动/连接 CDP）同一套 MCP 工具
-- **全部 MCP 工具**：店铺管理、Chrome 管理、统一会话、页面导航、输入自动化、录制回放、网络监控、调试截图等
-- **站点预设（Site Presets）**：JSON 模板 + 浏览器登录态，免 API Key 调用站点接口（如 Rakuten 广告报表、评论下载等），支持分页、CSRF 注入、Python 插件扩展
-- **AI Agent Skill 管理**：`ziniao skill install/remove` 一键将业务 skills 安装到 Cursor / Trae / Claude Code 等 agent 的全局目录
-- **7+ 个 AI 技能（Skills）**：浏览器自动化、店铺管理、亚马逊运营、RPA 脚本生成、Rakuten 广告、Rakuten 评论、站点开发指南等
-- **1 个专用 Agent**：紫鸟运营专家角色，具备跨境电商领域知识
-- **2 个快捷命令（Commands）**：一键检查店铺状态、批量截图
-- **跨会话状态持久化**：MCP 进程重启后可恢复已打开店铺或 Chrome 的 CDP 连接
-- **多会话并行**：同时打开多个紫鸟店铺或 Chrome 实例，按需切换活动会话
-- **跨平台**：支持 Windows / macOS / Linux
+- **按站点组织**：`site-hub/<site>/<action>.json`（如 `rakuten/rpp-search.json`、`google-flow/imagen-generate.json`），附配套 `README.md`、`plugin.py`、Flow demos。
+- **随预设发布 AI skills**：`site-hub/skills/<skill>/SKILL.md` 与预设版本强绑定，`ziniao skill install <name>` 一键装到 Agent；站点作者想让 Agent 怎么用自己的站点，就写一份 skill 进去。
+- **独立版本与 Tag**：子仓库自己管版本，主 CLI 向后兼容即可升级预设。
 
-## 工具列表
+#### 开发新站点 → 用 `site-development` 技能
 
-### 店铺管理（紫鸟，7 个）
+想给新站点（如自家 ERP、Shopee、Lazada）加预设，用 [`site-development`](https://github.com/tianyehedashu/site-hub/tree/main/skills/site-development) 技能，让 Agent 帮你按 6 步工作流产出代码：
 
-| 工具 | 说明 |
+```bash
+ziniao skill install site-development           # 装到 Cursor / Claude Code
+# 在 Agent 里说："帮我给 xxx.com 的订单导出接口加一个预设"
+```
+
+技能里沉淀了：三层认证（cookie / `header_inject` / 插件）选择决策树、`mode` 选型、分页约定、错误处理、反风控注意事项、落盘复用 `ziniao_mcp.sites.save_media`、Next.js API 逆向方法（`docs/next-app-reverse-engineering.md`）等。
+
+架构与鉴权细节见 [docs/site-fetch-and-presets.md](docs/site-fetch-and-presets.md)、[docs/page-fetch-auth.md](docs/page-fetch-auth.md)、[docs/site-ui-flows.md](docs/site-ui-flows.md)。
+
+### Agent Skill 管理 `skill`（一等公民）
+
+```bash
+ziniao skill agents                        # 支持的 agent（cursor / trae / claude / openclaw …）
+ziniao skill list                          # 可安装的 skills
+ziniao skill install ziniao-cli            # 默认 Cursor
+ziniao skill install rakuten-ads -a all    # 全部 agent
+ziniao skill update                        # 刷新已安装的 symlink
+ziniao skill remove rakuten-ads -a all
+ziniao skill installed                     # 已安装
+```
+
+> **刷新策略**：`ziniao site update` 拉取 `site-hub` 全量文件（含根目录 `skills/` 与各站点 `<site>/skills/`）并**自动** `refresh_symlinks`，Agent 目录无需再手动刷。`ziniao update`（升级 CLI 自身）只替换 built-in skills 的文件内容，**不**自动建立新增 skill 的 symlink——若升级后想让新内置 skill 出现在 Agent 里，再跑一次 `ziniao skill update`。
+
+**内置与业务 skills**（⭐ 强烈建议装；按需装其余）：
+
+| 技能 | 用途 |
 |------|------|
-| `start_client` | 启动紫鸟客户端（WebDriver 模式） |
-| `list_stores` | 获取所有店铺列表（自动启动客户端） |
-| `list_open_stores` | 查询当前已打开的店铺（通过 CDP 端口验证） |
-| `open_store` | 打开店铺并建立 CDP 连接 |
-| `connect_store` | 连接已运行的店铺（不重启，推荐） |
-| `close_store` | 关闭店铺并断开 CDP |
-| `stop_client` | 退出紫鸟客户端 |
+| **`ziniao-cli`** ⭐ | Agent 直接调 `ziniao` 命令完成浏览器自动化、站点预设、skill 管理 |
+| **`site-development`** ⭐ | 新站点适配器开发（6 步工作流、3 层认证、`mode: fetch/js/ui` 选型） |
+| `store-rpa-scripting` | 探索 → 固化为独立 Python 脚本（nodriver + ziniao_webdriver） |
+| `store-management` / `amazon-operations` | 多店管理 / 亚马逊后台 |
+| `rakuten-ads` / `rakuten-reviews` | Rakuten 广告报表 / 评论 CSV |
 
-### Chrome 管理（4 个）
+### Chrome / 店铺 / 会话
 
-| 工具 | 说明 |
-|------|------|
-| `launch_chrome` | 启动本地 Chrome 并通过 CDP 连接 |
-| `connect_chrome` | 连接已运行的 Chrome（需带 `--remote-debugging-port` 启动） |
-| `list_chrome` | 列出当前所有 Chrome 会话 |
-| `close_chrome` | 关闭指定 Chrome 会话 |
+```bash
+ziniao launch [--url <url>] [--name <名]  # chrome launch，外部未被占用时自动启动进程
+ziniao connect <cdp_port>                 # chrome connect，连接外部 Chrome
+ziniao chrome list / close <sid>
+ziniao list-stores / open-store <id> / close-store <id>
+ziniao store start-client / stop-client
+ziniao session list / switch <sid> / info <sid>
+```
 
-### 统一会话（1 个）
+`launch` 由 ziniao 启动的 Chrome 在 `close` 时会被终止；`connect` 连接的外部 Chrome 仅断开 CDP。若 `launch` 发现 profile 已被占用会自动降级为 connect。
 
-| 工具 | 说明 |
-|------|------|
-| `browser_session` | 列出/切换/查看所有浏览器会话（紫鸟 + Chrome） |
+### 导航与页面交互
 
-### 输入自动化（9 个）
+```bash
+ziniao navigate <url> / back / forward / reload [--ignore-cache]
+ziniao tab list / new [url] / switch --index <i> / close
+ziniao nav frame list
+ziniao wait <selector>
 
-| 工具 | 说明 |
-|------|------|
-| `click` | 点击元素 |
-| `fill` | 清空并填写输入框 |
-| `fill_form` | 批量填写表单 |
-| `type_text` | 逐字输入文本（模拟真实键盘） |
-| `press_key` | 按键（如 Enter、Tab、Ctrl+A） |
-| `hover` | 悬停 |
-| `drag` | 拖拽元素 |
-| `handle_dialog` | 设置弹窗处理策略 |
-| `upload_file` | 上传文件 |
+ziniao click / dblclick / hover <selector>
+ziniao fill <selector> <value>
+ziniao type <text> [-s <selector>]
+ziniao press <key>                        # Enter / Tab / Ctrl+a
+ziniao act drag <src> <dst>
+ziniao act upload <selector> <file...>
+ziniao act focus / select / check / uncheck / dialog / keydown / keyup
+```
 
-### 导航（6 个）
+### 页面信息 / 取值 / 查找 / 状态 / 滚动 / 鼠标
 
-| 工具 | 说明 |
-|------|------|
-| `navigate_page` | 导航到 URL |
-| `list_pages` | 列出所有标签页 |
-| `select_page` | 切换标签页 |
-| `new_page` | 新建标签页 |
-| `close_page` | 关闭标签页 |
-| `wait_for` | 等待元素/页面加载 |
+```bash
+ziniao snapshot [-o file.html] [--interactive|--compact]
+ziniao screenshot [file.png]
+ziniao eval <js>                          # --await 等待 Promise
+ziniao url / title
+ziniao info console [--level error] / network / errors / highlight / cookies / storage / clipboard
 
-### 仿真（2 个）
+ziniao get text / html / value / attr / count <selector> [<attr>]
+ziniao find text <文本> [--action click] / role <角色> [--name <名称>] / first / last / nth
+ziniao is visible / enabled / checked <selector>
+ziniao scroll down / up / left / right [--pixels N]
+ziniao scroll into <selector>
+ziniao mouse move <x> <y> / down / up [--button left|right] / wheel --delta-y <n>
+```
 
-| 工具 | 说明 |
-|------|------|
-| `emulate` | 模拟设备（iPhone、iPad、Pixel 等） |
-| `resize_page` | 调整视口大小 |
+### 网络、录制、批量、系统、升级
 
-### 网络（2 个）
+```bash
+ziniao network list [--filter <pattern>|--id <id>]
+ziniao network route <pattern> --abort / unroute / routes
+ziniao network har-start / har-stop [<file>]
 
-| 工具 | 说明 |
-|------|------|
-| `list_network_requests` | 列出捕获的网络请求 |
-| `get_network_request` | 获取请求详情（含请求头/响应头） |
+ziniao rec start [--engine legacy|dom2] [--scope active|all] [--max-tabs N]
+ziniao rec stop [--name <名>] [--emit nodriver,playwright] [--redact-secrets]
+ziniao rec replay <名> [--speed 1.0] / list / delete <名> / status
 
-### 调试（5 个）
+echo '[{"command":"navigate","args":{"url":"https://example.com"}}]' | ziniao batch run
 
-| 工具 | 说明 |
-|------|------|
-| `evaluate_script` | 执行 JavaScript |
-| `take_screenshot` | 截图（支持元素截图和全页截图） |
-| `take_snapshot` | 获取页面 HTML 快照 |
-| `list_console_messages` | 列出控制台消息 |
-| `get_console_message` | 获取消息详情 |
+ziniao quit / emulate --device "iPhone 15" / emulate --width 800 --height 600
+ziniao update [--git] [--sync] [--dry-run]
+```
 
-### 录制与回放（1 个）
-
-| 工具 | 说明 |
-|------|------|
-| `recorder` | 录制浏览器操作（点击/输入/按键/导航），停止后生成 .json + 可独立运行的 .py 脚本；支持回放、列表、删除 |
+`rec` 默认 `dom2` 引擎（CDP `Runtime.addBinding` 缓冲到 daemon，跨标签不丢），`--engine legacy` 走页内 Symbol 缓冲。
 
 ## RPA 与录制
 
-### RPA 自动化技巧
+遵循「探索 → 验证 → 固化」：`snapshot --interactive` 选择器 → `click` / `fill` → `wait_for` 或 `snapshot` 验证 → 把步骤交给 `store-rpa-scripting` 技能，生成不依赖 daemon 的独立 Python 脚本（`ziniao_webdriver` + `nodriver`）。
 
-用 MCP 做店铺或 Chrome 的 RPA 时，建议遵循「探索 → 验证 → 固化」的思路：
+录制：`ziniao rec start` → 在浏览器里操作 → `ziniao rec stop --name my-flow` 产出 `.json`（回放）+ `.py`（独立脚本），`ziniao rec replay my-flow` 复现。
 
-- **选择器优先**：`#id` > `[name="x"]` > `[data-testid="x"]` > 有唯一性的 class，避免依赖复杂 DOM 层级。
-- **每步验证**：每次 `click` / `fill` / `press_key` 后，用 `wait_for(结果元素)` 或 `take_snapshot()` 确认页面状态，再继续下一步，避免脚本在页面未就绪时操作。
-- **异常与弹窗**：操作前可 `handle_dialog(action="accept")` 预设弹窗策略；对懒加载/分页，先滚动或点击下一页再 `wait_for` 新内容。
-- **数据与 API**：需要批量取数时，可用 `list_network_requests` / `get_network_request` 抓接口，评估用接口还是页面操作更稳。
-- **多店铺一致**：多店铺场景下用 `list_stores`、`connect_store` 切换店铺，在同一流程上验证各站点差异并记录。
+## 常用示例
 
-配合 **store-rpa-scripting** 技能，可把探索好的步骤整理成文档，再生成不依赖 MCP 的独立 Python 脚本（ziniao_webdriver + nodriver），用于定时任务或本地直接运行。
+```bash
+ziniao launch --url https://www.baidu.com
+ziniao navigate https://example.com && ziniao wait ".loaded" && ziniao screenshot page.png
+ziniao fill "#email" "u@test.com" && ziniao fill "#pass" "secret" && ziniao click "#login"
 
-### 录制与回放
+# 页面内登录态接口（架构见 docs/site-fetch-and-presets.md）
+ziniao rakuten rpp-search -V start_date=2026-03-01 -V end_date=2026-03-07
+ziniao rakuten reviews-csv -o reviews.csv
 
-`recorder` 工具提供「录操作 → 停录保存 → 回放或生成脚本」的完整能力，对紫鸟店铺和 Chrome 通用（需先有活动会话）。
+# JSON 输出
+ziniao --json session list
+ziniao --json --content-boundaries --max-output 8000 info snapshot
+```
 
-| 操作 | 说明 |
+所有命令支持 `--help`，如 `ziniao chrome launch --help`。
+
+## MCP 服务器（可选）
+
+仅在 Agent 不方便走终端命令、或你明确需要 MCP 协议时使用；功能是 CLI 的子集。
+
+**Cursor 配置**（`Cursor Settings → MCP → New MCP Server`）：
+
+```json
+{
+  "mcpServers": {
+    "ziniao": { "command": "ziniao", "args": ["serve"] }
+  }
+}
+```
+
+账号与 Chrome 路径写入 `~/.ziniao/.env` / `config.yaml` 即可与 MCP 共用；仅在 IDE 内覆盖时再在 `mcp.json` 增 `env`（可用 `ziniao config env --shell mcp` 导出）。
+
+> MCP 进程里已有的环境变量不会被 `.env` 覆盖；终端的 `ziniao` 走独立 daemon，不读 `mcp.json`。
+
+**MCP 工具集速览**（完整参数见 [docs/api-reference.md](docs/api-reference.md)）：
+
+| 分组 | 工具 |
 |------|------|
-| **开始录制** | `recorder(action='start')`：在当前页注入监听，之后在浏览器中的点击、输入、按键、导航都会被记录。**支持跨页**：点击链接导致整页跳转时，会自动在新页重新注入并记录一次 `navigate`。 |
-| **停止并保存** | `recorder(action='stop', name='可选名称')`：停止录制，将操作序列保存到 `~/.ziniao/recordings/`，并生成 `.json`（供 MCP 回放）与可独立运行的 `.py` 脚本（基于 nodriver）。 |
-| **回放** | `recorder(action='replay', name='录制名称')` 或传入 `actions_json` 直接回放；可用 `speed` 调节回放速度。 |
-| **管理** | `recorder(action='list')` 列出已保存录制，`recorder(action='delete', name='...')` 删除指定录制。 |
-
-典型用法：先 `open_store` 或 `launch_chrome` 打开目标页面，再让 Agent 调用 `recorder(action='start')`，你在浏览器里操作一遍，最后 `recorder(action='stop')` 即可得到可复用的脚本与回放数据。
-
-## 典型使用流程
-
-### 基本流程
-
-在 Cursor 中对 Agent 说：
-
-```
-打开我的紫鸟店铺列表，打开第一个亚马逊店铺，然后截图看看当前页面
-```
-
-Agent 会依次调用：
-
-1. `list_stores` → 获取店铺列表（自动启动客户端）
-2. `open_store("xxx")` → 打开店铺并建立 CDP 连接
-3. `take_screenshot()` → 截图返回
-
-### 恢复已打开的店铺
-
-```
-连接我之前打开的店铺，导航到亚马逊后台
-```
-
-Agent 调用：
-
-1. `list_open_stores` → 查看哪些店铺还在运行
-2. `connect_store("xxx")` → 恢复 CDP 连接（不重启店铺）
-3. `navigate_page("https://sellercentral.amazon.com")` → 导航
-
-### 表单自动化
-
-```
-帮我在当前页面填写商品标题和价格
-```
-
-Agent 调用：
-
-1. `take_snapshot()` → 获取页面 HTML 分析表单结构
-2. `fill_form('[{"selector": "#title", "value": "商品名"}, {"selector": "#price", "value": "99.99"}]')` → 批量填写
-
-## 项目结构
-
-```
-ziniao-mcp/
-├── .cursor-plugin/
-│   └── plugin.json          # Cursor Plugin manifest
-├── .mcp.json                # MCP Server 配置（Plugin 自动发现）
-├── skills/                  # AI 技能指南
-│   ├── ziniao-browser/      # 核心浏览器自动化技能
-│   │   └── SKILL.md
-│   ├── store-management/    # 多店铺管理技能
-│   │   └── SKILL.md
-│   ├── amazon-operations/   # 亚马逊运营技能
-│   │   └── SKILL.md
-│   └── store-rpa-scripting/ # 店铺运营 RPA 脚本生成（探索→确认→生成脚本+过程文档）
-│       ├── SKILL.md
-│       ├── tools-reference.md
-│       ├── doc-template.md
-│       └── examples.md
-├── agents/                  # 自定义 Agent 角色
-│   └── ziniao-operator.md   # 紫鸟运营专家
-├── commands/                # 快捷命令
-│   ├── quick-check-stores.md
-│   └── batch-screenshot.md
-├── ziniao_webdriver/        # 紫鸟客户端 HTTP 通信层
-│   ├── __init__.py
-│   └── client.py            # ZiniaoClient 类
-├── ziniao_mcp/              # MCP 服务器 + CLI
-│   ├── __init__.py
-│   ├── __main__.py          # python -m ziniao_mcp 入口
-│   ├── server.py            # 配置解析 + 工具注册 + 启动
-│   ├── session.py           # 会话管理 + CDP 连接 + 状态持久化
-│   ├── cli/                 # CLI 命令行工具（90 个子命令）
-│   │   ├── __init__.py      # Typer 主入口 + 全局选项
-│   │   ├── connection.py    # daemon 连接层
-│   │   ├── dispatch.py      # 命令分发（daemon 侧）
-│   │   └── commands/        # 16 个命令组
-│   └── tools/               # MCP 工具集
-│       ├── store.py         # 店铺管理 (7)
-│       ├── input.py         # 输入自动化 (9)
-│       ├── navigation.py    # 导航 (6)
-│       ├── emulation.py     # 仿真 (2)
-│       ├── network.py       # 网络 (2)
-│       └── debug.py         # 调试 (5)
-├── config/
-│   └── config.yaml          # 默认配置文件
-├── docs/                    # 项目文档
-│   ├── installation.md      # 安装与使用
-│   ├── architecture.md      # 架构设计
-│   ├── api-reference.md     # API 参考
-│   └── development.md       # 开发指南
-├── pyproject.toml
-└── README.md
-```
-
-## Plugin 组件
-
-### Skills（AI 技能）
-
-| 技能 | 触发场景 |
-|------|----------|
-| `ziniao-browser` | 浏览器自动化操作、页面交互、截图调试 |
-| `store-management` | 多店铺管理、会话恢复、批量操作 |
-| `amazon-operations` | 亚马逊 Listing 管理、订单处理、广告分析 |
-| `store-rpa-scripting` | RPA 脚本生成：用 MCP 工具探索页面 → 确认步骤 → 生成可独立运行的 Python 脚本（nodriver + ziniao_webdriver）及复现文档 |
-| `rakuten-ads` | Rakuten 广告报表（RPP / TDA / CPA / 优惠券），通过 `ziniao skill install rakuten-ads` 安装到 agent |
-| `rakuten-reviews` | Rakuten 评论 CSV 下载与分析 |
-| `site-development` | 站点适配器开发指南：6 步工作流、3 层认证、JSON 字段参考 |
-
-业务 skills 存放在 [site-hub](https://github.com/tianyehedashu/site-hub) 仓库，`ziniao site update` 拉取最新版本，`ziniao skill install` 安装到 AI agent。
-
-### Agents（专用角色）
-
-| Agent | 说明 |
-|-------|------|
-| `ziniao-operator` | 跨境电商运营专家，具备多平台操作经验和安全意识 |
-
-### Commands（快捷命令）
-
-| 命令 | 说明 |
-|------|------|
-| `quick-check-stores` | 一键检查所有店铺状态 |
-| `batch-screenshot` | 对所有已打开店铺截图 |
-
-## 技术栈
-
-| 组件 | 技术 |
-|------|------|
-| MCP 协议 | [mcp](https://pypi.org/project/mcp/) (FastMCP) |
-| CLI 框架 | [typer](https://typer.tiangolo.com/) + [rich](https://rich.readthedocs.io/) |
-| 浏览器自动化 | [nodriver](https://github.com/ultrafunkamsterdam/nodriver) (CDP) |
-| 客户端通信 | [requests](https://docs.python-requests.org/) (HTTP) |
-| CDP 探测 | [httpx](https://www.python-httpx.org/) (异步) |
-| 配置解析 | [PyYAML](https://pyyaml.org/) |
-| 包管理 | [uv](https://docs.astral.sh/uv/) + [hatchling](https://hatch.pypa.io/) |
-
-## CDP 调试端口说明
-
-- `open_store` 调用紫鸟的 `startBrowser` API，紫鸟自动为店铺浏览器实例开启 CDP 端口
-- MCP 服务器通过 nodriver 的 `Browser.create()` 连接到该端口
-- 所有浏览器自动化工具通过此连接操作店铺页面
-- 已打开店铺的 CDP 信息持久化在 `~/.ziniao/sessions.json`，支持跨进程恢复
+| 店铺 | `start_client` / `stop_client` / `list_stores` / `list_open_stores` / `open_store` / `connect_store` / `close_store` |
+| Chrome / 会话 | `launch_chrome` / `connect_chrome` / `list_chrome` / `close_chrome` / `browser_session` |
+| 导航 | `navigate_page` / `list_pages` / `select_page` / `new_page` / `close_page` / `wait_for` |
+| 输入 | `click` / `fill` / `fill_form` / `type_text` / `press_key` / `hover` / `drag` / `handle_dialog` / `upload_file` |
+| 调试 | `evaluate_script` / `take_screenshot` / `take_snapshot` / `list_console_messages` / `get_console_message` |
+| 网络 / 仿真 / 录制 | `list_network_requests` / `get_network_request` / `emulate` / `resize_page` / `recorder` |
 
 ## 文档
 
 | 文档 | 说明 |
 |------|------|
-| [安装与使用](docs/installation.md) | Plugin / MCP / PyPI 多种安装方式、配置、故障排查 |
-| [Windows 下安装 uv](docs/install-uv-windows.md) | 在 Windows 上安装 uv（PowerShell / WinGet / Scoop） |
-| [架构设计](docs/architecture.md) | 三层架构、模块职责、数据流 |
-| [API 参考](docs/api-reference.md) | 全部 MCP 工具的详细参数和返回值 |
-| [开发指南](docs/development.md) | 添加新工具、调试、构建发布、GitHub 自动发布 PyPI |
-| [CLI JSON 输出](docs/cli-json.md) | `--json` / `--json-legacy` 与 `jq` 字段路径 |
-| [CLI 与 LLM](docs/cli-llm.md) | 与 agent-browser 对齐：`--json` + `--content-boundaries` + `--max-output`、`ZINIAO_*`、快照语义 |
-| [与 agent-browser CLI 对照](docs/cli-agent-browser-parity.md) | 全量命令、参数语义、batch/snapshot 差异与 daemon 命令表 |
-| [页面内请求与站点模板](docs/site-fetch-and-presets.md) | 架构、会话鉴权（`auth.type`）、`site` / `network fetch`、分页、MCP `page_fetch` |
-| [Header 注入（`header_inject`）](docs/page-fetch-auth.md) | 声明式 header 注入（cookie/localStorage/sessionStorage/eval）、`fetch-save` 识别表、实现与扩展 |
+| [installation.md](docs/installation.md) | 多种安装方式、配置、故障排查 |
+| [install-uv-windows.md](docs/install-uv-windows.md) | Windows 下安装 uv |
+| [architecture.md](docs/architecture.md) | 三层架构、模块职责、数据流 |
+| [api-reference.md](docs/api-reference.md) | 全部 MCP 工具参数与返回值 |
+| [development.md](docs/development.md) | 添加新工具、构建、发布 |
+| [cli-json.md](docs/cli-json.md) / [cli-llm.md](docs/cli-llm.md) | `--json` 信封、与 agent-browser 对齐 |
+| [cli-agent-browser-parity.md](docs/cli-agent-browser-parity.md) | 全量命令与参数对照 |
+| [site-fetch-and-presets.md](docs/site-fetch-and-presets.md) | 站点模板架构、`auth.type`、分页、`page_fetch` |
+| [page-fetch-auth.md](docs/page-fetch-auth.md) | 声明式 header 注入（cookie/localStorage/eval） |
+| [site-ui-flows.md](docs/site-ui-flows.md) | Declarative UI Flows (`mode: ui`)、反风控、`type: secret` |
 
-## 上游与贡献
+## 上游与许可证
 
-本仓库主托管于 [github.com/tianyehedashu/ziniao-mcp](https://github.com/tianyehedashu/ziniao-mcp)。若以 submodule 或 vendor 方式嵌入其他项目，建议在 **上游仓库** 提交 PR，再于父仓库更新 submodule 指针（`git submodule update --remote third_party/ziniao-mcp` 等），以便 PyPI 包 `ziniao` 与文档单一来源。
+主仓库：[github.com/tianyehedashu/ziniao-mcp](https://github.com/tianyehedashu/ziniao-mcp)。以 submodule 嵌入时请在上游提 PR，再更新父仓库指针。
 
-## 许可证
-
-以仓库根目录 [LICENSE](LICENSE) 为准（当前为 **MIT**）。`pyproject.toml` 中的 `license` 字段与之一致，便于 PyPI 元数据展示。
-
-调试时请注意：`~/.ziniao/mcp_debug.log` 在 DEBUG 级别下可能包含 URL 等敏感信息，勿随意分享。
+许可证以根目录 [LICENSE](LICENSE) 为准（MIT）。调试时注意 `~/.ziniao/mcp_debug.log` 在 DEBUG 级别可能含 URL 等敏感信息。
