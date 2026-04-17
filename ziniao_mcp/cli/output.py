@@ -447,10 +447,10 @@ def _print_rich(data: dict) -> None:
         console.print(table)
         if saved:
             console.print(f"[green]Saved {len(saved)} file(s).[/]")
-        console.print(
-            "[dim]Tip: ziniao google-flow imagen-generate … "
-            "--save-images exports/myname[/dim]",
-        )
+        else:
+            console.print(
+                "[dim]Tip: pass --save-images <prefix> to persist generated media.[/]",
+            )
         return
 
     if "result" in data and data.get("ok"):

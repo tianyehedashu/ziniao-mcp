@@ -11,13 +11,13 @@ from pathlib import Path
 
 import pytest
 
-import ziniao_mcp.sites as sites_mod
+import ziniao_mcp.sites.discovery as discovery_mod
 from ziniao_mcp.sites import fork_preset
 
 
 @pytest.fixture(autouse=True)
 def _setup(rakuten_repo, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(sites_mod, "USER_DIR", tmp_path)
+    monkeypatch.setattr(discovery_mod, "USER_DIR", tmp_path)
 
 
 def test_fork_same_id(tmp_path: Path) -> None:

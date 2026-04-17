@@ -594,8 +594,8 @@ def _build_command_help(meta: dict, site_name: str, action_name: str) -> str:
     if var_args or pag_hint:
         parts.append(f"Example: ziniao {site_name} {action_name} {var_args}{pag_hint}")
     parts.append(
-        "Output: -o FILE saves raw/JSON body · --save-images PREFIX writes "
-        "images[].encodedImage to PREFIX-0.png (e.g. google-flow imagen-generate).",
+        "Output: -o FILE saves raw/JSON body · --save-images PREFIX persists "
+        "media declared via preset JSON ``media_contract`` or a plugin override.",
     )
     parts.append(f"Full info: ziniao site show {site_name}/{action_name}")
 
@@ -635,19 +635,22 @@ def _register_action(
             "--save-images",
             metavar="PREFIX",
             help=(
-                "For presets that return a top-level ``images[]`` with ``encodedImage`` "
-                "(base64) and/or ``fifeUrl`` (signed URL) — see the Media Output contract "
-                "in site-development SKILL.md. Writes ``PREFIX-<idx>.<ext>`` (auto-detected) "
-                "and replaces bulky payloads in the printed/JSON result with short notes."
+                "Persist media declared by the preset's ``media_contract`` "
+                "(JSON block) or a Python plugin's ``media_contract()`` "
+                "override, to ``PREFIX-<idx>.<ext>`` (extension auto-detected). "
+                "Bulky payloads in the printed/JSON result are replaced with "
+                "short ``[saved: ...]`` notes. No-op when the preset declares "
+                "no contract and no plugin overrides it."
             ),
         ),
     ) -> None:
         from ...sites import (  # pylint: disable=import-outside-toplevel
+            SitePlugin,
             prepare_request,
             run_site_fetch,
             save_response_body,
         )
-        from ...sites.save_media import strip_and_save_encoded_images  # pylint: disable=import-outside-toplevel
+        from ...sites.save_media import apply_media_contract  # pylint: disable=import-outside-toplevel
 
         if fetch_all and page is not None:
             typer.echo("Error: use either --page or --all, not both.", err=True)
@@ -693,7 +696,10 @@ def _register_action(
             result = run_site_fetch(spec, plugin, _fetch_sync, fetch_all=fetch_all)
 
         if save_images:
-            result = strip_and_save_encoded_images(result, save_images)
+            media_plugin = plugin or SitePlugin()
+            media_items = media_plugin.media_contract(result, spec)
+            if media_items:
+                result = apply_media_contract(result, media_items, save_images)
 
         if output and (result.get("body") or result.get("body_b64")):
             typer.echo(save_response_body(

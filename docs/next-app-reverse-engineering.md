@@ -96,7 +96,7 @@ fetch(url, {
 
 #### 技巧 B · 让 daemon 出站而非页面出站
 
-页面里 fetch 跨源被 CORS 挡，但 daemon（Python 进程）是普通 HTTP 客户端，没有 CORS 概念。ziniao 的 `httpx` 下载 fifeUrl 就是这种，见 `ziniao_mcp/sites/flow_images.py::_download_fife_url`。适用于**只需下载/上传字节流**、不需要浏览器 Cookie 的场景。
+页面里 fetch 跨源被 CORS 挡，但 daemon（Python 进程）是普通 HTTP 客户端，没有 CORS 概念。ziniao 的 `httpx` 下载签名 CDN URL（如 Google Flow 的 `fifeUrl`）就是这种，见 `ziniao_mcp/sites/save_media.py::download_url_to_file`（其本身也是 `--save-images` url 源规则的执行后端）。适用于**只需下载/上传字节流**、不需要浏览器 Cookie 的场景。
 
 > ⚠️ 如果接口必须带 Cookie（同源策略），仍然要走页面 fetch；此时回到技巧 A。
 

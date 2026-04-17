@@ -145,8 +145,8 @@ def test_resolve_file_not_found_raises() -> None:
 
 
 def test_resolve_file_too_large(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    import ziniao_mcp.sites as sites_mod
-    monkeypatch.setattr(sites_mod, "_FILE_MAX_BYTES", 10)
+    import ziniao_mcp.sites.variables as variables_mod
+    monkeypatch.setattr(variables_mod, "_FILE_MAX_BYTES", 10)
     f = tmp_path / "big.bin"
     f.write_bytes(b"X" * 100)
     with pytest.raises(ValueError, match="too large"):

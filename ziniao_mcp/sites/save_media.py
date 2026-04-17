@@ -1,6 +1,6 @@
 """Generic media-saving helpers for site presets.
 
-Two layers of API:
+Three layers of API, all site-agnostic:
 
 1. **Atomic primitives** (reusable by any site / plugin / mode: ui step):
 
@@ -13,13 +13,18 @@ Two layers of API:
    **actual** :class:`Path` written (or ``None`` on failure). They are pure
    side-effect functions — no assumptions about the preset shape.
 
-2. **High-level convention** — :func:`strip_and_save_encoded_images` expects the
-   Google-Flow / Imagen-style ``images[]`` response contract (``encodedImage``
-   or ``fifeUrl``) and is what ``--save-images`` drives.
+2. **Declarative compiler** — :func:`compile_media_contract` turns the
+   ``media_contract`` block from a preset JSON into the item list expected
+   by :func:`apply_media_contract`.  This is what the default
+   :meth:`SitePlugin.media_contract` dispatches to, so JSON-only sites get
+   ``--save-images`` support with zero Python code.
 
-New sites that return **non-image** binaries (CSV, zip, audio, PDF…) should
-build their own glue on top of the two atomic primitives rather than reusing
-:func:`strip_and_save_encoded_images`, which is deliberately image-biased.
+3. **Generic orchestrator** — :func:`apply_media_contract` consumes the list
+   returned by :meth:`SitePlugin.media_contract` and performs the writes,
+   patches the response with short ``"[saved: <name>]"`` notes and collects
+   saved paths under ``result["_saved_image_paths"]``.  Site-specific field
+   names (``encodedImage`` / ``fifeUrl`` / ``artifacts`` / ``b64_json`` …)
+   live in each *plugin* (or the preset JSON), **not** in this module.
 """
 
 from __future__ import annotations
@@ -162,58 +167,252 @@ def _download_fife_url(url: str, dest: Path, *, timeout: float = 30) -> bool:
     return written is not None
 
 
-def strip_and_save_encoded_images(result: dict[str, Any], prefix: str) -> dict[str, Any]:
-    """Save ``images[]`` to files under *prefix* and replace bulky data with short notes.
+def _deep_copy_for_patch(result: dict[str, Any], paths: list[list[Any]]) -> dict[str, Any]:
+    """Return a copy of *result* where every container on any patch *paths* is cloned.
 
-    Handles two formats:
-    - ``encodedImage`` (base64): decode and write.
-    - ``fifeUrl`` (GCS signed URL): HTTP GET and write.
-
-    *prefix* is a path **without** extension, e.g. ``exports/flow-mountain`` writes
-    ``exports/flow-mountain-0.png``, ``exports/flow-mountain-1.jpg``, …
-
-    Returns a **shallow-copied** result dict (images list is copied per item).
+    Unpatched branches stay shared (cheap); patched branches are isolated so the
+    caller can mutate without leaking into the original dict.
     """
-    images = result.get("images")
-    if not isinstance(images, list) or not prefix.strip():
+    if not paths:
+        return result
+    root: Any = dict(result) if isinstance(result, dict) else list(result)
+
+    for path in paths:
+        cur = root
+        for step in path[:-1]:
+            nxt = cur[step]
+            if isinstance(nxt, dict):
+                cloned: Any = dict(nxt)
+            elif isinstance(nxt, list):
+                cloned = list(nxt)
+            else:
+                break
+            cur[step] = cloned
+            cur = cloned
+    return root
+
+
+def _set_at_path(obj: Any, path: list[Any], value: Any) -> None:
+    cur = obj
+    for step in path[:-1]:
+        cur = cur[step]
+    cur[path[-1]] = value
+
+
+def apply_media_contract(
+    result: dict[str, Any],
+    items: list[dict],
+    prefix: str,
+) -> dict[str, Any]:
+    """Persist media items declared by :meth:`SitePlugin.media_contract`.
+
+    *items* is the list returned by ``plugin.media_contract(result)``.  Each
+    item tells us **what** to save (base64 / url), **how to name** it
+    (stem_suffix) and **where in result to patch** with a short note.
+
+    *prefix* is a stem path without extension; the actual extension is
+    inferred from magic bytes / Content-Type by the atomic primitives.
+
+    Returns a new result dict (shallow-copied along patched paths).  Saved
+    file paths are collected into ``result["_saved_image_paths"]`` — the key
+    name is historical; it accepts arbitrary media types.
+    """
+    if not items or not prefix.strip():
         return result
 
     parent, stem = _normalize_stem(prefix)
 
-    out: dict[str, Any] = {**result, "images": []}
+    paths: list[list[Any]] = [list(it.get("path") or []) for it in items]
+    out = _deep_copy_for_patch(result, paths)
     saved: list[str] = []
 
-    for idx, im in enumerate(images):
-        if not isinstance(im, dict):
-            out["images"].append(im)
-            continue
-        item = dict(im)
+    for item in items:
+        source = item.get("source")
+        value = item.get("value")
+        suffix = str(item.get("stem_suffix") or "")
+        path = list(item.get("path") or [])
+        dest = parent / f"{stem}{suffix}"
 
-        b64 = item.get("encodedImage")
-        if isinstance(b64, str) and b64.strip():
-            written = save_base64_as_file(b64, parent / f"{stem}-{idx}")
+        if source == "base64" and isinstance(value, str):
+            written = save_base64_as_file(value, dest)
             if written is not None:
                 saved.append(str(written.resolve()))
-                item["encodedImage"] = f"[saved: {written.name}]"
-            else:
-                item["encodedImage"] = "[invalid base64]"
-
-        fife = item.get("fifeUrl")
-        if isinstance(fife, str) and fife.startswith("http"):
-            written = download_url_to_file(fife, parent / f"{stem}-{idx}")
+                if path:
+                    _set_at_path(out, path, f"[saved: {written.name}]")
+            elif path:
+                _set_at_path(out, path, "[invalid base64]")
+        elif source == "url" and isinstance(value, str):
+            written = download_url_to_file(value, dest)
             if written is not None:
                 saved.append(str(written.resolve()))
-                item["fifeUrl"] = f"[saved: {written.name}]"
-
-        out["images"].append(item)
+                if path:
+                    _set_at_path(out, path, f"[saved: {written.name}]")
 
     if saved:
         out["_saved_image_paths"] = saved
     return out
 
 
+_VALID_SOURCES = frozenset({"base64", "url"})
+
+
+def _walk_dotted(obj: Any, path: str) -> tuple[Any, list[Any]]:
+    """Follow a ``a.b.c`` / ``a.0.b`` dotted path through *obj*.
+
+    Returns ``(value, concrete_keys)`` where ``concrete_keys`` is the list
+    of dict keys / list indices actually traversed (suitable for
+    :func:`_set_at_path`).  Purely numeric segments (``0``, ``-1``, …)
+    dereference a list by index.  If any segment is missing or hits a
+    non-container, returns ``(None, [])`` so the caller skips the rule
+    quietly.
+    """
+    if not isinstance(path, str):
+        return None, []
+    parts = [p for p in path.split(".") if p]
+    if not parts:
+        return None, []
+    cur: Any = obj
+    keys: list[Any] = []
+    for segment in parts:
+        if isinstance(cur, dict) and segment in cur:
+            cur = cur[segment]
+            keys.append(segment)
+        elif isinstance(cur, list) and segment.lstrip("-").isdigit():
+            idx = int(segment)
+            if -len(cur) <= idx < len(cur):
+                cur = cur[idx]
+                keys.append(idx)
+            else:
+                return None, []
+        else:
+            return None, []
+    return cur, keys
+
+
+def _format_suffix(template: str, *, idx: int | None = None, field: str | None = None) -> str:
+    """Fill ``{idx}`` / ``{field}`` placeholders in *template* (best-effort).
+
+    Unknown placeholders are left as-is so users can diagnose typos
+    instead of silently getting an odd filename.
+    """
+    out = str(template or "")
+    if idx is not None:
+        out = out.replace("{idx}", str(idx))
+    if field is not None:
+        out = out.replace("{field}", field)
+    return out
+
+
+def _compile_list_rule(rule: dict, result: dict) -> list[dict]:
+    target, base_keys = _walk_dotted(result, str(rule.get("items_at") or ""))
+    if not isinstance(target, list):
+        return []
+    fields = rule.get("fields")
+    if not isinstance(fields, list) or not fields:
+        return []
+
+    multi_field = len(fields) > 1
+    default_tmpl = "-{idx}-{field}" if multi_field else "-{idx}"
+    stem_tmpl = str(rule.get("stem_suffix") or default_tmpl)
+    if multi_field and "{field}" not in stem_tmpl:
+        raise ValueError(
+            f"media_contract rule items_at={rule.get('items_at')!r} declares "
+            f"{len(fields)} fields but stem_suffix={stem_tmpl!r} lacks the "
+            f"'{{field}}' placeholder — generated file names would collide and "
+            f"one of them would silently overwrite the other. Either split "
+            f"the rule per field or include '{{field}}' in the template."
+        )
+
+    items: list[dict] = []
+    for idx, elem in enumerate(target):
+        if not isinstance(elem, dict):
+            continue
+        for fdef in fields:
+            if not isinstance(fdef, dict):
+                continue
+            key = str(fdef.get("key") or "").strip()
+            source = str(fdef.get("source") or "").strip()
+            if not key or source not in _VALID_SOURCES:
+                continue
+            val = elem.get(key)
+            if not isinstance(val, str) or not val.strip():
+                continue
+            if source == "url" and not val.startswith(("http://", "https://")):
+                continue
+            items.append({
+                "source": source,
+                "value": val,
+                "stem_suffix": _format_suffix(stem_tmpl, idx=idx, field=key),
+                "path": [*base_keys, idx, key],
+            })
+    return items
+
+
+def _compile_single_rule(rule: dict, result: dict) -> list[dict]:
+    path_str = str(rule.get("at") or "").strip()
+    source = str(rule.get("source") or "").strip()
+    if not path_str or source not in _VALID_SOURCES:
+        return []
+    val, keys = _walk_dotted(result, path_str)
+    if not isinstance(val, str) or not val.strip():
+        return []
+    if source == "url" and not val.startswith(("http://", "https://")):
+        return []
+    last_field = keys[-1] if keys else ""
+    return [{
+        "source": source,
+        "value": val,
+        "stem_suffix": _format_suffix(str(rule.get("stem_suffix") or ""), field=last_field),
+        "path": list(keys),
+    }]
+
+
+def compile_media_contract(rules: Any, result: dict) -> list[dict]:
+    """Compile the preset JSON ``media_contract`` block into save items.
+
+    Two rule shapes are supported (mix freely in one list):
+
+    - **List rule** — iterate a list and grab one or more media fields per
+      element::
+
+          { "items_at": "images",
+            "fields": [
+              { "key": "encodedImage", "source": "base64" },
+              { "key": "fifeUrl",      "source": "url" }
+            ],
+            "stem_suffix": "-{idx}" }
+
+    - **Single rule** — pick one specific field anywhere in the response::
+
+          { "at": "thumbnail_url",
+            "source": "url",
+            "stem_suffix": "-thumb" }
+
+    ``stem_suffix`` supports ``{idx}`` (list element index) and
+    ``{field}`` (field key) placeholders.
+
+    Unknown / malformed rules are silently skipped so one bad entry in a
+    large contract doesn't kill the whole ``--save-images`` run.  Returns
+    ``[]`` when *rules* is anything other than a non-empty list.
+    """
+    if not isinstance(rules, list) or not rules:
+        return []
+    if not isinstance(result, dict):
+        return []
+    items: list[dict] = []
+    for rule in rules:
+        if not isinstance(rule, dict):
+            continue
+        if "items_at" in rule:
+            items.extend(_compile_list_rule(rule, result))
+        elif "at" in rule:
+            items.extend(_compile_single_rule(rule, result))
+    return items
+
+
 __all__ = [
-    "save_base64_as_file",
+    "apply_media_contract",
+    "compile_media_contract",
     "download_url_to_file",
-    "strip_and_save_encoded_images",
+    "save_base64_as_file",
 ]

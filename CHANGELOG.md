@@ -4,6 +4,29 @@
 
 ## [Unreleased]
 
+## [0.2.55] - 2026-04-17
+
+### Added
+
+- **站点媒体契约（`media_contract`）声明式扩展机制**：`--save-images` 改为读站点侧声明，主包不再识别任何具体字段名（`encodedImage` / `fifeUrl` / `images[]` 全部移出）。三级扩展路径 —— (a) preset JSON 顶层 `media_contract: [...]` 零代码声明（`items_at` + `fields` 列表规则、`at` + `source` 单字段规则）；(b) 在 `SitePlugin` 子类中 override `media_contract(result, spec)` 跑任意 Python 逻辑；(c) 什么都不做，默认返回 `[]`。dotted path 支持 dict 键和数字列表索引（`data.pages.0.url`、`arr.-1.key`）；`stem_suffix` 支持 `{idx}` / `{field}` 占位符，多字段默认模板为 `-{idx}-{field}`，单字段为 `-{idx}`
+- **站点响应契约（`response_contract`）声明式扩展机制**（与 `media_contract` 对称）：把"JSON body 解析 + 把感兴趣字段提升到顶层"的旧样板代码从 Python 迁到 preset JSON。Schema：`{ "parse": "json", "lift": [ { "from": "<dotted>", "to": "<top-key>", "when_eq": { "<path>": <literal> } } ] }`。三级扩展 —— (a) preset JSON 顶层声明；(b) `SitePlugin.after_fetch(response, spec)` override（可先调 `super().after_fetch()` 保留声明式规则）；(c) 不声明不 override 即 no-op。`when_eq` 为字面量等值合取（AND），不支持 DSL / eval；任一规则失败静默跳过，不影响其他规则与整体响应
+- **新模块 `ziniao_mcp/sites/save_media.py::compile_media_contract` 与 `ziniao_mcp/sites/response_contract.py::apply_response_contract`**：前者把声明式媒体规则编译为 `apply_media_contract` 可执行的 save item 列表，后者把声明式响应规则应用到 `response` dict；均复用统一的 dotted path walker，非法规则静默跳过，一条坏规则不拖累整批
+- **SKILL / 文档同步**：`site-development` SKILL 改写"Media Output"章节（三级扩展路径 + 智能默认 + 冲突校验）并新增"Response Output Contract"章节；Plugin Hooks 表同步更新 `after_fetch` / `media_contract` 行说明；JSON Template Field Reference 补 `media_contract` / `response_contract` 两个字段；Troubleshooting 增补"`--save-images` 无输出" / "`response["parsed"]` 升级后丢失"两条排查项
+
+### Changed
+
+- **`SitePlugin.media_contract` 签名破坏性变更**：从 `(self, result)` 扩展为 `(self, result, spec)`，下游插件同步升级即可。`spec` 参数让 override 能读到 preset 所有字段（而不仅是响应体），便于实现"按 preset 分支生成不同契约"
+- **`SitePlugin.after_fetch` 第二参数重命名（破坏性但无行为变化）**：`(self, response, request)` → `(self, response, spec)`。实参一直是完整 rendered preset，旧名 `request` 语义误导；新名与 `media_contract(result, spec)` 对齐。`pagination.run_site_fetch` 里所有 `after_fetch` 调用点统一改为 `(plugin or SitePlugin()).after_fetch(out, spec)`，让声明式 `response_contract` 对无 Python 插件的站点同样生效
+- **多字段 `stem_suffix` 冲突保护**：多 `fields` 规则若使用不含 `{field}` 的自定义模板，`compile_media_contract` 抛 `ValueError("…collide…")` 拒绝运行 —— 旧版本会静默覆盖同名文件导致数据丢失
+- **`_spec_for_page_fetch` 过滤 CLI-only 字段**：`media_contract` / `response_contract` 声明仅客户端消费，daemon 侧 page_fetch 拿不到也不需要；`_CLI_ONLY_SPEC_KEYS` 过滤集同时覆盖两者，避免 TCP 流量浪费
+- **site-hub/google-flow 两份 preset 同步改为 JSON 声明式契约**：`imagen-generate.json` 声明 `encodedImage` + `fifeUrl` 双字段（runImageFx / batchGenerateImages 两条分支都兼容）；`imagen-ref-generate.json` 只声明接口实际返回的 `fifeUrl`（修复旧契约虚假字段）；`GoogleFlowPlugin` 精简为仅保留 `site_id`，媒体契约完全由 JSON 驱动
+- **site-hub/rakuten 15 份 JSON-API preset 迁移到声明式 `response_contract`**：`RakutenPlugin.after_fetch` 的"`{status: SUCCESS, data: …}` → `response["parsed"] = data`" Python 逻辑彻底删除；`afl-report-pending` / `cpa-reports-search` / `cpnadv-performance-retrieve[-item]` / `rmail-reports` / `rpp-exp-merchant` / `rpp-exp-report[-item]` / `rpp-search[-item]` / `shared-purchase-detail` / `tda-exp-report[-item]` / `tda-reports-search[-item]` 全部声明同一份 `response_contract`，CSV preset（`reviews-csv` / `datatool-deal-csv`）保持原样不受影响
+
+### Removed
+
+- **`ziniao_mcp/sites/save_media.py::strip_and_save_encoded_images`**：硬编码 Google Flow `images[]` 契约的旧函数，已被通用 `apply_media_contract` 取代
+- **`ziniao_mcp/cli/output.py` 中硬编码的 `ziniao google-flow imagen-generate ...` 提示**：与主包"无具体站点字段知识"原则冲突
+
 ## [0.2.54] - 2026-04-17
 
 ### Added
