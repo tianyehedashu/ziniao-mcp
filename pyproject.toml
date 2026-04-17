@@ -1,6 +1,6 @@
 [project]
 name = "ziniao"
-version = "0.2.51"
+version = "0.2.52"
 description = "紫鸟与 Chrome 浏览器 AI 自动化 — 让 AI Agent 操控紫鸟店铺与本地 Chrome"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -43,6 +43,8 @@ artifacts = ["skills/**/SKILL.md", "skills/**/references/*.md", "skills/**/asset
 
 [dependency-groups]
 dev = [
+    # 可选功能 secret source `keyring:` 的测试与 Pylint 静态解析需要。
+    "keyring>=25.0",
     "pylint>=4.0.5",
     "pytest>=9.0.2",
     "pytest-asyncio>=1.3.0",

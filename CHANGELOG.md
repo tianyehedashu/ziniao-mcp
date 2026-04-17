@@ -4,6 +4,28 @@
 
 ## [Unreleased]
 
+## [0.2.52] - 2026-04-17
+
+### Fixed
+
+- **`ziniao update` 在 Windows 默认路径下未真正执行升级**：原实现中 `_kill_blocking_nt` 仅排除 `os.getpid()`，会把自身父进程（uv trampoline shim `~/.local/bin/ziniao.exe`）一并杀掉；uv 的 Job Object 连带终止 Python 子进程，主进程在打印完 uv 命令行后就异常退出，升级新窗口与 `_windows_spawn_uv_tool_install` 全程未被调用。现在 `_self_protected_pids()` 同时包含当前 PID 与 `os.getppid()`，Windows 默认路径的主进程不再执行 kill，kill 完全交给新控制台的 `.cmd` 执行
+- **同名进程（如紫鸟浏览器）误杀风险（两侧对齐）**：Python 侧 `_kill_blocking_*` 按**绝对路径**比对；Windows 异步路径 `.cmd` 里的 PowerShell 段同样改为按**精确路径 + protected PID 白名单**（见 `_build_nt_kill_ps`）。原先 `.cmd` 还在用 `-like '*\\.local\\bin\\ziniao.exe' / '*\\uv\\tools\\ziniao\\*'` 模糊 wildcard，任何带同字面结尾的同名进程（紫鸟浏览器、名字含 `ziniao` 的第三方工具）都会被牵连——现已彻底堵上
+- **`--no-kill` 在有 daemon 运行时几乎必败**：旧实现里 `--no-kill` 连"优雅请 daemon `quit`"也一并跳过；而 daemon 持有 `<uv tool dir>/ziniao/**` 下的 `.pyd` / `python.exe` 句柄，uv 安装必然撞 ERROR 32。现在 `--no-kill` 的严格语义是"只跳过**强杀**"，graceful quit 仍会运行；帮助文本同步更新
+
+### Added
+
+- **升级前优雅停 daemon**：`update` 在任何 kill 路径之前先通过 TCP 向 daemon 发送 `{"command":"quit"}`，让 `SessionManager.cleanup()` 正常执行（关 CDP、flush 录制器、释放店铺会话），再由原有 kill 逻辑兜底处理残留；彻底避免 Windows 下 `Stop-Process -Force` 无感强杀 daemon 导致的资源悬挂与在途请求被无声打断问题
+- **环境变量 `ZINIAO_UPDATE_QUIT_TIMEOUT`**：覆盖优雅退出轮询上限（默认 15s——活跃店铺多 / 录制器 flush 较慢时 5s 真实不够；负值/0 视作"不等直接进入强杀"）。超时提示文案带出该变量名
+- **升级结果在原终端可见**：`.cmd` 升级完成后原子写入 state 文件（`uv_exit_code` / `new_version` / `status`），主进程轮询并在原 PowerShell 打印"升级完成 + 新版本号"或"升级失败 + uv 退出码"，告别"看完两行就结束、没新窗口、不知是否升级"的体验
+- **升级后真版本自证**：新窗口内通过 `<uv tool dir>/ziniao/Scripts/python.exe -c "importlib.metadata.version('ziniao')"` 探测实际生效版本，与 state 文件一并回传
+- **环境变量 `ZINIAO_UPDATE_NO_WAIT`**：CI 或想保持"立即退出"的场景可跳过主进程轮询
+- **测试**：`tests/test_update_cmd.py` 新增"自身/父进程保护"、"同名进程不误杀"、"state 文件与版本探测"、"Windows 默认路径必须 spawn"、"升级前必须先优雅停 daemon 再 kill/uv"、".cmd 里 PS 必须用精确路径 + protected PID 白名单"、"`--no-kill` 仍调用 graceful"、"路径含单引号时 PowerShell 字面量正确转义"等回归用例（共 41 条）
+
+### Changed
+
+- `ziniao update` 成功提示不再建议用户手动执行 `ziniao quit`——旧 daemon 已在升级入口被优雅停止，下次 ziniao 命令会按需自动启动新 daemon
+- `--no-kill` 语义从"不动任何 ziniao 进程（含 daemon）"改为"只跳过**强杀**；graceful quit 仍执行"——避免退化成必败路径
+
 ## [0.2.51] - 2026-04-17
 
 ### Fixed
