@@ -16,6 +16,8 @@
 | `recording.md` | 录制 IR 与回放 |
 | `stealth.md` | 反自动化与 JS 注入策略 |
 | `site-fetch-and-presets.md` / `page-fetch-auth.md` | 站点抓取与鉴权 |
+| `site-ui-flows.md` | `mode: ui` 声明式 UI 流：steps[]、extract/fetch、secret 变量、与 fetch/js 的分工 |
+| `next-app-reverse-engineering.md` | Next.js/RSC/tRPC/第三方 REST 四层模型逆向方法论 + 反模式清单 |
 | `iframe.md` | iframe 相关行为 |
 | `rakuten-presets-smoke-test.md` | 乐天 preset 测试说明 |
 | `directory-conventions.md` | 仓库目录用途、发布边界、`exports/` 落盘约定 |

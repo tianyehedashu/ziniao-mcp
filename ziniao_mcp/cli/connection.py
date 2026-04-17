@@ -137,6 +137,12 @@ _SLOW_COMMANDS = frozenset({
     "screenshot", "snapshot", "snapshot_enhanced",
     "navigate", "wait", "recorder",
     "launch_chrome", "open_store",
+    # page_fetch calls third-party APIs (AI generation, long-running uploads);
+    # 60s default is too tight for batchGenerateImages NARWHAL (40~90s/image).
+    "page_fetch",
+    # flow_run chains many UI steps (login + form + export + download);
+    # 60s is unrealistic, bump to 120s and rely on --timeout for longer flows.
+    "flow_run",
 })
 
 

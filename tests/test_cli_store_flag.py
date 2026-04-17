@@ -1,4 +1,4 @@
-"""CLI --store / --session: 解析与发往 daemon 的 target_session。"""
+﻿"""CLI --store / --session: 解析与发往 daemon 的 target_session。"""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from ziniao_mcp.cli.output import set_cli_json_legacy
 
 
 def test_store_and_session_mutually_exclusive() -> None:
-    runner = CliRunner(mix_stderr=False)
+    runner = CliRunner()
     result = runner.invoke(
         app,
         ["--store", "a", "--session", "b", "session", "list"],
@@ -42,7 +42,7 @@ def test_store_passes_target_session_to_send_command(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(cli_mod, "send_command", fake_send_command)
     set_cli_json_legacy(True)
     try:
-        runner = CliRunner(mix_stderr=False)
+        runner = CliRunner()
         result = runner.invoke(
             cli_mod.app,
             ["--store", "my-store-001", "--json-legacy", "session", "list"],
@@ -71,7 +71,7 @@ def test_session_passes_target_session_to_send_command(monkeypatch: pytest.Monke
     monkeypatch.setattr(cli_mod, "send_command", fake_send_command)
     set_cli_json_legacy(True)
     try:
-        runner = CliRunner(mix_stderr=False)
+        runner = CliRunner()
         result = runner.invoke(
             cli_mod.app,
             ["--session", "chrome-sess-9", "--json-legacy", "get", "url"],

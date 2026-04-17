@@ -593,6 +593,10 @@ def _build_command_help(meta: dict, site_name: str, action_name: str) -> str:
     pag_hint = " --all" if meta.get("paginated") else ""
     if var_args or pag_hint:
         parts.append(f"Example: ziniao {site_name} {action_name} {var_args}{pag_hint}")
+    parts.append(
+        "Output: -o FILE saves raw/JSON body · --save-images PREFIX writes "
+        "images[].encodedImage to PREFIX-0.png (e.g. google-flow imagen-generate).",
+    )
     parts.append(f"Full info: ziniao site show {site_name}/{action_name}")
 
     return "\n\n".join(parts)
@@ -626,12 +630,24 @@ def _register_action(
             None, "--decode-encoding",
             help="Decode raw body with this codec before saving (e.g. cp932 for Rakuten CSV). Default: raw bytes or charset from Content-Type.",
         ),
+        save_images: Optional[str] = typer.Option(
+            None,
+            "--save-images",
+            metavar="PREFIX",
+            help=(
+                "For presets that return a top-level ``images[]`` with ``encodedImage`` "
+                "(base64) and/or ``fifeUrl`` (signed URL) — see the Media Output contract "
+                "in site-development SKILL.md. Writes ``PREFIX-<idx>.<ext>`` (auto-detected) "
+                "and replaces bulky payloads in the printed/JSON result with short notes."
+            ),
+        ),
     ) -> None:
         from ...sites import (  # pylint: disable=import-outside-toplevel
             prepare_request,
             run_site_fetch,
             save_response_body,
         )
+        from ...sites.save_media import strip_and_save_encoded_images  # pylint: disable=import-outside-toplevel
 
         if fetch_all and page is not None:
             typer.echo("Error: use either --page or --all, not both.", err=True)
@@ -656,7 +672,17 @@ def _register_action(
             return run_command("page_fetch", s)
 
         preset_decode = spec.get("_ziniao_output_decode_encoding")
-        result = run_site_fetch(spec, plugin, _fetch_sync, fetch_all=fetch_all)
+
+        if spec.get("mode") == "ui":
+            if fetch_all:
+                typer.echo("Error: --all is not supported for mode: ui presets.", err=True)
+                raise typer.Exit(1)
+            result = run_command("flow_run", spec)
+        else:
+            result = run_site_fetch(spec, plugin, _fetch_sync, fetch_all=fetch_all)
+
+        if save_images:
+            result = strip_and_save_encoded_images(result, save_images)
 
         if output and (result.get("body") or result.get("body_b64")):
             typer.echo(save_response_body(

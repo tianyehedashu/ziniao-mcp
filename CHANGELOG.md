@@ -4,6 +4,30 @@
 
 ## [Unreleased]
 
+## [0.2.50] - 2026-04-17
+
+### Added
+
+- **站点预设 `mode: ui`**：声明式 UI 流程（`steps[]`）、`action: extract` / `action: fetch`、`output_contract`、`on_error` 失败快照与截图；`flow_run` 慢命令超时
+- **`vars` 中 `type: secret`**：keyring / 环境变量 / 交互输入解析；`output_contract` 与 selector 等字段校验防泄密；失败 HTML / `.err.txt` 经 `_mask_secrets` 脱敏
+- **`ziniao_mcp.sites.save_media`**：通用 `save_base64_as_file` / `download_url_to_file` / `strip_and_save_encoded_images`；`flow_images` 保留为兼容 shim
+- **文档**：`docs/site-ui-flows.md`、`docs/next-app-reverse-engineering.md`；`docs/CLAUDE.md` 索引更新
+- **测试**：`test_flow_run`、`test_secret_var`、`test_flow_images`、`test_sites_file_var`；Click 8.3+ 下移除 `CliRunner(mix_stderr=...)`
+
+### Fixed
+
+- **`human_click` / `human_hover` 卡死**：`_move_mouse_humanlike` 不再经 `tab.evaluate` 读写 `window._lastMouseX`；鼠标末位坐标用 `WeakKeyDictionary` 按 Tab 缓存
+- **`extract kind=eval` 与 `ziniao eval` 解包**：`_safe_eval_js` 直连 `cdp.runtime.evaluate`，修正 falsy JSON 与 `RemoteObject` 泄漏；错误信息仅用 `text` + `exception.description`，避免 `repr(RemoteObject)`
+- **`eval_in_frame`**：新增 `strict=`；`_run_js_in_context` 统一主文档与 iframe 的异常契约；`insert_text` 带 selector 且元素未找到时显式报错
+- **`_inline_fetch_step`**：避免 body 双重 JSON 序列化；失败产物文件名毫秒级 + 步骤序号防碰撞
+- **`load_preset`**：正确处理 `Path` 型仓库扫描结果
+
+### Changed
+
+- **`site-hub` 子模块**：`v0.2.0` → **`v0.2.1`**（Google Flow 预设、`flow-demo`、`site-development` SKILL 等）
+- **Ruff format**：对 `ziniao_mcp/cli/dispatch.py`、`iframe.py`、`stealth/human_behavior.py` 等与本次改动强相关文件统一格式
+- **`lifecycle.py`**：移除未使用的 `signal` / `sys` import（Ruff F401）
+
 ## [0.2.48] - 2026-04-15
 
 ### Fixed

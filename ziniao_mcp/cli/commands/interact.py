@@ -46,6 +46,16 @@ def type_text(
     print_result(result, json_mode=get_json_mode())
 
 
+@app.command("insert-text")
+def insert_text(
+    text: str = typer.Argument(..., help="Text to insert via CDP Input.insertText."),
+    selector: Optional[str] = typer.Option(None, "--selector", "-s", help="Click this element first to focus it."),
+) -> None:
+    """insert-text <text> [-s selector] — Insert text via CDP Input.insertText (works with Slate/ProseMirror rich editors where ``type`` fails)."""
+    result = run_command("insert_text", {"text": text, "selector": selector or ""})
+    print_result(result, json_mode=get_json_mode())
+
+
 @app.command()
 def press(key: str = typer.Argument(..., help="Key name (e.g. Enter, Tab, Control+a).")) -> None:
     """Press a keyboard key."""
@@ -164,6 +174,14 @@ def register_top_level(parent: typer.Typer) -> None:
     ) -> None:
         """type <text> [-s selector] — Type char-by-char; text is required first, selector optional (-s). Same as ``ziniao act type``."""
         type_text(text, selector)
+
+    @parent.command("insert-text")
+    def _insert_text(
+        text: str = typer.Argument(..., help="Text to insert via CDP Input.insertText."),
+        selector: Optional[str] = typer.Option(None, "--selector", "-s", help="Click this element first to focus it."),
+    ) -> None:
+        """insert-text <text> [-s sel] — CDP Input.insertText; works with Slate/ProseMirror. Same as ``ziniao act insert-text``."""
+        insert_text(text, selector)
 
     @parent.command("press")
     def _press(key: str = typer.Argument(..., help="Key name (e.g. Enter, Tab).")) -> None:

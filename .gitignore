@@ -49,6 +49,7 @@ test_*.png
 
 # Local capture exports (HAR may contain tokens / PII)
 out/
+exports/
 
 # Local Chrome profile (e.g. README / MCP examples)
 .chrome-test-profile/

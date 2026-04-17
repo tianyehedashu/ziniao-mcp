@@ -27,6 +27,7 @@ _logger = logging.getLogger("ziniao-mcp-debug")
 # 数据结构
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class IFrameContext:
     """当前活动的 iframe 上下文。"""
@@ -62,8 +63,11 @@ class _CompatPosition:
         from nodriver import cdp  # pylint: disable=import-outside-toplevel
 
         return cdp.page.Viewport(
-            x=self.x, y=self.y,
-            width=self.width, height=self.height, scale=scale,
+            x=self.x,
+            y=self.y,
+            width=self.width,
+            height=self.height,
+            scale=scale,
         )
 
     def __repr__(self) -> str:
@@ -76,6 +80,7 @@ class _CompatPosition:
 # ---------------------------------------------------------------------------
 # IFrameElement — iframe 内元素的代理
 # ---------------------------------------------------------------------------
+
 
 class IFrameElement:
     """iframe 内元素的代理，接口兼容 nodriver Element 的常用子集。
@@ -105,58 +110,82 @@ class IFrameElement:
         from nodriver import cdp  # pylint: disable=import-outside-toplevel
 
         cx, cy = self._abs_x + self._width / 2, self._abs_y + self._height / 2
-        await self._tab.send(cdp.input_.dispatch_mouse_event(
-            "mousePressed", x=cx, y=cy,
-            button=cdp.input_.MouseButton.LEFT, buttons=1, click_count=1,
-        ))
-        await self._tab.send(cdp.input_.dispatch_mouse_event(
-            "mouseReleased", x=cx, y=cy,
-            button=cdp.input_.MouseButton.LEFT, buttons=1, click_count=1,
-        ))
+        await self._tab.send(
+            cdp.input_.dispatch_mouse_event(
+                "mousePressed",
+                x=cx,
+                y=cy,
+                button=cdp.input_.MouseButton.LEFT,
+                buttons=1,
+                click_count=1,
+            )
+        )
+        await self._tab.send(
+            cdp.input_.dispatch_mouse_event(
+                "mouseReleased",
+                x=cx,
+                y=cy,
+                button=cdp.input_.MouseButton.LEFT,
+                buttons=1,
+                click_count=1,
+            )
+        )
 
     async def mouse_click(self) -> None:
         await self.click()
 
     async def get_position(self) -> _CompatPosition:
         return _CompatPosition(
-            left=self._abs_x, top=self._abs_y,
-            width=self._width, height=self._height,
+            left=self._abs_x,
+            top=self._abs_y,
+            width=self._width,
+            height=self._height,
         )
 
     async def mouse_move(self) -> None:
         from nodriver import cdp  # pylint: disable=import-outside-toplevel
 
         cx, cy = self._abs_x + self._width / 2, self._abs_y + self._height / 2
-        await self._tab.send(
-            cdp.input_.dispatch_mouse_event("mouseMoved", x=cx, y=cy)
-        )
+        await self._tab.send(cdp.input_.dispatch_mouse_event("mouseMoved", x=cx, y=cy))
 
     async def clear_input(self) -> None:
         from nodriver import cdp  # pylint: disable=import-outside-toplevel
 
         await self.click()
         await asyncio.sleep(0.1)
-        await self._tab.send(cdp.input_.dispatch_key_event(
-            "rawKeyDown", windows_virtual_key_code=65, modifiers=2,
-        ))
-        await self._tab.send(cdp.input_.dispatch_key_event(
-            "keyUp", windows_virtual_key_code=65, modifiers=2,
-        ))
+        await self._tab.send(
+            cdp.input_.dispatch_key_event(
+                "rawKeyDown",
+                windows_virtual_key_code=65,
+                modifiers=2,
+            )
+        )
+        await self._tab.send(
+            cdp.input_.dispatch_key_event(
+                "keyUp",
+                windows_virtual_key_code=65,
+                modifiers=2,
+            )
+        )
         await asyncio.sleep(0.05)
-        await self._tab.send(cdp.input_.dispatch_key_event(
-            "rawKeyDown", windows_virtual_key_code=8,
-        ))
-        await self._tab.send(cdp.input_.dispatch_key_event(
-            "keyUp", windows_virtual_key_code=8,
-        ))
+        await self._tab.send(
+            cdp.input_.dispatch_key_event(
+                "rawKeyDown",
+                windows_virtual_key_code=8,
+            )
+        )
+        await self._tab.send(
+            cdp.input_.dispatch_key_event(
+                "keyUp",
+                windows_virtual_key_code=8,
+            )
+        )
 
     async def send_keys(self, text: str) -> None:
         from nodriver import cdp  # pylint: disable=import-outside-toplevel
 
         for i, char in enumerate(text):
-            await self._tab.send(
-                cdp.input_.dispatch_key_event("char", text=char)
-            )
+            await self._tab.send(cdp.input_.dispatch_key_event("char", text=char))
             base_delay = random.uniform(0.05, 0.15)
             if i > 0 and random.random() < 0.05:
                 base_delay += random.uniform(0.3, 0.8)
@@ -167,15 +196,32 @@ class IFrameElement:
 
         if not self.backend_node_id:
             raise RuntimeError("无法上传文件：缺少 backend_node_id")
-        await self._tab.send(cdp.dom.set_file_input_files(
-            files=list(paths),
-            backend_node_id=cdp.dom.BackendNodeId(self.backend_node_id),
-        ))
+        await self._tab.send(
+            cdp.dom.set_file_input_files(
+                files=list(paths),
+                backend_node_id=cdp.dom.BackendNodeId(self.backend_node_id),
+            )
+        )
 
 
 # ---------------------------------------------------------------------------
 # 帧内 JS 执行
 # ---------------------------------------------------------------------------
+
+
+def _format_cdp_exception(exc: Any) -> str:
+    """Render a ``cdp.runtime.ExceptionDetails`` into a human-readable string.
+
+    Only reads string-typed fields (``text``, ``exception.description``); the
+    ``exception`` field itself is a ``RemoteObject`` so it must never be used
+    as the message directly or callers will see ``repr(RemoteObject(...))``.
+    """
+    text = getattr(exc, "text", "") or ""
+    exc_obj = getattr(exc, "exception", None)
+    desc = getattr(exc_obj, "description", None) if exc_obj is not None else None
+    parts = [p for p in (text, desc) if p]
+    return ": ".join(parts) or "unknown error"
+
 
 async def eval_in_frame(
     tab: "Tab",
@@ -184,36 +230,59 @@ async def eval_in_frame(
     *,
     return_by_value: bool = True,
     await_promise: bool = True,
+    strict: bool = False,
 ) -> Any:
     """在 iframe 的 isolated world 中执行 JavaScript。
 
     ``await_promise`` 与顶层 ``tab.evaluate`` 一致：为 True 时等待 Promise 解析。
+
+    解包规则与 :func:`ziniao_mcp.cli.dispatch._safe_eval_js` 对齐——``value``
+    字段用 ``is not None`` 判断（避免 ``0``/``""``/``False``/``[]`` 这类
+    JSON-falsy 值被当空返回），并兜底处理 ``unserializable_value``。
+
+    ``strict=True`` 时脚本异常会抛 :class:`RuntimeError`，让 step 层的
+    ``on_error`` 能捕获并落盘快照；``strict=False``（默认）保持旧的"静默
+    吞错返回 None"行为，供不介意异常的探测型调用方使用。
     """
     from nodriver import cdp  # pylint: disable=import-outside-toplevel
 
-    result = await tab.send(cdp.runtime.evaluate(
-        expression=expression,
-        context_id=cdp.runtime.ExecutionContextId(context_id),
-        return_by_value=return_by_value,
-        await_promise=await_promise,
-    ))
+    result = await tab.send(
+        cdp.runtime.evaluate(
+            expression=expression,
+            context_id=cdp.runtime.ExecutionContextId(context_id),
+            return_by_value=return_by_value,
+            await_promise=await_promise,
+        )
+    )
     if not result:
         return None
     remote_obj, exception = result
     if exception:
+        if strict:
+            raise RuntimeError(
+                f"iframe eval failed: {_format_cdp_exception(exception)}"
+            )
         _logger.debug("iframe eval 异常: %s", exception)
         return None
-    if return_by_value and hasattr(remote_obj, "value"):
+    if remote_obj is None:
+        return None
+    if not return_by_value:
+        return remote_obj
+    if remote_obj.value is not None:
         return remote_obj.value
-    return remote_obj
+    if getattr(remote_obj, "unserializable_value", None) is not None:
+        return str(remote_obj.unserializable_value)
+    return None
 
 
 # ---------------------------------------------------------------------------
 # iframe 内元素查找
 # ---------------------------------------------------------------------------
 
+
 async def _get_iframe_offset(
-    tab: "Tab", iframe_selector: str,
+    tab: "Tab",
+    iframe_selector: str,
 ) -> tuple[float, float]:
     """获取 iframe 在主文档中的绝对视口偏移量（含边框补偿）。"""
     js = (
@@ -267,11 +336,13 @@ async def find_element_in_frame(
 
     backend_node_id = None
     try:
-        result = await tab.send(cdp.runtime.evaluate(
-            expression=f"document.querySelector({_json.dumps(selector)})",
-            context_id=cdp.runtime.ExecutionContextId(iframe_ctx.context_id),
-            return_by_value=False,
-        ))
+        result = await tab.send(
+            cdp.runtime.evaluate(
+                expression=f"document.querySelector({_json.dumps(selector)})",
+                context_id=cdp.runtime.ExecutionContextId(iframe_ctx.context_id),
+                return_by_value=False,
+            )
+        )
         if result:
             remote_obj = result[0]
             if hasattr(remote_obj, "object_id") and remote_obj.object_id:
@@ -297,7 +368,9 @@ async def find_element_in_frame(
 _VISIBLE_MARKER = "data-ziniao-visible"
 
 
-async def _select_first_visible_in_main_doc(tab: "Tab", selector: str, timeout: float) -> Optional[Union["Element", IFrameElement]]:
+async def _select_first_visible_in_main_doc(
+    tab: "Tab", selector: str, timeout: float
+) -> Optional[Union["Element", IFrameElement]]:
     """主文档中优先选择第一个可见且可交互的元素，避免 querySelector 命中 type=hidden 等不可见节点。"""
     sel_escaped = _json.dumps(selector)
     js_mark_first_visible = (
@@ -319,14 +392,16 @@ async def _select_first_visible_in_main_doc(tab: "Tab", selector: str, timeout: 
     try:
         marked = await tab.evaluate(js_mark_first_visible, return_by_value=True)
         if marked is True:
-            elem = await tab.select(f"[{_VISIBLE_MARKER}=\"1\"]", timeout=timeout)
+            elem = await tab.select(f'[{_VISIBLE_MARKER}="1"]', timeout=timeout)
             await tab.evaluate(
                 f"document.querySelector('[{_VISIBLE_MARKER}=\"1\"]')?.removeAttribute({_json.dumps(_VISIBLE_MARKER)})",
                 return_by_value=True,
             )
             return elem
     except Exception:  # pylint: disable=broad-exception-caught
-        _logger.debug("_select_first_visible_in_main_doc failed, falling back to tab.select")
+        _logger.debug(
+            "_select_first_visible_in_main_doc failed, falling back to tab.select"
+        )
     return None
 
 
@@ -345,7 +420,10 @@ async def find_element(
     """
     if store.iframe_context:
         return await find_element_in_frame(
-            tab, selector, store.iframe_context, timeout=timeout,
+            tab,
+            selector,
+            store.iframe_context,
+            timeout=timeout,
         )
     elem = await _select_first_visible_in_main_doc(tab, selector, timeout)
     if elem is not None:
@@ -356,6 +434,7 @@ async def find_element(
 # ---------------------------------------------------------------------------
 # Frame 树收集
 # ---------------------------------------------------------------------------
+
 
 async def collect_frames(tab: "Tab") -> list[dict]:
     """收集页面中所有 frame 的信息。"""
@@ -369,12 +448,14 @@ async def collect_frames(tab: "Tab") -> list[dict]:
 
     def _walk(tree, depth: int = 0) -> None:
         f = tree.frame
-        frames.append({
-            "frame_id": str(f.id_),
-            "url": f.url,
-            "name": f.name or "",
-            "depth": depth,
-        })
+        frames.append(
+            {
+                "frame_id": str(f.id_),
+                "url": f.url,
+                "name": f.name or "",
+                "depth": depth,
+            }
+        )
         for child in tree.child_frames or []:
             _walk(child, depth + 1)
 
@@ -386,6 +467,7 @@ async def collect_frames(tab: "Tab") -> list[dict]:
 # Frame 切换
 # ---------------------------------------------------------------------------
 
+
 async def switch_to_frame(tab: "Tab", selector: str) -> IFrameContext:
     """切换到指定 iframe，创建 isolated world 并返回上下文。"""
     from nodriver import cdp  # pylint: disable=import-outside-toplevel
@@ -394,31 +476,31 @@ async def switch_to_frame(tab: "Tab", selector: str) -> IFrameContext:
     if not elem:
         raise RuntimeError(f"未找到 iframe 元素: {selector}")
 
-    node = await tab.send(
-        cdp.dom.describe_node(backend_node_id=elem.backend_node_id)
-    )
+    node = await tab.send(cdp.dom.describe_node(backend_node_id=elem.backend_node_id))
     if not node:
         raise RuntimeError(f"无法获取 iframe 节点描述: {selector}")
 
     frame_id = getattr(node, "frame_id", None)
     if not frame_id:
-        raise RuntimeError(
-            f"元素 {selector} 不是有效的 iframe（无 frame_id）"
-        )
+        raise RuntimeError(f"元素 {selector} 不是有效的 iframe（无 frame_id）")
 
-    context_id = await tab.send(cdp.page.create_isolated_world(
-        frame_id=cdp.page.FrameId(str(frame_id)),
-        world_name="ziniao_iframe_context",
-        grant_univeral_access=True,
-    ))
+    context_id = await tab.send(
+        cdp.page.create_isolated_world(
+            frame_id=cdp.page.FrameId(str(frame_id)),
+            world_name="ziniao_iframe_context",
+            grant_univeral_access=True,
+        )
+    )
 
     url = ""
     try:
-        url_result = await tab.send(cdp.runtime.evaluate(
-            expression="window.location.href",
-            context_id=cdp.runtime.ExecutionContextId(int(context_id)),
-            return_by_value=True,
-        ))
+        url_result = await tab.send(
+            cdp.runtime.evaluate(
+                expression="window.location.href",
+                context_id=cdp.runtime.ExecutionContextId(int(context_id)),
+                return_by_value=True,
+            )
+        )
         if url_result:
             remote_obj = url_result[0]
             url = getattr(remote_obj, "value", "") or ""

@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import math
 import random
+import weakref
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional, Union
 
@@ -17,6 +18,14 @@ if TYPE_CHECKING:
     from nodriver.core.element import Element
 
     from ..iframe import IFrameElement
+
+
+_MOUSE_POS_CACHE: "weakref.WeakKeyDictionary[Tab, tuple[float, float]]" = (
+    weakref.WeakKeyDictionary()
+)
+"""Per-tab last-known mouse position. Uses weak references so closed tabs are
+garbage-collected instead of leaking entries; avoids polluting ``Tab``'s
+attribute namespace (which belongs to the nodriver library)."""
 
 
 @dataclass
@@ -75,14 +84,8 @@ def _bezier_curve(
     for i in range(steps + 1):
         t = i / steps
         inv = 1 - t
-        x = (inv ** 3 * sx
-             + 3 * inv ** 2 * t * cp1[0]
-             + 3 * inv * t ** 2 * cp2[0]
-             + t ** 3 * ex)
-        y = (inv ** 3 * sy
-             + 3 * inv ** 2 * t * cp1[1]
-             + 3 * inv * t ** 2 * cp2[1]
-             + t ** 3 * ey)
+        x = inv**3 * sx + 3 * inv**2 * t * cp1[0] + 3 * inv * t**2 * cp2[0] + t**3 * ex
+        y = inv**3 * sy + 3 * inv**2 * t * cp1[1] + 3 * inv * t**2 * cp2[1] + t**3 * ey
         points.append((round(x), round(y)))
     return points
 
@@ -94,31 +97,36 @@ async def _move_mouse_humanlike(
     *,
     cfg: BehaviorConfig | None = None,
 ) -> None:
-    """沿贝塞尔曲线将鼠标从当前位置移动到目标坐标。"""
+    """沿贝塞尔曲线将鼠标从当前位置移动到目标坐标。
+
+    起止坐标保存在模块级的 ``_MOUSE_POS_CACHE``（``WeakKeyDictionary``）里，
+    而不是通过 ``tab.evaluate`` 写入 ``window._lastMouseX``。这样做原因：
+
+    - 避免每次鼠标移动触发 2 次 ``Runtime.evaluate``（默认 deep 序列化 +
+      ``user_gesture=True``）；后者在部分环境下（Chrome 导航中、
+      Worker 初始化、iframe context 切换）会让 CDP 响应延迟，甚至
+      挂住 daemon 命令。
+    - 无状态残留：tab 对象被回收时字典条目自动清理，不污染 nodriver
+      库的属性空间、也不依赖页面 JS 上下文。
+    """
     from nodriver import cdp  # pylint: disable=import-outside-toplevel
 
     c = cfg or _DEFAULT_CFG
-    current = await tab.evaluate(
-        "(() => ({x: window._lastMouseX || 0, y: window._lastMouseY || 0}))",
-        return_by_value=True,
-    )
-    if isinstance(current, dict):
-        start = (current.get("x", 0), current.get("y", 0))
-    else:
-        start = (0, 0)
-
+    start = _MOUSE_POS_CACHE.get(tab, (0, 0))
     end = (target_x, target_y)
     points = _bezier_curve(start, end, c.mouse_steps)
 
     for px, py in points:
-        await tab.send(
-            cdp.input_.dispatch_mouse_event("mouseMoved", x=px, y=py)
-        )
+        await tab.send(cdp.input_.dispatch_mouse_event("mouseMoved", x=px, y=py))
         await asyncio.sleep(random.uniform(0.005, 0.02))
 
-    await tab.evaluate(
-        f"(() => {{ window._lastMouseX = {target_x}; window._lastMouseY = {target_y}; }})"
-    )
+    try:
+        _MOUSE_POS_CACHE[tab] = (target_x, target_y)
+    except TypeError:
+        # Defensive: some mocks/tabs may not support weak references.
+        # Losing the cache just resets the next move's start to (0,0),
+        # which is acceptable (visible as a slightly longer trajectory).
+        pass
 
 
 async def _get_box_from_element(
@@ -231,19 +239,33 @@ async def human_fill(
     c = cfg or _DEFAULT_CFG
     await human_click(tab, selector, cfg=c, element=element)
     await random_delay(100, 300, cfg=c)
-    await tab.send(cdp.input_.dispatch_key_event(
-        "rawKeyDown", windows_virtual_key_code=65, modifiers=2,
-    ))
-    await tab.send(cdp.input_.dispatch_key_event(
-        "keyUp", windows_virtual_key_code=65, modifiers=2,
-    ))
+    await tab.send(
+        cdp.input_.dispatch_key_event(
+            "rawKeyDown",
+            windows_virtual_key_code=65,
+            modifiers=2,
+        )
+    )
+    await tab.send(
+        cdp.input_.dispatch_key_event(
+            "keyUp",
+            windows_virtual_key_code=65,
+            modifiers=2,
+        )
+    )
     await asyncio.sleep(random.uniform(0.05, 0.15))
-    await tab.send(cdp.input_.dispatch_key_event(
-        "rawKeyDown", windows_virtual_key_code=8,
-    ))
-    await tab.send(cdp.input_.dispatch_key_event(
-        "keyUp", windows_virtual_key_code=8,
-    ))
+    await tab.send(
+        cdp.input_.dispatch_key_event(
+            "rawKeyDown",
+            windows_virtual_key_code=8,
+        )
+    )
+    await tab.send(
+        cdp.input_.dispatch_key_event(
+            "keyUp",
+            windows_virtual_key_code=8,
+        )
+    )
     await asyncio.sleep(random.uniform(0.1, 0.25))
     await human_type(tab, value, cfg=c)
 

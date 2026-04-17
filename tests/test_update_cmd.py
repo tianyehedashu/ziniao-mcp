@@ -17,7 +17,7 @@ from ziniao_mcp.cli.commands.update_cmd import (
     _windows_spawn_uv_tool_install,
 )
 
-runner = CliRunner(mix_stderr=False)
+runner = CliRunner()
 
 
 @patch("ziniao_mcp.cli.commands.update_cmd.shutil.which", return_value=None)

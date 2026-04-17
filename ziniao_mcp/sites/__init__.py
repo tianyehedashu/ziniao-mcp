@@ -171,9 +171,9 @@ def load_preset(preset_id: str) -> dict[str, Any]:
         return json.loads(json_path.read_text(encoding="utf-8"))
 
     from . import repo as _repo_mod  # pylint: disable=import-outside-toplevel
-    for repo_preset_path in _repo_mod.scan_repos().get(preset_id, []),:
-        if isinstance(repo_preset_path, Path):
-            return json.loads(repo_preset_path.read_text(encoding="utf-8"))
+    repo_preset_path = _repo_mod.scan_repos().get(preset_id)
+    if isinstance(repo_preset_path, Path) and repo_preset_path.is_file():
+        return json.loads(repo_preset_path.read_text(encoding="utf-8"))
 
     ep = _scan_ep_presets()
     if preset_id in ep:
@@ -353,7 +353,12 @@ def render_vars(template: dict, var_values: dict[str, str]) -> dict:
 
     - String values: simple replacement.
     - When ``"{{var}}"`` is the sole content of a JSON value and the var
-      definition declares ``type: int/float/bool``, the value is coerced.
+      definition declares ``type: int/float/bool/file/file_list/secret``,
+      the value is coerced via :func:`_coerce`.
+    - Resolved ``secret`` values are collected into
+      ``result['_ziniao_secret_values']`` so the UI flow executor can mask
+      them in logs / failure artefacts.  ``steps`` (used by ``mode: ui``)
+      is traversed alongside the fetch/js keys.
     """
     var_defs: dict = template.get("vars") or {}
     defaults = {k: v["default"] for k, v in var_defs.items() if "default" in v}
@@ -361,29 +366,54 @@ def render_vars(template: dict, var_values: dict[str, str]) -> dict:
 
     for k, vdef in var_defs.items():
         if vdef.get("required") and k not in merged:
+            if vdef.get("type") == "secret" and vdef.get("source"):
+                continue
             raise ValueError(f"Required variable missing: {k}")
 
     result = json.loads(json.dumps(template))
     result.pop("vars", None)
+
+    resolved_cache: dict[str, Any] = {}
+    secret_values: list[str] = []
+
+    def _resolve(var_name: str) -> Any:
+        if var_name in resolved_cache:
+            return resolved_cache[var_name]
+        vdef = dict(var_defs.get(var_name) or {})
+        vdef.setdefault("_name", var_name)
+        coerced = _coerce(merged.get(var_name, ""), vdef)
+        resolved_cache[var_name] = coerced
+        if vdef.get("type") == "secret" and isinstance(coerced, str) and coerced:
+            secret_values.append(coerced)
+        return coerced
 
     def _replace(obj: Any) -> Any:
         if isinstance(obj, str):
             match = _VAR_RE.fullmatch(obj)
             if match:
                 var_name = match.group(1)
-                if var_name in merged:
-                    return _coerce(merged[var_name], var_defs.get(var_name, {}))
+                if var_name in merged or var_name in var_defs:
+                    return _resolve(var_name)
                 return obj
-            return _VAR_RE.sub(lambda m: str(merged.get(m.group(1), m.group(0))), obj)
+            def _sub(m: Any) -> str:
+                name = m.group(1)
+                if name in merged or name in var_defs:
+                    val = _resolve(name)
+                    return str(val) if not isinstance(val, str) else val
+                return m.group(0)
+            return _VAR_RE.sub(_sub, obj)
         if isinstance(obj, dict):
             return {k: _replace(v) for k, v in obj.items()}
         if isinstance(obj, list):
             return [_replace(v) for v in obj]
         return obj
 
-    for key in ("url", "body", "headers", "script"):
+    for key in ("url", "body", "headers", "script", "steps", "navigate_url"):
         if key in result:
             result[key] = _replace(result[key])
+
+    if secret_values:
+        result["_ziniao_secret_values"] = secret_values
     return result
 
 
@@ -404,7 +434,188 @@ def _coerce(value: Any, var_def: dict) -> Any:
         if isinstance(value, bool):
             return value
         return str(value).lower() in ("true", "1", "yes")
+    if vtype == "file":
+        return _read_file_as_base64(str(value), var_def)
+    if vtype == "file_list":
+        return _read_file_list_as_refs(value, var_def)
+    if vtype == "secret":
+        return _resolve_secret(value, var_def)
     return value
+
+
+# ---------------------------------------------------------------------------
+# Secret variable resolution
+# ---------------------------------------------------------------------------
+
+def _resolve_secret(value: Any, var_def: dict) -> str:
+    """Resolve a ``type: secret`` variable.
+
+    Source precedence (in order):
+
+    1. ``var_def["source"]``: ``keyring:<service>:<key>`` → keyring; ``env:<VAR>``
+       → environment variable.  When set, a CLI-provided value is **ignored**
+       (principle of least surprise — users shouldn't leak secrets via history).
+    2. Explicit *value* passed through CLI / programmatic (``-V key=...``).
+    3. Interactive ``getpass`` prompt when stdin is a TTY.
+
+    Raises ``ValueError`` when no source yields a value.  Caller is expected
+    to register the resolved string in ``spec['_ziniao_secret_values']`` so
+    it can be masked from logs / snapshots.
+    """
+    source = str(var_def.get("source") or "").strip()
+    if source.startswith("keyring:"):
+        rest = source.split(":", 1)[1]
+        parts = rest.split(":", 1)
+        if len(parts) != 2 or not all(parts):
+            raise ValueError(
+                f"secret 'source' must be 'keyring:<service>:<key>', got: {source!r}"
+            )
+        service, key = parts
+        try:
+            import keyring  # pylint: disable=import-outside-toplevel
+        except ImportError as exc:
+            raise ImportError(
+                "`keyring` package is required for 'keyring:' secret source; "
+                "install with `pip install keyring`."
+            ) from exc
+        val = keyring.get_password(service, key)
+        if val is None:
+            raise ValueError(
+                f"No secret found in keyring for service={service!r} key={key!r}."
+            )
+        return val
+
+    if source.startswith("env:"):
+        env_key = source[4:].strip()
+        if not env_key:
+            raise ValueError(f"secret 'source' env key empty: {source!r}")
+        import os  # pylint: disable=import-outside-toplevel
+        val = os.environ.get(env_key)
+        if val is None:
+            raise ValueError(f"Environment variable {env_key!r} not set.")
+        return val
+
+    if value is not None and str(value).strip():
+        return str(value)
+
+    import sys  # pylint: disable=import-outside-toplevel
+    if sys.stdin.isatty():
+        import getpass  # pylint: disable=import-outside-toplevel
+        label = var_def.get("prompt") or var_def.get("_name") or "secret"
+        return getpass.getpass(f"Enter {label}: ")
+
+    raise ValueError(
+        "secret value required — configure 'source' (keyring/env) or pass "
+        "-V key=value (not recommended on shared machines)."
+    )
+
+
+_FILE_REF_PREFIX = "@@ZFILE@@"
+_URL_REF_PREFIX = "@@ZURL@@"
+_FILE_MAX_BYTES = 50 * 1024 * 1024  # 50 MB safety limit
+
+
+def _read_file_as_base64(value: str, var_def: dict) -> str:
+    """Resolve a file-type variable.
+
+    Both **local files** and **URLs** are deferred: a lightweight
+    ``@@ZFILE@@<path>`` / ``@@ZURL@@<url>`` token is returned so the
+    CLI → daemon TCP message stays small.  :func:`resolve_file_refs`
+    (called on the daemon side) expands these tokens into real base64.
+
+    Raw base64 strings pass through unchanged.
+    """
+    value = value.strip()
+    if not value:
+        return ""
+
+    if value.startswith(("http://", "https://")):
+        return _URL_REF_PREFIX + value
+
+    p = Path(value)
+    if p.is_file():
+        return _FILE_REF_PREFIX + str(p.resolve())
+
+    if "/" in value or "\\" in value or value.startswith("."):
+        raise FileNotFoundError(
+            f"File variable points to non-existent path: {value}"
+        )
+
+    return value.replace("\n", "").replace("\r", "")
+
+
+def _read_file_list_as_refs(value: Any, var_def: dict) -> list[str]:
+    """Resolve a ``file_list`` variable to a list of file/URL reference tokens.
+
+    Accepted inputs:
+
+    - Python ``list`` of strings (programmatic callers).
+    - Comma-separated string: ``"a.png,b.png,https://host/c.webp"``.
+    - Single path/URL/base64 string (returned as a 1-element list).
+
+    Empty / whitespace-only entries are skipped.  Each entry is resolved via
+    :func:`_read_file_as_base64` so local paths, URLs and raw base64 are all
+    accepted; the final list is safe to JSON-serialize and walked later by
+    :func:`resolve_file_refs` on the daemon side.
+    """
+    if value is None:
+        return []
+    if isinstance(value, list):
+        items: list[str] = [str(v) for v in value]
+    else:
+        text = str(value).strip()
+        if not text:
+            return []
+        items = [part.strip() for part in text.split(",")]
+    out: list[str] = []
+    for item in items:
+        if not item:
+            continue
+        out.append(_read_file_as_base64(item, var_def))
+    return out
+
+
+def _download_url_as_base64(url: str) -> str:
+    """Download *url* and return base64-encoded content."""
+    import urllib.request  # pylint: disable=import-outside-toplevel
+
+    req = urllib.request.Request(url, headers={"User-Agent": "ziniao/site-preset"})
+    with urllib.request.urlopen(req, timeout=60) as resp:  # noqa: S310
+        raw_bytes = resp.read()
+    if len(raw_bytes) > _FILE_MAX_BYTES:
+        raise ValueError(
+            f"Downloaded file too large ({len(raw_bytes)} bytes, "
+            f"limit {_FILE_MAX_BYTES}): {url}"
+        )
+    return base64.b64encode(raw_bytes).decode("ascii")
+
+
+def resolve_file_refs(obj: Any) -> Any:
+    """Walk *obj* and expand ``@@ZFILE@@`` / ``@@ZURL@@`` tokens to base64.
+
+    Called on the **daemon side** (inside ``dispatch``) where direct
+    filesystem access is available and there is no TCP size constraint.
+    """
+    if isinstance(obj, str):
+        if obj.startswith(_FILE_REF_PREFIX):
+            fpath = Path(obj[len(_FILE_REF_PREFIX):])
+            if not fpath.is_file():
+                raise FileNotFoundError(f"File not found: {fpath}")
+            size = fpath.stat().st_size
+            if size > _FILE_MAX_BYTES:
+                raise ValueError(
+                    f"File too large ({size} bytes, "
+                    f"limit {_FILE_MAX_BYTES}): {fpath}"
+                )
+            return base64.b64encode(fpath.read_bytes()).decode("ascii")
+        if obj.startswith(_URL_REF_PREFIX):
+            return _download_url_as_base64(obj[len(_URL_REF_PREFIX):])
+        return obj
+    if isinstance(obj, dict):
+        return {k: resolve_file_refs(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [resolve_file_refs(v) for v in obj]
+    return obj
 
 
 # ---------------------------------------------------------------------------
@@ -412,6 +623,118 @@ def _coerce(value: Any, var_def: dict) -> Any:
 # ---------------------------------------------------------------------------
 
 _VALID_INJECT_SOURCES = frozenset({"cookie", "localStorage", "sessionStorage", "eval"})
+
+
+# ---------------------------------------------------------------------------
+# UI flow preset validation
+# ---------------------------------------------------------------------------
+
+UI_ACTION_WHITELIST = frozenset({
+    "navigate", "wait", "click", "fill", "type_text", "insert_text",
+    "press_key", "hover", "dblclick", "upload", "screenshot", "snapshot",
+    "eval", "extract", "fetch",
+})
+
+
+# Fields where a `{{secret}}` placeholder is legitimate (posted as body /
+# typed into a password input / sent as a header value).  Any *other* field
+# -- including selectors, URLs, scripts, extract `attr` -- must NOT carry
+# secret values, because:
+#   * selectors are logged/echoed by CDP and may end up in daemon logs;
+#   * URLs appear in `navigate` history, browser address bar, and network
+#     panels;
+#   * `eval` scripts get snapshotted on error.
+_SECRET_ALLOWED_STEP_FIELDS = frozenset({"value", "text", "headers", "body", "fields_json"})
+
+
+def _walk_strings(obj: Any):
+    """Yield every string leaf in *obj* (recurses into dict/list)."""
+    if isinstance(obj, str):
+        yield obj
+    elif isinstance(obj, dict):
+        for v in obj.values():
+            yield from _walk_strings(v)
+    elif isinstance(obj, list):
+        for v in obj:
+            yield from _walk_strings(v)
+
+
+def _validate_ui_preset(spec: dict) -> None:
+    """Validate a ``mode: ui`` preset *before* rendering.
+
+    Enforces:
+
+    - ``steps`` present, non-empty, list of dicts.
+    - Each step has an ``action`` in :data:`UI_ACTION_WHITELIST`.
+    - ``action: extract`` requires ``as`` (where to store the result).
+    - ``secret`` vars may only appear in the whitelist
+      :data:`_SECRET_ALLOWED_STEP_FIELDS`.  Any other step field
+      (``selector``, ``url``, ``script``, ``attr``, …) must NOT carry
+      ``{{secret}}`` tokens, even nested inside dict/list values.
+    - ``output_contract`` must not export ``$.vars.<secret>`` — flow output
+      is user-facing and often logged / stored.
+
+    Raises :class:`ValueError` on the first violation.
+    """
+    if spec.get("mode") != "ui":
+        return
+
+    steps = spec.get("steps")
+    if not isinstance(steps, list) or not steps:
+        raise ValueError("mode: ui preset requires non-empty 'steps' list.")
+
+    secret_names = {
+        k for k, v in (spec.get("vars") or {}).items()
+        if isinstance(v, dict) and v.get("type") == "secret"
+    }
+
+    def _contains_secret_token(node: Any) -> str | None:
+        for leaf in _walk_strings(node):
+            for sname in secret_names:
+                if "{{" + sname + "}}" in leaf:
+                    return sname
+        return None
+
+    seen_ids: set[str] = set()
+    for idx, step in enumerate(steps):
+        if not isinstance(step, dict):
+            raise ValueError(f"steps[{idx}] must be an object, got {type(step).__name__}.")
+        action = step.get("action")
+        if action not in UI_ACTION_WHITELIST:
+            raise ValueError(
+                f"steps[{idx}] action={action!r} not in whitelist "
+                f"{sorted(UI_ACTION_WHITELIST)}."
+            )
+        sid = step.get("id")
+        if sid:
+            if sid in seen_ids:
+                raise ValueError(f"Duplicate step id: {sid!r}.")
+            seen_ids.add(sid)
+        if action == "extract" and not step.get("as"):
+            raise ValueError(f"steps[{idx}] action=extract requires 'as' (target key).")
+
+        if secret_names:
+            for key, val in step.items():
+                if key in _SECRET_ALLOWED_STEP_FIELDS:
+                    continue
+                leaked = _contains_secret_token(val)
+                if leaked is not None:
+                    raise ValueError(
+                        f"steps[{idx}].{key} references secret var {leaked!r}; "
+                        f"secrets may only appear in {sorted(_SECRET_ALLOWED_STEP_FIELDS)}."
+                    )
+
+    contract = spec.get("output_contract") or {}
+    if isinstance(contract, dict) and secret_names:
+        for out_key, expr in contract.items():
+            if not isinstance(expr, str) or not expr.startswith("$.vars."):
+                continue
+            var_name = expr[len("$.vars."):].split(".", 1)[0]
+            if var_name in secret_names:
+                raise ValueError(
+                    f"output_contract[{out_key!r}] exports secret var "
+                    f"{var_name!r}; secrets must never appear in flow output."
+                )
 
 
 def _normalize_header_inject(spec: dict) -> None:
@@ -488,6 +811,9 @@ def prepare_request(
     elif file:
         spec = json.loads(Path(file).read_text(encoding="utf-8"))
 
+    if spec.get("mode") == "ui":
+        _validate_ui_preset(spec)
+
     merged_input = dict(var_values or {})
     merged_for_plugin: dict[str, str] = {}
     if spec.get("vars"):
@@ -496,6 +822,8 @@ def prepare_request(
         merged_for_plugin = {**defaults, **merged_input}
         for k, vdef in var_defs.items():
             if vdef.get("required") and k not in merged_for_plugin:
+                if vdef.get("type") == "secret" and vdef.get("source"):
+                    continue
                 raise ValueError(f"Required variable missing: {k}")
         spec = render_vars(spec, merged_input)
         spec["_ziniao_merged_vars"] = merged_for_plugin
@@ -529,7 +857,8 @@ def prepare_request(
     if plugin:
         spec = plugin.before_fetch(spec)
 
-    spec.pop("_ziniao_merged_vars", None)
+    if spec.get("mode") != "ui":
+        spec.pop("_ziniao_merged_vars", None)
     if cli_output_decode:
         spec["_ziniao_output_decode_encoding"] = cli_output_decode
 

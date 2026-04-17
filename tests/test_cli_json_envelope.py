@@ -117,7 +117,7 @@ def test_dumps_cli_json_max_output_zero_no_truncation() -> None:
 
 
 def test_json_and_json_legacy_mutually_exclusive() -> None:
-    runner = CliRunner(mix_stderr=False)
+    runner = CliRunner()
     result = runner.invoke(app, ["--json", "--json-legacy", "config", "path"])
     assert result.exit_code == 1
     combined = (result.stdout or "") + (result.stderr or "")
@@ -146,7 +146,7 @@ def test_session_list_json_shape_mocked(
             args = ["--json-legacy"] + args
         else:
             args = ["--json"] + args
-        runner = CliRunner(mix_stderr=False)
+        runner = CliRunner()
         result = runner.invoke(cli_mod.app, args)
         assert result.exit_code == 0, (result.stdout or "") + (result.stderr or "")
         obj = json.loads(result.stdout)

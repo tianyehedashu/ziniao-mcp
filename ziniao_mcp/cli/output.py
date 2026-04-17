@@ -103,7 +103,7 @@ def _envelope_with_boundary(envelope: dict[str, Any]) -> dict[str, Any]:
 
 
 def _truncate_large_fields_deep(obj: Any, limit: int) -> Any:
-    """Copy ``obj`` and truncate ``html`` / eval ``result`` strings (e.g. batch ``results[]``)."""
+    """Copy ``obj`` and truncate ``html`` / eval ``result`` / base64 image fields."""
     if isinstance(obj, dict):
         out: dict[str, Any] = {}
         for k, v in obj.items():
@@ -111,6 +111,8 @@ def _truncate_large_fields_deep(obj: Any, limit: int) -> Any:
                 out[k] = truncate_if_needed(v, limit)
             elif k == "result" and isinstance(v, str) and obj.get("ok"):
                 out[k] = truncate_if_needed(v, limit)
+            elif k == "encodedImage" and isinstance(v, str) and len(v) > 200:
+                out[k] = f"[base64 image data, {len(v)} chars omitted]"
             else:
                 out[k] = _truncate_large_fields_deep(v, limit)
         return out
@@ -414,6 +416,41 @@ def _print_rich(data: dict) -> None:
 
     if "data" in data and str(data.get("data", "")).startswith("data:image"):
         console.print(f"[green]Screenshot captured[/green] ({len(data['data'])} chars base64)")
+        return
+
+    if data.get("ok") is True and isinstance(data.get("images"), list) and data["images"]:
+        from rich.table import Table as _Tbl  # pylint: disable=import-outside-toplevel
+
+        table = _Tbl(title=f"Generated images ({len(data['images'])})")
+        table.add_column("#", justify="right", style="dim")
+        table.add_column("Model / seed", style="cyan")
+        table.add_column("Preview / saved")
+        saved = data.get("_saved_image_paths") or []
+        for i, im in enumerate(data["images"]):
+            if not isinstance(im, dict):
+                table.add_row(str(i), "—", repr(im)[:80])
+                continue
+            meta = f"{im.get('modelNameType', '')} seed={im.get('seed', '')}".strip()
+            enc = im.get("encodedImage", "")
+            if isinstance(enc, str) and enc.startswith("[saved:"):
+                cell = enc
+            elif i < len(saved):
+                cell = f"[green]{saved[i]}[/]"
+            elif isinstance(enc, str) and len(enc) > 120:
+                cell = f"[dim]{enc[:80]}… ({len(enc)} chars)[/]"
+            else:
+                cell = str(enc)[:120] if enc else "—"
+            mid = (im.get("mediaGenerationId") or "")[:24]
+            if mid:
+                meta = f"{meta}\n[mid …{mid}]".strip()
+            table.add_row(str(i), meta or "—", cell)
+        console.print(table)
+        if saved:
+            console.print(f"[green]Saved {len(saved)} file(s).[/]")
+        console.print(
+            "[dim]Tip: ziniao google-flow imagen-generate … "
+            "--save-images exports/myname[/dim]",
+        )
         return
 
     if "result" in data and data.get("ok"):

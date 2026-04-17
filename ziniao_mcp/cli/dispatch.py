@@ -6,7 +6,7 @@ import json
 import logging
 from typing import Any
 
-from ziniao_mcp.sites import coerce_page_fetch_eval_result
+from ziniao_mcp.sites import UI_ACTION_WHITELIST, coerce_page_fetch_eval_result
 
 _logger = logging.getLogger("ziniao-daemon")
 
@@ -29,7 +29,9 @@ async def dispatch(sm: Any, request: dict) -> dict:
     original_active = sm._active_store_id
     if target:
         if target not in sm._stores:
-            return {"error": f"Session '{target}' not found. Use 'session list' to see available sessions."}
+            return {
+                "error": f"Session '{target}' not found. Use 'session list' to see available sessions."
+            }
         sm._active_store_id = target
 
     try:
@@ -51,6 +53,7 @@ async def _cmd_quit(sm: Any) -> dict:
     except Exception:
         _logger.exception("Error during quit cleanup")
     import asyncio  # pylint: disable=import-outside-toplevel
+
     loop = asyncio.get_running_loop()
     loop.call_soon(loop.stop)
     return {"ok": True, "message": "Daemon shutting down"}
@@ -67,8 +70,10 @@ async def _execute(sm: Any, command: str, args: dict) -> dict:  # noqa: C901, PL
 # Store commands
 # ---------------------------------------------------------------------------
 
+
 async def _list_stores(sm: Any, args: dict) -> dict:
     from ..session import SessionManager  # pylint: disable=import-outside-toplevel
+
     opened_only = args.get("opened_only", False)
     open_stores = await SessionManager.get_persisted_stores()
     open_ids = {s["store_id"] for s in open_stores}
@@ -84,14 +89,16 @@ async def _list_stores(sm: Any, args: dict) -> dict:
     result = []
     for s in all_stores:
         store_id = s.get("browserOauth") or s.get("browserId") or ""
-        result.append({
-            "browserId": s.get("browserId"),
-            "browserOauth": s.get("browserOauth"),
-            "browserName": s.get("browserName"),
-            "siteId": s.get("siteId"),
-            "siteName": s.get("siteName"),
-            "is_open": store_id in open_ids,
-        })
+        result.append(
+            {
+                "browserId": s.get("browserId"),
+                "browserOauth": s.get("browserOauth"),
+                "browserName": s.get("browserName"),
+                "siteId": s.get("siteId"),
+                "siteName": s.get("siteName"),
+                "is_open": store_id in open_ids,
+            }
+        )
     return {"stores": result, "count": len(result)}
 
 
@@ -133,6 +140,7 @@ async def _stop_client(sm: Any, args: dict) -> dict:
 # ---------------------------------------------------------------------------
 # Chrome commands
 # ---------------------------------------------------------------------------
+
 
 async def _launch_chrome(sm: Any, args: dict) -> dict:
     ss = await sm.launch_chrome(
@@ -183,9 +191,14 @@ async def _close_chrome(sm: Any, args: dict) -> dict:
 # Session commands
 # ---------------------------------------------------------------------------
 
+
 async def _session_list(sm: Any, args: dict) -> dict:
     sessions = sm.list_all_sessions()
-    return {"active": sm.active_session_id, "sessions": sessions, "count": len(sessions)}
+    return {
+        "active": sm.active_session_id,
+        "sessions": sessions,
+        "count": len(sessions),
+    }
 
 
 async def _session_switch(sm: Any, args: dict) -> dict:
@@ -193,7 +206,12 @@ async def _session_switch(sm: Any, args: dict) -> dict:
     if not session_id:
         return {"error": "session_id is required"}
     s = sm.switch_session(session_id)
-    return {"ok": True, "active": s.store_id, "name": s.store_name, "type": s.backend_type}
+    return {
+        "ok": True,
+        "active": s.store_id,
+        "name": s.store_name,
+        "type": s.backend_type,
+    }
 
 
 async def _session_info(sm: Any, args: dict) -> dict:
@@ -207,11 +225,13 @@ async def _session_info(sm: Any, args: dict) -> dict:
 # Navigation commands
 # ---------------------------------------------------------------------------
 
+
 async def _navigate(sm: Any, args: dict) -> dict:
     url = args.get("url", "")
     if not url:
         return {"error": "url is required"}
     from nodriver import cdp  # pylint: disable=import-outside-toplevel
+
     tab = sm.get_active_tab()
     await tab.send(cdp.page.navigate(url=url))
     await tab.sleep(1.0)
@@ -220,6 +240,7 @@ async def _navigate(sm: Any, args: dict) -> dict:
 
 async def _tab(sm: Any, args: dict) -> dict:
     from ziniao_webdriver.cdp_tabs import filter_tabs as _filter_tabs  # pylint: disable=import-outside-toplevel
+
     action = args.get("action", "list")
     store = sm.get_active_session()
 
@@ -227,10 +248,14 @@ async def _tab(sm: Any, args: dict) -> dict:
         store.tabs = _filter_tabs(store.browser.tabs)
         result = []
         for i, t in enumerate(store.tabs):
-            result.append({
-                "index": i, "url": t.target.url,
-                "title": t.target.title or "", "is_active": i == store.active_tab_index,
-            })
+            result.append(
+                {
+                    "index": i,
+                    "url": t.target.url,
+                    "title": t.target.title or "",
+                    "is_active": i == store.active_tab_index,
+                }
+            )
         return {"tabs": result, "count": len(result)}
 
     if action == "switch":
@@ -243,7 +268,12 @@ async def _tab(sm: Any, args: dict) -> dict:
         t = store.tabs[idx]
         await t.bring_to_front()
         await sm.setup_tab_listeners(store, t)
-        return {"ok": True, "index": idx, "url": t.target.url, "title": t.target.title or ""}
+        return {
+            "ok": True,
+            "index": idx,
+            "url": t.target.url,
+            "title": t.target.title or "",
+        }
 
     if action == "new":
         target_url = args.get("url", "") or "about:blank"
@@ -252,12 +282,22 @@ async def _tab(sm: Any, args: dict) -> dict:
         store.active_tab_index = len(store.tabs) - 1
         store.iframe_context = None
         await sm.setup_tab_listeners(store, new_tab)
-        return {"ok": True, "index": store.active_tab_index, "url": new_tab.target.url, "total": len(store.tabs)}
+        return {
+            "ok": True,
+            "index": store.active_tab_index,
+            "url": new_tab.target.url,
+            "total": len(store.tabs),
+        }
 
     if action == "close":
         import asyncio  # pylint: disable=import-outside-toplevel
+
         store.tabs = _filter_tabs(store.browser.tabs)
-        idx = store.active_tab_index if args.get("page_index", -1) == -1 else args.get("page_index", 0)
+        idx = (
+            store.active_tab_index
+            if args.get("page_index", -1) == -1
+            else args.get("page_index", 0)
+        )
         if idx < 0 or idx >= len(store.tabs):
             return {"error": f"Invalid tab index {idx}"}
         closed_url = store.tabs[idx].target.url
@@ -279,10 +319,12 @@ async def _frame(sm: Any, args: dict) -> dict:
 
     if action == "list":
         from ..iframe import collect_frames  # pylint: disable=import-outside-toplevel
+
         frames = await collect_frames(tab)
         return {"frames": frames}
     if action == "switch":
         from ..iframe import switch_to_frame  # pylint: disable=import-outside-toplevel
+
         selector = args.get("selector", "")
         if not selector:
             return {"error": "selector is required for frame switch"}
@@ -298,6 +340,7 @@ async def _frame(sm: Any, args: dict) -> dict:
 async def _wait(sm: Any, args: dict) -> dict:
     import asyncio  # pylint: disable=import-outside-toplevel
     from ..iframe import find_element  # pylint: disable=import-outside-toplevel
+
     selector = args.get("selector", "")
     state = args.get("state", "visible")
     timeout_ms = args.get("timeout", 30000)
@@ -329,9 +372,11 @@ async def _wait(sm: Any, args: dict) -> dict:
 # Interaction commands
 # ---------------------------------------------------------------------------
 
+
 async def _click(sm: Any, args: dict) -> dict:
     from ..iframe import find_element  # pylint: disable=import-outside-toplevel
     from .._interaction_helpers import dispatch_click  # pylint: disable=import-outside-toplevel
+
     selector = args.get("selector", "")
     if not selector:
         return {"error": "selector is required"}
@@ -347,6 +392,7 @@ async def _click(sm: Any, args: dict) -> dict:
 async def _fill(sm: Any, args: dict) -> dict:
     from ..iframe import find_element  # pylint: disable=import-outside-toplevel
     from .._interaction_helpers import dispatch_fill  # pylint: disable=import-outside-toplevel
+
     selector = args.get("selector", "")
     value = args.get("value", "")
     fields_json = args.get("fields_json", "")
@@ -372,6 +418,7 @@ async def _fill(sm: Any, args: dict) -> dict:
 async def _type_text(sm: Any, args: dict) -> dict:
     from ..iframe import find_element  # pylint: disable=import-outside-toplevel
     from .._interaction_helpers import dispatch_type  # pylint: disable=import-outside-toplevel
+
     text = args.get("text", "")
     selector = args.get("selector", "")
     tab = sm.get_active_tab()
@@ -383,22 +430,115 @@ async def _type_text(sm: Any, args: dict) -> dict:
     return {"ok": True, "typed": text}
 
 
-async def _press_key(sm: Any, args: dict) -> dict:
+async def _insert_text(sm: Any, args: dict) -> dict:
+    """CDP Input.insertText — works with Slate/ProseMirror rich editors.
+
+    When *selector* is provided it is treated as a **hard prerequisite**
+    (focus target): if the element cannot be located we return an error
+    rather than silently typing into whatever happens to hold focus —
+    this matches ``_click`` / ``_fill`` / ``_hover`` semantics and avoids
+    leaking passwords / tokens into the wrong field.  Callers that do
+    want to type into the currently-focused element should omit
+    ``selector`` entirely.
+
+    Stealth behaviour: when ``sm.stealth_config.human_behavior`` is on we
+    route the focus click through :func:`dispatch_click` (bezier mouse
+    movement) **and** split the text into several chunks with randomised
+    inter-chunk delays so the payload doesn't land in the DOM
+    instantaneously — otherwise ``insertText`` is trivially fingerprintable
+    by behaviour-analytics detectors.  Chunking (rather than per-char
+    ``dispatch_key_event("char")``) is required for Slate.js / ProseMirror
+    editors which only observe ``beforeinput`` events.
+    """
+    import asyncio  # pylint: disable=import-outside-toplevel
+    import random  # pylint: disable=import-outside-toplevel
+
     from nodriver import cdp  # pylint: disable=import-outside-toplevel
+
+    from .._interaction_helpers import _get_behavior_cfg, dispatch_click  # pylint: disable=import-outside-toplevel
+
+    text = args.get("text", "")
+    if not text:
+        return {"error": "text is required"}
+    selector = args.get("selector", "")
+    tab = sm.get_active_tab()
+    if selector:
+        from ..iframe import find_element  # pylint: disable=import-outside-toplevel
+
+        store = sm.get_active_session()
+        elem = await find_element(tab, selector, store, timeout=10)
+        if not elem:
+            return {"error": f"Element not found: {selector}"}
+        await dispatch_click(tab, selector, elem, sm)
+
+    cfg = _get_behavior_cfg(sm)
+    if cfg:
+        from ..stealth import random_delay  # pylint: disable=import-outside-toplevel
+
+        await random_delay(cfg=cfg)
+        n = len(text)
+        num_chunks = random.randint(3, 6) if n >= 4 else n
+        chunk_size = max(1, -(-n // num_chunks))
+        for i in range(0, n, chunk_size):
+            await tab.send(cdp.input_.insert_text(text=text[i : i + chunk_size]))
+            if i + chunk_size < n:
+                await asyncio.sleep(random.uniform(0.05, 0.18))
+    else:
+        await tab.send(cdp.input_.insert_text(text=text))
+    return {"ok": True, "inserted": text}
+
+
+async def _press_key(sm: Any, args: dict) -> dict:
+    """Press a single key via CDP ``Input.dispatchKeyEvent``.
+
+    With stealth enabled we add a pre-press *think* delay plus a realistic
+    ~60ms hold time between ``rawKeyDown`` and ``keyUp``; without stealth
+    we keep the original tight path to preserve test timing.
+    """
+    import asyncio  # pylint: disable=import-outside-toplevel
+    import random  # pylint: disable=import-outside-toplevel
+
+    from nodriver import cdp  # pylint: disable=import-outside-toplevel
+
+    from .._interaction_helpers import _get_behavior_cfg  # pylint: disable=import-outside-toplevel
     from ..tools._keys import parse_key  # pylint: disable=import-outside-toplevel
+
     key = args.get("key", "")
     if not key:
         return {"error": "key is required"}
     tab = sm.get_active_tab()
     actual_key, vk, modifiers = parse_key(key)
-    await tab.send(cdp.input_.dispatch_key_event("rawKeyDown", windows_virtual_key_code=vk, modifiers=modifiers, key=actual_key))
-    await tab.send(cdp.input_.dispatch_key_event("keyUp", windows_virtual_key_code=vk, modifiers=modifiers, key=actual_key))
+
+    cfg = _get_behavior_cfg(sm)
+    if cfg:
+        from ..stealth import random_delay  # pylint: disable=import-outside-toplevel
+
+        await random_delay(cfg=cfg)
+    await tab.send(
+        cdp.input_.dispatch_key_event(
+            "rawKeyDown",
+            windows_virtual_key_code=vk,
+            modifiers=modifiers,
+            key=actual_key,
+        )
+    )
+    if cfg:
+        await asyncio.sleep(random.uniform(0.04, 0.12))
+    await tab.send(
+        cdp.input_.dispatch_key_event(
+            "keyUp",
+            windows_virtual_key_code=vk,
+            modifiers=modifiers,
+            key=actual_key,
+        )
+    )
     return {"ok": True, "pressed": key}
 
 
 async def _hover(sm: Any, args: dict) -> dict:
     from ..iframe import find_element  # pylint: disable=import-outside-toplevel
     from .._interaction_helpers import dispatch_hover  # pylint: disable=import-outside-toplevel
+
     selector = args.get("selector", "")
     if not selector:
         return {"error": "selector is required"}
@@ -413,6 +553,7 @@ async def _hover(sm: Any, args: dict) -> dict:
 
 async def _drag(sm: Any, args: dict) -> dict:
     from ..iframe import find_element  # pylint: disable=import-outside-toplevel
+
     src_sel = args.get("source_selector", "")
     tgt_sel = args.get("target_selector", "")
     if not src_sel or not tgt_sel:
@@ -433,6 +574,7 @@ async def _drag(sm: Any, args: dict) -> dict:
 
 async def _upload(sm: Any, args: dict) -> dict:
     from ..iframe import find_element  # pylint: disable=import-outside-toplevel
+
     selector = args.get("selector", "")
     file_paths = args.get("file_paths", [])
     if not selector or not file_paths:
@@ -459,12 +601,16 @@ async def _handle_dialog(sm: Any, args: dict) -> dict:
 # Info commands
 # ---------------------------------------------------------------------------
 
+
 async def _snapshot(sm: Any, args: dict) -> dict:
     tab = sm.get_active_tab()
     store = sm.get_active_session()
     if store.iframe_context:
         from ..iframe import eval_in_frame  # pylint: disable=import-outside-toplevel
-        html = await eval_in_frame(tab, store.iframe_context.context_id, "document.documentElement.outerHTML")
+
+        html = await eval_in_frame(
+            tab, store.iframe_context.context_id, "document.documentElement.outerHTML"
+        )
         return {"ok": True, "html": html or ""}
     html = await tab.get_content()
     return {"ok": True, "html": html}
@@ -472,6 +618,7 @@ async def _snapshot(sm: Any, args: dict) -> dict:
 
 async def _screenshot(sm: Any, args: dict) -> dict:
     from nodriver import cdp  # pylint: disable=import-outside-toplevel
+
     selector = args.get("selector", "")
     full_page = args.get("full_page", False)
     tab = sm.get_active_tab()
@@ -479,19 +626,98 @@ async def _screenshot(sm: Any, args: dict) -> dict:
 
     if selector:
         from ..iframe import find_element  # pylint: disable=import-outside-toplevel
+
         elem = await find_element(tab, selector, store, timeout=10)
         if not elem:
             return {"error": f"Element not found: {selector}"}
         pos = await elem.get_position()
         if not pos:
             return {"error": f"Failed to get position: {selector}"}
-        clip = cdp.page.Viewport(x=pos.x, y=pos.y, width=pos.width, height=pos.height, scale=1)
+        clip = cdp.page.Viewport(
+            x=pos.x, y=pos.y, width=pos.width, height=pos.height, scale=1
+        )
         data = await tab.send(cdp.page.capture_screenshot(format_="png", clip=clip))
     else:
-        data = await tab.send(cdp.page.capture_screenshot(format_="png", capture_beyond_viewport=full_page))
+        data = await tab.send(
+            cdp.page.capture_screenshot(
+                format_="png", capture_beyond_viewport=full_page
+            )
+        )
     if not data:
         return {"error": "Screenshot failed"}
     return {"ok": True, "data": f"data:image/png;base64,{data}"}
+
+
+async def _safe_eval_js(tab: Any, script: str, *, await_promise: bool = False) -> Any:
+    """Evaluate JS in ``tab`` and return a JSON-serializable Python value.
+
+    Worked around issue: ``nodriver.Tab.evaluate`` builds a ``SerializationOptions``
+    with ``serialization="deep"`` while also passing ``returnByValue=True`` to
+    Chrome. Depending on the result shape, Chrome may populate
+    ``remote_object.deep_serialized_value`` but leave ``remote_object.value`` as
+    ``None``; nodriver's final branch uses ``if remote_object.value:`` (a truthy
+    check) and falls through to ``return remote_object``. Callers then receive
+    the raw ``RemoteObject`` which cannot be JSON-serialized, producing
+    ``repr(RemoteObject(...))`` in CLI output.
+
+    This helper bypasses ``Tab.evaluate`` and calls ``cdp.runtime.evaluate``
+    directly with no ``serialization_options`` (Chrome defaults to standard
+    JSON), and explicitly checks ``value is not None`` so falsy JSON values
+    (``0``, ``""``, ``False``, ``[]``) round-trip correctly. Unserializable
+    primitives (``NaN``, ``Infinity``) are returned as their string form.
+
+    Raises :class:`RuntimeError` when the script throws, so step executors can
+    surface the message into ``on_error`` artefacts.
+    """
+    from nodriver import cdp  # pylint: disable=import-outside-toplevel
+    from ..iframe import _format_cdp_exception  # pylint: disable=import-outside-toplevel
+
+    remote_object, errors = await tab.send(
+        cdp.runtime.evaluate(
+            expression=script,
+            user_gesture=True,
+            await_promise=await_promise,
+            return_by_value=True,
+            allow_unsafe_eval_blocked_by_csp=True,
+        )
+    )
+    if errors:
+        raise RuntimeError(f"eval failed: {_format_cdp_exception(errors)}")
+
+    if remote_object is None:
+        return None
+    if remote_object.value is not None:
+        return remote_object.value
+    if getattr(remote_object, "unserializable_value", None) is not None:
+        return str(remote_object.unserializable_value)
+    return None
+
+
+async def _run_js_in_context(
+    tab: Any,
+    store: Any,
+    script: str,
+    *,
+    await_promise: bool = False,
+) -> Any:
+    """Route JS evaluation to the main document or the bound iframe context.
+
+    Both paths propagate exceptions as :class:`RuntimeError` so callers can
+    produce a single ``{"error": ...}`` branch regardless of which realm the
+    script ran in.  Centralising the branch also guarantees the falsy-value
+    unwrapping rules stay in lockstep between main / iframe paths.
+    """
+    if store.iframe_context:
+        from ..iframe import eval_in_frame  # pylint: disable=import-outside-toplevel
+
+        return await eval_in_frame(
+            tab,
+            store.iframe_context.context_id,
+            script,
+            await_promise=await_promise,
+            strict=True,
+        )
+    return await _safe_eval_js(tab, script, await_promise=await_promise)
 
 
 async def _eval(sm: Any, args: dict) -> dict:
@@ -501,13 +727,15 @@ async def _eval(sm: Any, args: dict) -> dict:
     await_promise = args.get("await_promise", False)
     tab = sm.get_active_tab()
     store = sm.get_active_session()
-    if store.iframe_context:
-        from ..iframe import eval_in_frame  # pylint: disable=import-outside-toplevel
-        result = await eval_in_frame(
-            tab, store.iframe_context.context_id, script, await_promise=await_promise,
+    try:
+        result = await _run_js_in_context(
+            tab,
+            store,
+            script,
+            await_promise=await_promise,
         )
-    else:
-        result = await tab.evaluate(script, return_by_value=True, await_promise=await_promise)
+    except RuntimeError as exc:
+        return {"error": str(exc)}
     return {"ok": True, "result": result}
 
 
@@ -520,13 +748,23 @@ async def _console(sm: Any, args: dict) -> dict:
     if message_id:
         for m in store.console_messages:
             if m.id == message_id:
-                return {"id": m.id, "level": m.level, "text": m.text, "timestamp": m.timestamp}
+                return {
+                    "id": m.id,
+                    "level": m.level,
+                    "text": m.text,
+                    "timestamp": m.timestamp,
+                }
         return {"error": f"Message ID not found: {message_id}"}
 
     messages = store.console_messages
     if level:
         messages = [m for m in messages if m.level == level]
-    return {"messages": [{"id": m.id, "level": m.level, "text": m.text[:500]} for m in list(messages)[-limit:]]}
+    return {
+        "messages": [
+            {"id": m.id, "level": m.level, "text": m.text[:500]}
+            for m in list(messages)[-limit:]
+        ]
+    }
 
 
 async def _network(sm: Any, args: dict) -> dict:
@@ -539,8 +777,11 @@ async def _network(sm: Any, args: dict) -> dict:
         for req in store.network_requests:
             if req.id == request_id:
                 return {
-                    "id": req.id, "url": req.url, "method": req.method,
-                    "status": req.status, "status_text": req.status_text,
+                    "id": req.id,
+                    "url": req.url,
+                    "method": req.method,
+                    "status": req.status,
+                    "status_text": req.status_text,
                     "resource_type": req.resource_type,
                     "request_headers": req.request_headers,
                     "response_headers": req.response_headers,
@@ -552,15 +793,20 @@ async def _network(sm: Any, args: dict) -> dict:
     reqs = store.network_requests
     if url_pattern:
         reqs = [r for r in reqs if url_pattern in r.url]
-    return {"requests": [
-        {
-            "id": r.id, "method": r.method, "url": r.url[:200], "status": r.status,
-            "resource_type": r.resource_type,
-            "has_post_data": bool(getattr(r, "post_data", None)),
-            "has_response_body": bool(getattr(r, "response_body", None)),
-        }
-        for r in list(reqs)[-limit:]
-    ]}
+    return {
+        "requests": [
+            {
+                "id": r.id,
+                "method": r.method,
+                "url": r.url[:200],
+                "status": r.status,
+                "resource_type": r.resource_type,
+                "has_post_data": bool(getattr(r, "post_data", None)),
+                "has_response_body": bool(getattr(r, "response_body", None)),
+            }
+            for r in list(reqs)[-limit:]
+        ]
+    }
 
 
 async def _network_route(sm: Any, args: dict) -> dict:
@@ -568,8 +814,10 @@ async def _network_route(sm: Any, args: dict) -> dict:
     if not url_pattern:
         return {"error": "url_pattern is required"}
     from ..core.network import add_route  # pylint: disable=import-outside-toplevel
+
     return await add_route(
-        sm.get_active_tab(), sm.get_active_session(),
+        sm.get_active_tab(),
+        sm.get_active_session(),
         url_pattern=url_pattern,
         abort=args.get("abort", False),
         response_status=args.get("response_status", 200),
@@ -581,30 +829,36 @@ async def _network_route(sm: Any, args: dict) -> dict:
 
 async def _network_unroute(sm: Any, args: dict) -> dict:
     from ..core.network import remove_route  # pylint: disable=import-outside-toplevel
+
     return await remove_route(
-        sm.get_active_tab(), sm.get_active_session(),
+        sm.get_active_tab(),
+        sm.get_active_session(),
         url_pattern=args.get("url_pattern", ""),
     )
 
 
 async def _network_routes(sm: Any, args: dict) -> dict:
     from ..core.network import list_routes  # pylint: disable=import-outside-toplevel
+
     return list_routes(sm.get_active_session())
 
 
 async def _har_start(sm: Any, args: dict) -> dict:
     from ..core.network import har_start  # pylint: disable=import-outside-toplevel
+
     return har_start(sm.get_active_session())
 
 
 async def _har_stop(sm: Any, args: dict) -> dict:
     from ..core.network import har_stop  # pylint: disable=import-outside-toplevel
+
     return har_stop(sm.get_active_session(), path=args.get("path", ""))
 
 
 # ---------------------------------------------------------------------------
 # Recorder commands
 # ---------------------------------------------------------------------------
+
 
 async def _recorder(sm: Any, args: dict) -> dict:
     from ..tools.recorder import (  # pylint: disable=import-outside-toplevel
@@ -616,6 +870,7 @@ async def _recorder(sm: Any, args: dict) -> dict:
         _do_view,
         _do_status,
     )
+
     action = args.get("action", "start")
     name = args.get("name", "")
     actions_json = args.get("actions_json", "")
@@ -639,10 +894,12 @@ async def _recorder(sm: Any, args: dict) -> dict:
 
     async def _inject(tab):
         from ..tools.recorder import _RECORDER_JS  # pylint: disable=import-outside-toplevel
+
         await tab.evaluate(_RECORDER_JS, await_promise=False)
 
     async def _collect(tab):
         from ..tools.recorder import _COLLECT_JS  # pylint: disable=import-outside-toplevel
+
         raw = await tab.evaluate(_COLLECT_JS, return_by_value=True)
         if isinstance(raw, str):
             return json.loads(raw)
@@ -650,6 +907,7 @@ async def _recorder(sm: Any, args: dict) -> dict:
 
     async def _clear(tab):
         from ..tools.recorder import _CLEAR_JS  # pylint: disable=import-outside-toplevel
+
         await tab.evaluate(_CLEAR_JS, await_promise=False)
 
     def _nav_setup(store, tab):
@@ -659,23 +917,35 @@ async def _recorder(sm: Any, args: dict) -> dict:
 
     if action == "start":
         raw_result = await _do_start(
-            sm, _inject, _nav_setup,
-            engine=engine, scope=scope, max_tabs=max_tabs,
+            sm,
+            _inject,
+            _nav_setup,
+            engine=engine,
+            scope=scope,
+            max_tabs=max_tabs,
         )
         return json.loads(raw_result)
     if action == "stop":
         from ..recording.ir import parse_emit  # pylint: disable=import-outside-toplevel
 
         raw_result = await _do_stop(
-            sm, name, _collect, _clear, force,
+            sm,
+            name,
+            _collect,
+            _clear,
+            force,
             emit=parse_emit(emit),
             record_secrets=record_secrets,
         )
         return json.loads(raw_result)
     if action == "replay":
         raw_result = await _do_replay(
-            sm, name, actions_json, speed,
-            reuse_tab=reuse_tab, auto_session=auto_session,
+            sm,
+            name,
+            actions_json,
+            speed,
+            reuse_tab=reuse_tab,
+            auto_session=auto_session,
         )
         return json.loads(raw_result)
     if action == "list":
@@ -693,9 +963,11 @@ async def _recorder(sm: Any, args: dict) -> dict:
 # Emulation
 # ---------------------------------------------------------------------------
 
+
 async def _emulate(sm: Any, args: dict) -> dict:
     from nodriver import cdp  # pylint: disable=import-outside-toplevel
     from ..tools.emulation import DEVICE_PRESETS  # pylint: disable=import-outside-toplevel
+
     device_name = args.get("device_name", "")
     width = args.get("width", 0)
     height = args.get("height", 0)
@@ -704,22 +976,34 @@ async def _emulate(sm: Any, args: dict) -> dict:
 
     if device_name:
         if device_name not in DEVICE_PRESETS:
-            return {"error": f"Unknown device: {device_name}", "available": sorted(DEVICE_PRESETS.keys())}
+            return {
+                "error": f"Unknown device: {device_name}",
+                "available": sorted(DEVICE_PRESETS.keys()),
+            }
         device = DEVICE_PRESETS[device_name]
         vp = device["viewport"]
-        await tab.send(cdp.emulation.set_device_metrics_override(
-            width=vp["width"], height=vp["height"],
-            device_scale_factor=device.get("scale", 1), mobile=device.get("mobile", False),
-        ))
+        await tab.send(
+            cdp.emulation.set_device_metrics_override(
+                width=vp["width"],
+                height=vp["height"],
+                device_scale_factor=device.get("scale", 1),
+                mobile=device.get("mobile", False),
+            )
+        )
         ua = device.get("user_agent", "")
         if ua and store.backend_type != "ziniao":
             await tab.send(cdp.emulation.set_user_agent_override(user_agent=ua))
         return {"ok": True, "device": device_name, "viewport": vp}
 
     if width > 0 and height > 0:
-        await tab.send(cdp.emulation.set_device_metrics_override(
-            width=width, height=height, device_scale_factor=1, mobile=False,
-        ))
+        await tab.send(
+            cdp.emulation.set_device_metrics_override(
+                width=width,
+                height=height,
+                device_scale_factor=1,
+                mobile=False,
+            )
+        )
         return {"ok": True, "viewport": {"width": width, "height": height}}
 
     return {"error": "Provide device_name or width+height"}
@@ -729,11 +1013,13 @@ async def _emulate(sm: Any, args: dict) -> dict:
 # Get info commands
 # ---------------------------------------------------------------------------
 
+
 async def _get_text(sm: Any, args: dict) -> dict:
     selector = args.get("selector", "")
     if not selector:
         return {"error": "selector is required"}
     from ..core.get_info import get_text  # pylint: disable=import-outside-toplevel
+
     return await get_text(sm.get_active_tab(), selector)
 
 
@@ -742,6 +1028,7 @@ async def _get_html(sm: Any, args: dict) -> dict:
     if not selector:
         return {"error": "selector is required"}
     from ..core.get_info import get_html  # pylint: disable=import-outside-toplevel
+
     return await get_html(sm.get_active_tab(), selector)
 
 
@@ -750,6 +1037,7 @@ async def _get_value(sm: Any, args: dict) -> dict:
     if not selector:
         return {"error": "selector is required"}
     from ..core.get_info import get_value  # pylint: disable=import-outside-toplevel
+
     return await get_value(sm.get_active_tab(), selector)
 
 
@@ -759,16 +1047,19 @@ async def _get_attr(sm: Any, args: dict) -> dict:
     if not selector or not attribute:
         return {"error": "selector and attribute are required"}
     from ..core.get_info import get_attr  # pylint: disable=import-outside-toplevel
+
     return await get_attr(sm.get_active_tab(), selector, attribute)
 
 
 async def _get_title(sm: Any, args: dict) -> dict:
     from ..core.get_info import get_title  # pylint: disable=import-outside-toplevel
+
     return await get_title(sm.get_active_tab())
 
 
 async def _get_url(sm: Any, args: dict) -> dict:
     from ..core.get_info import get_url  # pylint: disable=import-outside-toplevel
+
     return await get_url(sm.get_active_tab())
 
 
@@ -777,12 +1068,14 @@ async def _get_count(sm: Any, args: dict) -> dict:
     if not selector:
         return {"error": "selector is required"}
     from ..core.get_info import get_count  # pylint: disable=import-outside-toplevel
+
     return await get_count(sm.get_active_tab(), selector)
 
 
 # ---------------------------------------------------------------------------
 # Find/Nth commands
 # ---------------------------------------------------------------------------
+
 
 async def _find_nth(sm: Any, args: dict) -> dict:
     selector = args.get("selector", "")
@@ -791,6 +1084,7 @@ async def _find_nth(sm: Any, args: dict) -> dict:
     if not selector:
         return {"error": "selector is required"}
     from ..core.find import find_nth  # pylint: disable=import-outside-toplevel
+
     return await find_nth(sm.get_active_tab(), selector, index, action)
 
 
@@ -801,6 +1095,7 @@ async def _find_text(sm: Any, args: dict) -> dict:
     if not text:
         return {"error": "text is required"}
     from ..core.find import find_text  # pylint: disable=import-outside-toplevel
+
     return await find_text(sm.get_active_tab(), text, action, tag)
 
 
@@ -811,6 +1106,7 @@ async def _find_role(sm: Any, args: dict) -> dict:
     if not role:
         return {"error": "role is required"}
     from ..core.find import find_role  # pylint: disable=import-outside-toplevel
+
     return await find_role(sm.get_active_tab(), role, action, name)
 
 
@@ -818,11 +1114,13 @@ async def _find_role(sm: Any, args: dict) -> dict:
 # Check state commands
 # ---------------------------------------------------------------------------
 
+
 async def _is_visible(sm: Any, args: dict) -> dict:
     selector = args.get("selector", "")
     if not selector:
         return {"error": "selector is required"}
     from ..core.check import is_visible  # pylint: disable=import-outside-toplevel
+
     return await is_visible(sm.get_active_tab(), selector)
 
 
@@ -831,6 +1129,7 @@ async def _is_enabled(sm: Any, args: dict) -> dict:
     if not selector:
         return {"error": "selector is required"}
     from ..core.check import is_enabled  # pylint: disable=import-outside-toplevel
+
     return await is_enabled(sm.get_active_tab(), selector)
 
 
@@ -839,12 +1138,14 @@ async def _is_checked(sm: Any, args: dict) -> dict:
     if not selector:
         return {"error": "selector is required"}
     from ..core.check import is_checked  # pylint: disable=import-outside-toplevel
+
     return await is_checked(sm.get_active_tab(), selector)
 
 
 # ---------------------------------------------------------------------------
 # Navigation: back / forward / reload
 # ---------------------------------------------------------------------------
+
 
 def _parse_navigation_history(history: Any) -> tuple[list, int]:
     """Normalize CDP getNavigationHistory result (dict, tuple or object) to (entries, current_index)."""
@@ -878,6 +1179,7 @@ def _entry_id(entry: Any) -> int:
 
 async def _back(sm: Any, args: dict) -> dict:
     from nodriver import cdp  # pylint: disable=import-outside-toplevel
+
     tab = sm.get_active_tab()
     raw = await tab.send(cdp.page.get_navigation_history())
     entries, current_index = _parse_navigation_history(raw)
@@ -890,6 +1192,7 @@ async def _back(sm: Any, args: dict) -> dict:
 
 async def _forward(sm: Any, args: dict) -> dict:
     from nodriver import cdp  # pylint: disable=import-outside-toplevel
+
     tab = sm.get_active_tab()
     raw = await tab.send(cdp.page.get_navigation_history())
     entries, current_index = _parse_navigation_history(raw)
@@ -902,6 +1205,7 @@ async def _forward(sm: Any, args: dict) -> dict:
 
 async def _reload(sm: Any, args: dict) -> dict:
     from nodriver import cdp  # pylint: disable=import-outside-toplevel
+
     tab = sm.get_active_tab()
     ignore_cache = args.get("ignore_cache", False)
     await tab.send(cdp.page.reload(ignore_cache=ignore_cache))
@@ -913,8 +1217,10 @@ async def _reload(sm: Any, args: dict) -> dict:
 # Scroll commands
 # ---------------------------------------------------------------------------
 
+
 async def _scroll(sm: Any, args: dict) -> dict:
     from ..core.scroll import scroll  # pylint: disable=import-outside-toplevel
+
     return await scroll(
         sm.get_active_tab(),
         args.get("direction", "down"),
@@ -928,6 +1234,7 @@ async def _scroll_into(sm: Any, args: dict) -> dict:
     if not selector:
         return {"error": "selector is required"}
     from ..core.scroll import scroll_into  # pylint: disable=import-outside-toplevel
+
     return await scroll_into(sm.get_active_tab(), selector)
 
 
@@ -935,8 +1242,23 @@ async def _scroll_into(sm: Any, args: dict) -> dict:
 # Interaction: dblclick, focus, select, check, uncheck, keydown, keyup
 # ---------------------------------------------------------------------------
 
+
 async def _dblclick(sm: Any, args: dict) -> dict:
+    """Double-click via CDP mouse events.
+
+    With stealth enabled we route the pointer via a bezier trajectory
+    (:func:`_move_mouse_humanlike`) and add realistic down/up hold times
+    plus an inter-click gap — flat "two simultaneous pressed events at
+    the same (x, y)" is a strong automation signal otherwise.
+    """
+    import asyncio  # pylint: disable=import-outside-toplevel
+    import random  # pylint: disable=import-outside-toplevel
+
+    from nodriver import cdp  # pylint: disable=import-outside-toplevel
+
+    from .._interaction_helpers import _get_behavior_cfg  # pylint: disable=import-outside-toplevel
     from ..iframe import find_element  # pylint: disable=import-outside-toplevel
+
     selector = args.get("selector", "")
     if not selector:
         return {"error": "selector is required"}
@@ -948,24 +1270,87 @@ async def _dblclick(sm: Any, args: dict) -> dict:
     pos = await elem.get_position()
     if not pos:
         return {"error": f"Failed to get position: {selector}"}
-    from nodriver import cdp  # pylint: disable=import-outside-toplevel
     cx, cy = pos.center
-    await tab.send(cdp.input_.dispatch_mouse_event(
-        type_="mouseMoved", x=cx, y=cy,
-    ))
-    await tab.send(cdp.input_.dispatch_mouse_event(
-        type_="mousePressed", x=cx, y=cy, button=cdp.input_.MouseButton("left"),
-        click_count=2,
-    ))
-    await tab.send(cdp.input_.dispatch_mouse_event(
-        type_="mouseReleased", x=cx, y=cy, button=cdp.input_.MouseButton("left"),
-        click_count=2,
-    ))
+
+    cfg = _get_behavior_cfg(sm)
+    button = cdp.input_.MouseButton("left")
+    if cfg:
+        from ..stealth import random_delay  # pylint: disable=import-outside-toplevel
+        from ..stealth.human_behavior import _move_mouse_humanlike  # pylint: disable=import-outside-toplevel
+
+        await _move_mouse_humanlike(tab, cx, cy, cfg=cfg)
+        await random_delay(cfg=cfg)
+        await tab.send(
+            cdp.input_.dispatch_mouse_event(
+                type_="mousePressed",
+                x=cx,
+                y=cy,
+                button=button,
+                click_count=1,
+            )
+        )
+        await asyncio.sleep(random.uniform(0.03, 0.08))
+        await tab.send(
+            cdp.input_.dispatch_mouse_event(
+                type_="mouseReleased",
+                x=cx,
+                y=cy,
+                button=button,
+                click_count=1,
+            )
+        )
+        await asyncio.sleep(random.uniform(0.05, 0.12))
+        await tab.send(
+            cdp.input_.dispatch_mouse_event(
+                type_="mousePressed",
+                x=cx,
+                y=cy,
+                button=button,
+                click_count=2,
+            )
+        )
+        await asyncio.sleep(random.uniform(0.03, 0.08))
+        await tab.send(
+            cdp.input_.dispatch_mouse_event(
+                type_="mouseReleased",
+                x=cx,
+                y=cy,
+                button=button,
+                click_count=2,
+            )
+        )
+    else:
+        await tab.send(
+            cdp.input_.dispatch_mouse_event(
+                type_="mouseMoved",
+                x=cx,
+                y=cy,
+            )
+        )
+        await tab.send(
+            cdp.input_.dispatch_mouse_event(
+                type_="mousePressed",
+                x=cx,
+                y=cy,
+                button=button,
+                click_count=2,
+            )
+        )
+        await tab.send(
+            cdp.input_.dispatch_mouse_event(
+                type_="mouseReleased",
+                x=cx,
+                y=cy,
+                button=button,
+                click_count=2,
+            )
+        )
     return {"ok": True, "double_clicked": selector}
 
 
 async def _focus(sm: Any, args: dict) -> dict:
     from ..iframe import find_element  # pylint: disable=import-outside-toplevel
+
     selector = args.get("selector", "")
     if not selector:
         return {"error": "selector is required"}
@@ -974,7 +1359,9 @@ async def _focus(sm: Any, args: dict) -> dict:
     elem = await find_element(tab, selector, store, timeout=10)
     if not elem:
         return {"error": f"Element not found: {selector}"}
-    await tab.evaluate(f"document.querySelector({json.dumps(selector)})?.focus()", return_by_value=True)
+    await tab.evaluate(
+        f"document.querySelector({json.dumps(selector)})?.focus()", return_by_value=True
+    )
     return {"ok": True, "focused": selector}
 
 
@@ -1032,24 +1419,37 @@ async def _uncheck(sm: Any, args: dict) -> dict:
 async def _keydown(sm: Any, args: dict) -> dict:
     from nodriver import cdp  # pylint: disable=import-outside-toplevel
     from ..tools._keys import parse_key  # pylint: disable=import-outside-toplevel
+
     key = args.get("key", "")
     if not key:
         return {"error": "key is required"}
     tab = sm.get_active_tab()
     actual_key, vk, modifiers = parse_key(key)
-    await tab.send(cdp.input_.dispatch_key_event("rawKeyDown", windows_virtual_key_code=vk, modifiers=modifiers, key=actual_key))
+    await tab.send(
+        cdp.input_.dispatch_key_event(
+            "rawKeyDown",
+            windows_virtual_key_code=vk,
+            modifiers=modifiers,
+            key=actual_key,
+        )
+    )
     return {"ok": True, "keydown": key}
 
 
 async def _keyup(sm: Any, args: dict) -> dict:
     from nodriver import cdp  # pylint: disable=import-outside-toplevel
     from ..tools._keys import parse_key  # pylint: disable=import-outside-toplevel
+
     key = args.get("key", "")
     if not key:
         return {"error": "key is required"}
     tab = sm.get_active_tab()
     actual_key, vk, modifiers = parse_key(key)
-    await tab.send(cdp.input_.dispatch_key_event("keyUp", windows_virtual_key_code=vk, modifiers=modifiers, key=actual_key))
+    await tab.send(
+        cdp.input_.dispatch_key_event(
+            "keyUp", windows_virtual_key_code=vk, modifiers=modifiers, key=actual_key
+        )
+    )
     return {"ok": True, "keyup": key}
 
 
@@ -1057,8 +1457,10 @@ async def _keyup(sm: Any, args: dict) -> dict:
 # Mouse commands
 # ---------------------------------------------------------------------------
 
+
 async def _mouse_move(sm: Any, args: dict) -> dict:
     from nodriver import cdp  # pylint: disable=import-outside-toplevel
+
     x = args.get("x", 0)
     y = args.get("y", 0)
     tab = sm.get_active_tab()
@@ -1068,38 +1470,60 @@ async def _mouse_move(sm: Any, args: dict) -> dict:
 
 async def _mouse_down(sm: Any, args: dict) -> dict:
     from nodriver import cdp  # pylint: disable=import-outside-toplevel
+
     button = args.get("button", "left")
     tab = sm.get_active_tab()
-    await tab.send(cdp.input_.dispatch_mouse_event(
-        type_="mousePressed", x=0, y=0, button=cdp.input_.MouseButton(button), click_count=1,
-    ))
+    await tab.send(
+        cdp.input_.dispatch_mouse_event(
+            type_="mousePressed",
+            x=0,
+            y=0,
+            button=cdp.input_.MouseButton(button),
+            click_count=1,
+        )
+    )
     return {"ok": True, "button": button, "action": "down"}
 
 
 async def _mouse_up(sm: Any, args: dict) -> dict:
     from nodriver import cdp  # pylint: disable=import-outside-toplevel
+
     button = args.get("button", "left")
     tab = sm.get_active_tab()
-    await tab.send(cdp.input_.dispatch_mouse_event(
-        type_="mouseReleased", x=0, y=0, button=cdp.input_.MouseButton(button), click_count=1,
-    ))
+    await tab.send(
+        cdp.input_.dispatch_mouse_event(
+            type_="mouseReleased",
+            x=0,
+            y=0,
+            button=cdp.input_.MouseButton(button),
+            click_count=1,
+        )
+    )
     return {"ok": True, "button": button, "action": "up"}
 
 
 async def _mouse_wheel(sm: Any, args: dict) -> dict:
     from nodriver import cdp  # pylint: disable=import-outside-toplevel
+
     delta_x = args.get("delta_x", 0)
     delta_y = args.get("delta_y", 0)
     tab = sm.get_active_tab()
-    await tab.send(cdp.input_.dispatch_mouse_event(
-        type_="mouseWheel", x=0, y=0, delta_x=delta_x, delta_y=delta_y,
-    ))
+    await tab.send(
+        cdp.input_.dispatch_mouse_event(
+            type_="mouseWheel",
+            x=0,
+            y=0,
+            delta_x=delta_x,
+            delta_y=delta_y,
+        )
+    )
     return {"ok": True, "delta_x": delta_x, "delta_y": delta_y}
 
 
 # ---------------------------------------------------------------------------
 # Snapshot enhancements
 # ---------------------------------------------------------------------------
+
 
 async def _snapshot_enhanced(sm: Any, args: dict) -> dict:
     tab = sm.get_active_tab()
@@ -1152,11 +1576,18 @@ async def _snapshot_enhanced(sm: Any, args: dict) -> dict:
             });
         })()"""
         elements = await tab.evaluate(js, return_by_value=True)
-        return {"ok": True, "interactive_elements": elements, "count": len(elements) if elements else 0}
+        return {
+            "ok": True,
+            "interactive_elements": elements,
+            "count": len(elements) if elements else 0,
+        }
 
     if store.iframe_context:
         from ..iframe import eval_in_frame  # pylint: disable=import-outside-toplevel
-        html = await eval_in_frame(tab, store.iframe_context.context_id, "document.documentElement.outerHTML")
+
+        html = await eval_in_frame(
+            tab, store.iframe_context.context_id, "document.documentElement.outerHTML"
+        )
         return {"ok": True, "html": html or ""}
 
     html = await tab.get_content()
@@ -1176,24 +1607,37 @@ async def _snapshot_enhanced(sm: Any, args: dict) -> dict:
 # Cookies & Storage
 # ---------------------------------------------------------------------------
 
+
 async def _cookies(sm: Any, args: dict) -> dict:
     from nodriver import cdp  # pylint: disable=import-outside-toplevel
+
     action = args.get("action", "list")
     tab = sm.get_active_tab()
 
     if action == "list":
         cookies = await tab.send(cdp.network.get_cookies())
-        return {"ok": True, "cookies": [
-            {"name": c.name, "value": c.value[:100], "domain": c.domain, "path": c.path, "secure": c.secure}
-            for c in (cookies or [])
-        ]}
+        return {
+            "ok": True,
+            "cookies": [
+                {
+                    "name": c.name,
+                    "value": c.value[:100],
+                    "domain": c.domain,
+                    "path": c.path,
+                    "secure": c.secure,
+                }
+                for c in (cookies or [])
+            ],
+        }
     if action == "set":
         name = args.get("name", "")
         value = args.get("value", "")
         domain = args.get("domain", "")
         if not name:
             return {"error": "name is required"}
-        await tab.send(cdp.network.set_cookie(name=name, value=value, domain=domain or None))
+        await tab.send(
+            cdp.network.set_cookie(name=name, value=value, domain=domain or None)
+        )
         return {"ok": True, "set": name}
     if action == "clear":
         await tab.send(cdp.network.clear_browser_cookies())
@@ -1211,7 +1655,9 @@ async def _storage(sm: Any, args: dict) -> dict:
 
     if action == "get":
         if key:
-            result = await tab.evaluate(f"{storage_obj}.getItem({json.dumps(key)})", return_by_value=True)
+            result = await tab.evaluate(
+                f"{storage_obj}.getItem({json.dumps(key)})", return_by_value=True
+            )
             return {"ok": True, "key": key, "value": result}
         result = await tab.evaluate(
             f"JSON.stringify(Object.fromEntries(Object.entries({storage_obj})))",
@@ -1221,7 +1667,10 @@ async def _storage(sm: Any, args: dict) -> dict:
     if action == "set":
         if not key:
             return {"error": "key is required"}
-        await tab.evaluate(f"{storage_obj}.setItem({json.dumps(key)}, {json.dumps(value)})", return_by_value=True)
+        await tab.evaluate(
+            f"{storage_obj}.setItem({json.dumps(key)}, {json.dumps(value)})",
+            return_by_value=True,
+        )
         return {"ok": True, "key": key, "value": value}
     if action == "clear":
         await tab.evaluate(f"{storage_obj}.clear()", return_by_value=True)
@@ -1233,11 +1682,17 @@ async def _storage(sm: Any, args: dict) -> dict:
 # Debug commands
 # ---------------------------------------------------------------------------
 
+
 async def _errors(sm: Any, args: dict) -> dict:
     store = sm.get_active_session()
     errors = [m for m in store.console_messages if m.level == "error"]
     limit = args.get("limit", 50)
-    return {"errors": [{"id": m.id, "text": m.text[:500], "timestamp": m.timestamp} for m in list(errors)[-limit:]]}
+    return {
+        "errors": [
+            {"id": m.id, "text": m.text[:500], "timestamp": m.timestamp}
+            for m in list(errors)[-limit:]
+        ]
+    }
 
 
 async def _highlight(sm: Any, args: dict) -> dict:
@@ -1263,16 +1718,23 @@ async def _highlight(sm: Any, args: dict) -> dict:
 # Clipboard commands
 # ---------------------------------------------------------------------------
 
+
 async def _clipboard(sm: Any, args: dict) -> dict:
     action = args.get("action", "read")
     tab = sm.get_active_tab()
 
     if action == "read":
-        text = await tab.evaluate("navigator.clipboard.readText()", await_promise=True, return_by_value=True)
+        text = await tab.evaluate(
+            "navigator.clipboard.readText()", await_promise=True, return_by_value=True
+        )
         return {"ok": True, "text": text}
     if action == "write":
         text = args.get("text", "")
-        await tab.evaluate(f"navigator.clipboard.writeText({json.dumps(text)})", await_promise=True, return_by_value=True)
+        await tab.evaluate(
+            f"navigator.clipboard.writeText({json.dumps(text)})",
+            await_promise=True,
+            return_by_value=True,
+        )
         return {"ok": True, "written": len(text)}
     return {"error": f"Unknown clipboard action: {action}"}
 
@@ -1280,6 +1742,24 @@ async def _clipboard(sm: Any, args: dict) -> dict:
 # ---------------------------------------------------------------------------
 # Page fetch (fetch / js modes)
 # ---------------------------------------------------------------------------
+
+
+def _resolve_body_file_refs(body: Any, resolve_fn: Any) -> Any:
+    """Expand ``@@ZFILE@@`` tokens inside *body*.
+
+    ``prepare_request`` may have JSON-serialised a ``dict`` body into a
+    string.  This helper JSON-parses it first, resolves file references,
+    then returns the resolved object (not re-serialised) so the caller
+    can use it as ``body_obj_js`` directly.
+    """
+    if isinstance(body, str) and body:
+        try:
+            parsed = json.loads(body)
+        except (json.JSONDecodeError, TypeError):
+            return resolve_fn(body)
+        return resolve_fn(parsed)
+    return resolve_fn(body)
+
 
 async def _page_fetch(sm: Any, args: dict) -> dict:
     from ziniao_mcp.sites import _normalize_header_inject  # pylint: disable=import-outside-toplevel
@@ -1294,6 +1774,7 @@ async def _page_fetch(sm: Any, args: dict) -> dict:
         current = tab.target.url or ""
         if not current.startswith(navigate_url.split("?")[0].split("#")[0]):
             from nodriver import cdp  # pylint: disable=import-outside-toplevel
+
             await tab.send(cdp.page.navigate(url=navigate_url))
             await tab.sleep(2.0)
 
@@ -1303,6 +1784,8 @@ async def _page_fetch(sm: Any, args: dict) -> dict:
 
 
 async def _page_fetch_fetch(sm: Any, args: dict) -> dict:
+    from ..sites import resolve_file_refs  # pylint: disable=import-outside-toplevel
+
     tab = sm.get_active_tab()
     store = sm.get_active_session()
 
@@ -1310,7 +1793,7 @@ async def _page_fetch_fetch(sm: Any, args: dict) -> dict:
     if not url:
         return {"error": "url is required for fetch mode"}
     method = args.get("method", "GET")
-    body = args.get("body", "")
+    body = _resolve_body_file_refs(args.get("body", ""), resolve_file_refs)
     headers = args.get("headers") or {}
     injections = args.get("header_inject") or []
 
@@ -1357,8 +1840,11 @@ async def _page_fetch_fetch(sm: Any, args: dict) -> dict:
         from ..iframe import eval_in_frame  # pylint: disable=import-outside-toplevel
 
         result = await eval_in_frame(
-            tab, store.iframe_context.context_id, js,
-            await_promise=True, return_by_value=True,
+            tab,
+            store.iframe_context.context_id,
+            js,
+            await_promise=True,
+            return_by_value=True,
         )
     else:
         result = await tab.evaluate(js, await_promise=True, return_by_value=True)
@@ -1366,13 +1852,15 @@ async def _page_fetch_fetch(sm: Any, args: dict) -> dict:
 
 
 async def _page_fetch_js(sm: Any, args: dict) -> dict:
+    from ..sites import resolve_file_refs  # pylint: disable=import-outside-toplevel
+
     tab = sm.get_active_tab()
     store = sm.get_active_session()
 
     script = args.get("script", "")
     if not script:
         return {"error": "script is required for js mode"}
-    body = args.get("body", "")
+    body = _resolve_body_file_refs(args.get("body", ""), resolve_file_refs)
     body_obj_js = json.dumps(body, ensure_ascii=False) if body else "null"
     body_str_js = json.dumps(json.dumps(body, ensure_ascii=False) if body else "")
 
@@ -1400,12 +1888,469 @@ async def _page_fetch_js(sm: Any, args: dict) -> dict:
         from ..iframe import eval_in_frame  # pylint: disable=import-outside-toplevel
 
         result = await eval_in_frame(
-            tab, store.iframe_context.context_id, js,
-            await_promise=True, return_by_value=True,
+            tab,
+            store.iframe_context.context_id,
+            js,
+            await_promise=True,
+            return_by_value=True,
         )
     else:
         result = await tab.evaluate(js, await_promise=True, return_by_value=True)
     return coerce_page_fetch_eval_result(result)
+
+
+# ---------------------------------------------------------------------------
+# UI flow runner (mode: ui presets)
+# ---------------------------------------------------------------------------
+
+_STEP_VAR_RE = __import__("re").compile(r"\{\{([A-Za-z0-9_][A-Za-z0-9_.]*)\}\}")
+
+# Single source of truth: `ziniao_mcp.sites.UI_ACTION_WHITELIST` (imported
+# at the top of the module).  Aliased locally to keep call sites short and
+# prevent drift between the preset validator and this executor.
+_FLOW_STEP_ACTIONS = UI_ACTION_WHITELIST
+
+
+def _mask_secrets(text: str, secrets: list[str]) -> str:
+    """Replace every secret occurrence in *text* with ``***``."""
+    if not text or not secrets:
+        return text
+    masked = text
+    for s in secrets:
+        if s and s in masked:
+            masked = masked.replace(s, "***")
+    return masked
+
+
+def _resolve_step_token(expr: str, ctx: dict) -> Any:
+    """Resolve a ``steps.<id>.value`` / ``extracted.<name>`` / ``vars.<k>`` token."""
+    parts = expr.split(".")
+    head = parts[0]
+    tail = parts[1:]
+    if head == "steps":
+        if not tail:
+            return ctx.get("steps")
+        sid = tail[0]
+        step_result = ctx.get("steps", {}).get(sid)
+        if step_result is None:
+            return None
+        cursor: Any = step_result
+        for key in tail[1:]:
+            if isinstance(cursor, dict):
+                cursor = cursor.get(key)
+            else:
+                return None
+        return cursor
+    if head == "extracted":
+        if not tail:
+            return ctx.get("extracted")
+        cursor = ctx.get("extracted", {})
+        for key in tail:
+            if isinstance(cursor, dict):
+                cursor = cursor.get(key)
+            else:
+                return None
+        return cursor
+    if head == "vars":
+        if not tail:
+            return ctx.get("vars")
+        return ctx.get("vars", {}).get(tail[0])
+    return None
+
+
+def _render_step_value(obj: Any, ctx: dict) -> Any:
+    """Recursively substitute ``{{steps.X.value}}`` / ``{{extracted.Y}}`` tokens."""
+    if isinstance(obj, str):
+        match = _STEP_VAR_RE.fullmatch(obj)
+        if match and (
+            "." in match.group(1) or match.group(1) in ("steps", "extracted", "vars")
+        ):
+            resolved = _resolve_step_token(match.group(1), ctx)
+            return resolved if resolved is not None else obj
+
+        def _sub(m: Any) -> str:
+            expr = m.group(1)
+            if "." not in expr and expr not in ("steps", "extracted", "vars"):
+                return m.group(0)
+            val = _resolve_step_token(expr, ctx)
+            if val is None:
+                return m.group(0)
+            return str(val) if not isinstance(val, str) else val
+
+        return _STEP_VAR_RE.sub(_sub, obj)
+    if isinstance(obj, dict):
+        return {k: _render_step_value(v, ctx) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_render_step_value(v, ctx) for v in obj]
+    return obj
+
+
+async def _capture_failure_artifacts(
+    sm: Any,
+    step_id: str,
+    error_msg: str,
+    on_error: dict,
+    seq: int = 0,
+    *,
+    secrets: list[str] | None = None,
+) -> dict:
+    """Write screenshot + snapshot HTML into ``exports/flow-errors/``.
+
+    File names carry both millisecond-precision timestamps **and** a
+    monotonic ``seq`` counter so multiple failures in the same second
+    (e.g. cascading ``continue_on_error`` steps) never overwrite each
+    other's artefacts.
+
+    ``secrets`` (when supplied) is applied via :func:`_mask_secrets` to
+    the **snapshot HTML** *and* the ``.err.txt`` payload before they hit
+    disk.  This prevents leakage of resolved ``type: secret`` values into
+    ``exports/flow-errors/*.html`` — the raw DOM would otherwise retain
+    password-field ``value=``, reCAPTCHA tokens rendered via
+    ``__NEXT_DATA__``, CSRF tokens embedded in hidden inputs, etc.  PNG
+    screenshots cannot be masked at the pixel level, so callers should
+    disable ``on_error.screenshot`` explicitly when the failing page is
+    expected to render sensitive plaintext.
+    """
+    import base64 as _b64  # pylint: disable=import-outside-toplevel
+    from datetime import datetime  # pylint: disable=import-outside-toplevel
+    from pathlib import Path as _Path  # pylint: disable=import-outside-toplevel
+
+    artefacts: dict = {}
+    if not (on_error.get("screenshot", True) or on_error.get("snapshot", True)):
+        return artefacts
+    out_dir = _Path("exports") / "flow-errors"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")[:-3]  # millisecond precision
+    safe_id = "".join(c if c.isalnum() or c in "-_" else "_" for c in step_id)[:40]
+    base = out_dir / f"{stamp}-{seq:02d}-{safe_id}"
+
+    if on_error.get("screenshot", True):
+        try:
+            shot = await _screenshot(sm, {"full_page": False})
+            data = shot.get("data", "")
+            if data.startswith("data:image/png;base64,"):
+                png_path = base.with_suffix(".png")
+                png_path.write_bytes(_b64.b64decode(data.split(",", 1)[1]))
+                artefacts["screenshot_path"] = str(png_path.resolve())
+        except Exception:  # noqa: BLE001
+            pass
+
+    if on_error.get("snapshot", True):
+        try:
+            snap = await _snapshot(sm, {})
+            html = snap.get("html", "")
+            if html:
+                if secrets:
+                    html = _mask_secrets(html, secrets)
+                html_path = base.with_suffix(".html")
+                html_path.write_text(html, encoding="utf-8")
+                artefacts["snapshot_path"] = str(html_path.resolve())
+        except Exception:  # noqa: BLE001
+            pass
+
+    if error_msg:
+        safe_err = _mask_secrets(error_msg, secrets) if secrets else error_msg
+        (base.with_suffix(".err.txt")).write_text(safe_err, encoding="utf-8")
+    return artefacts
+
+
+async def _extract_step(sm: Any, step: dict) -> dict:
+    """Execute an ``action: extract`` step.
+
+    Returns a dict with keys ``{"ok": True, "value": <scalar|list|dict>, "kind": ...}``
+    or ``{"error": ...}``.  The caller stores ``value`` into
+    ``ctx.extracted[step['as']]`` and the full dict into ``ctx.steps[step['id']]``.
+    """
+    tab = sm.get_active_tab()
+    store = sm.get_active_session()
+    kind = step.get("kind", "text")
+    selector = step.get("selector", "")
+
+    if kind == "eval":
+        script = step.get("script", "") or step.get("expression", "")
+        if not script:
+            return {"error": "extract kind=eval requires 'script' or 'expression'."}
+        try:
+            value = await _run_js_in_context(
+                tab,
+                store,
+                script,
+                await_promise=step.get("await_promise", False),
+            )
+        except RuntimeError as exc:
+            return {"error": str(exc)}
+        return {"ok": True, "value": value, "kind": kind}
+
+    if not selector:
+        return {"error": f"extract kind={kind!r} requires 'selector'."}
+
+    if kind == "text":
+        js = f"(() => {{ const el = document.querySelector({json.dumps(selector)}); return el ? el.innerText || el.textContent || '' : null; }})()"
+    elif kind == "html":
+        js = f"(() => {{ const el = document.querySelector({json.dumps(selector)}); return el ? el.outerHTML : null; }})()"
+    elif kind == "attribute":
+        attr = step.get("attr") or step.get("attribute", "")
+        if not attr:
+            return {"error": "extract kind=attribute requires 'attr'."}
+        js = (
+            f"(() => {{ const el = document.querySelector({json.dumps(selector)}); "
+            f"return el ? el.getAttribute({json.dumps(attr)}) : null; }})()"
+        )
+    elif kind == "querySelectorAll":
+        inner = step.get("sub_attr") or "innerText"
+        js = (
+            f"(() => {{ return Array.from(document.querySelectorAll({json.dumps(selector)}))"
+            f".map(el => el[{json.dumps(inner)}] || el.getAttribute({json.dumps(inner)}) || ''); }})()"
+        )
+    elif kind == "table":
+        js = f"""(() => {{
+  const tbl = document.querySelector({json.dumps(selector)});
+  if (!tbl) return null;
+  return Array.from(tbl.rows).map(r => Array.from(r.cells).map(c => c.innerText.trim()));
+}})()"""
+    else:
+        return {
+            "error": f"extract kind={kind!r} not supported (text/html/attribute/querySelectorAll/table/eval)."
+        }
+
+    try:
+        value = await _run_js_in_context(tab, store, js)
+    except RuntimeError as exc:
+        return {"error": str(exc)}
+
+    if kind in ("querySelectorAll", "table") and value is None:
+        value = []
+    return {"ok": True, "value": value, "kind": kind, "selector": selector}
+
+
+async def _inline_fetch_step(sm: Any, step: dict) -> dict:
+    """Execute a step-level ``action: fetch`` by delegating to ``_page_fetch_fetch``.
+
+    Supports ``save_body_to`` to persist the (possibly binary) response body.
+    """
+    import base64 as _b64  # pylint: disable=import-outside-toplevel
+    from pathlib import Path as _Path  # pylint: disable=import-outside-toplevel
+
+    # `_page_fetch_fetch` already accepts dict/list bodies (via
+    # `_resolve_body_file_refs` → `json.dumps`).  Pre-serialising here
+    # forced a parse/re-serialise round-trip that broke non-JSON bodies
+    # (plain text triggered a JSONDecodeError fallback) and needlessly
+    # re-encoded non-ASCII payloads.  Pass the original value through.
+    fetch_args = {
+        "url": step.get("url", ""),
+        "method": step.get("method", "GET"),
+        "body": step.get("body", ""),
+        "headers": step.get("headers") or {},
+        "header_inject": step.get("header_inject") or [],
+    }
+    result = await _page_fetch_fetch(sm, fetch_args)
+
+    save_body_to = step.get("save_body_to")
+    if save_body_to and result.get("ok"):
+        dest = _Path(save_body_to)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        body_b64 = result.get("body_b64")
+        if body_b64:
+            dest.write_bytes(_b64.b64decode(body_b64))
+        else:
+            dest.write_text(result.get("body", "") or "", encoding="utf-8")
+        result["saved_path"] = str(dest.resolve())
+    return result
+
+
+async def _dispatch_flow_step(sm: Any, step: dict, ctx: dict) -> dict:
+    """Route a single rendered step to the underlying primitive."""
+    action = step.get("action")
+    if action == "navigate":
+        return await _navigate(sm, {"url": step.get("url", "")})
+    if action == "wait":
+        return await _wait(
+            sm,
+            {
+                "selector": step.get("selector", ""),
+                "state": step.get("state", "visible"),
+                "timeout": int(step.get("timeout", 30)) * 1000
+                if isinstance(step.get("timeout"), (int, float))
+                else 30000,
+            },
+        )
+    if action == "click":
+        return await _click(sm, {"selector": step.get("selector", "")})
+    if action == "fill":
+        if step.get("fields_json"):
+            return await _fill(sm, {"fields_json": step["fields_json"]})
+        return await _fill(
+            sm, {"selector": step.get("selector", ""), "value": step.get("value", "")}
+        )
+    if action == "type_text":
+        return await _type_text(
+            sm,
+            {
+                "selector": step.get("selector", ""),
+                "text": step.get("text", step.get("value", "")),
+            },
+        )
+    if action == "insert_text":
+        return await _insert_text(
+            sm,
+            {
+                "selector": step.get("selector", ""),
+                "text": step.get("text", step.get("value", "")),
+            },
+        )
+    if action == "press_key":
+        return await _press_key(sm, {"key": step.get("key", "")})
+    if action == "hover":
+        return await _hover(sm, {"selector": step.get("selector", "")})
+    if action == "dblclick":
+        return await _dblclick(sm, {"selector": step.get("selector", "")})
+    if action == "upload":
+        return await _upload(
+            sm,
+            {
+                "selector": step.get("selector", ""),
+                "file_paths": step.get("file_paths")
+                or ([step["file_path"]] if step.get("file_path") else []),
+            },
+        )
+    if action == "screenshot":
+        return await _screenshot(
+            sm,
+            {
+                "selector": step.get("selector", ""),
+                "full_page": step.get("full_page", False),
+            },
+        )
+    if action == "snapshot":
+        return await _snapshot(sm, {})
+    if action == "eval":
+        return await _eval(
+            sm,
+            {
+                "script": step.get("script", ""),
+                "await_promise": step.get("await_promise", False),
+            },
+        )
+    if action == "extract":
+        result = await _extract_step(sm, step)
+        if result.get("ok") and "as" in step:
+            ctx.setdefault("extracted", {})[step["as"]] = result.get("value")
+        return result
+    if action == "fetch":
+        return await _inline_fetch_step(sm, step)
+    return {"error": f"Unsupported action: {action!r}"}
+
+
+def _apply_output_contract(contract: dict, envelope: dict) -> dict:
+    """Flatten ``extracted`` / ``steps`` into user-facing output keys.
+
+    The contract maps output-key → JSONPath-like expression, e.g.::
+
+        { "download_url": "$.extracted.download_url", "file": "$.steps.dl.saved_path" }
+
+    Only the ``$.a.b.c`` dot-path dialect is supported (KISS).
+    """
+    out: dict = {}
+    for key, expr in contract.items():
+        if not isinstance(expr, str) or not expr.startswith("$."):
+            continue
+        cursor: Any = envelope
+        for part in expr[2:].split("."):
+            if isinstance(cursor, dict):
+                cursor = cursor.get(part)
+            else:
+                cursor = None
+                break
+        out[key] = cursor
+    return out
+
+
+async def _flow_run(sm: Any, args: dict) -> dict:
+    """Execute a ``mode: ui`` preset: step-by-step UI actions with extract/fetch.
+
+    Contract:
+
+    - Input ``args`` is the already-rendered spec (via ``render_vars``) plus
+      optional ``_ziniao_secret_values`` carrying resolved secrets for masking.
+    - On first hard failure the runner stops (unless ``step.continue_on_error``),
+      writes screenshot / snapshot to ``exports/flow-errors/``, and returns
+      ``{ok: False, failures: [...]}``.
+    - On success returns ``{ok: True, steps, extracted, output, failures: []}``.
+    """
+    from nodriver import cdp  # pylint: disable=import-outside-toplevel
+
+    steps = args.get("steps") or []
+    navigate_url = args.get("navigate_url", "")
+    secrets = list(args.get("_ziniao_secret_values") or [])
+    on_error = dict(args.get("on_error") or {})
+    output_contract = dict(args.get("output_contract") or {})
+    flow_vars = dict(args.get("_ziniao_merged_vars") or {})
+
+    if not isinstance(steps, list) or not steps:
+        return {"error": "flow_run requires non-empty 'steps'."}
+
+    tab = sm.get_active_tab()
+    if navigate_url:
+        current = tab.target.url or ""
+        if not current.startswith(navigate_url.split("?")[0].split("#")[0]):
+            await tab.send(cdp.page.navigate(url=navigate_url))
+            await tab.sleep(2.0)
+
+    ctx: dict = {"steps": {}, "extracted": {}, "vars": flow_vars}
+    failures: list[dict] = []
+
+    for idx, raw_step in enumerate(steps):
+        sid = raw_step.get("id") or f"step_{idx}"
+        action = raw_step.get("action")
+        if action not in _FLOW_STEP_ACTIONS:
+            return {
+                "error": f"steps[{idx}] unsupported action {action!r}.",
+                "steps": ctx["steps"],
+                "extracted": ctx["extracted"],
+                "failures": failures,
+            }
+
+        rendered = _render_step_value(raw_step, ctx)
+
+        try:
+            result = await _dispatch_flow_step(sm, rendered, ctx)
+            if isinstance(result, dict) and result.get("error"):
+                raise RuntimeError(result["error"])
+            ctx["steps"][sid] = result
+        except Exception as exc:  # noqa: BLE001
+            err = _mask_secrets(str(exc), secrets)
+            _logger.warning("flow_run step %s failed: %s", sid, err)
+            artefacts = await _capture_failure_artifacts(
+                sm,
+                sid,
+                err,
+                on_error,
+                seq=idx,
+                secrets=secrets,
+            )
+            failures.append(
+                {"step_id": sid, "error": err, "action": action, **artefacts}
+            )
+            if raw_step.get("continue_on_error"):
+                ctx["steps"][sid] = {"error": err, **artefacts}
+                continue
+            return {
+                "ok": False,
+                "steps": ctx["steps"],
+                "extracted": ctx["extracted"],
+                "failures": failures,
+            }
+
+    envelope = {
+        "ok": True,
+        "steps": ctx["steps"],
+        "extracted": ctx["extracted"],
+        "failures": failures,
+    }
+    if output_contract:
+        envelope_with_vars = {**envelope, "vars": ctx["vars"]}
+        envelope["output"] = _apply_output_contract(output_contract, envelope_with_vars)
+    return envelope
 
 
 # ---------------------------------------------------------------------------
@@ -1440,6 +2385,7 @@ _COMMANDS: dict[str, Any] = {
     "click": _click,
     "fill": _fill,
     "type_text": _type_text,
+    "insert_text": _insert_text,
     "press_key": _press_key,
     "hover": _hover,
     "drag": _drag,
@@ -1503,4 +2449,6 @@ _COMMANDS: dict[str, Any] = {
     "emulate": _emulate,
     # Page fetch
     "page_fetch": _page_fetch,
+    # UI flow runner (mode: ui presets)
+    "flow_run": _flow_run,
 }
