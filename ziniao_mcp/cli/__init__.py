@@ -83,6 +83,33 @@ def run_command(command: str, args: dict | None = None) -> dict:
     return send_command(command, args or {}, _target_session(), timeout)
 
 
+def run_command_with_default_timeout(
+    command: str,
+    args: dict | None,
+    default_timeout: float,
+) -> dict:
+    """Like :func:`run_command`, but apply *default_timeout* when the user did
+    not pass ``--timeout``.
+
+    Precedence (highest → lowest):
+    1. CLI ``--timeout`` flag (``_GLOBAL_TIMEOUT_EXPLICIT``)
+    2. *default_timeout* (seconds; usually sourced from a preset's
+       ``default_timeout_ms`` field)
+    3. Daemon auto-default in :func:`send_command`
+
+    Used by long-running presets (e.g. Google Flow reference-image flow with
+    uploads) so the preset declares a timeout budget without forcing every
+    caller to pass ``--timeout``.
+    """
+    if _GLOBAL_TIMEOUT_EXPLICIT:
+        timeout = _GLOBAL_TIMEOUT
+    elif default_timeout and default_timeout > 0:
+        timeout = default_timeout
+    else:
+        timeout = 0
+    return send_command(command, args or {}, _target_session(), timeout)
+
+
 @app.callback()
 def _main_callback(
     store: Optional[str] = typer.Option(

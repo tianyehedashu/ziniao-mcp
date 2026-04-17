@@ -12,7 +12,7 @@ from typing import List, Optional
 
 import typer
 
-from .. import get_json_mode, run_command
+from .. import get_json_mode, run_command, run_command_with_default_timeout
 from ..output import print_result
 
 app = typer.Typer(
@@ -668,7 +668,15 @@ def _register_action(
             if auth.get("show_hint", True) and auth.get("hint"):
                 typer.echo(typer.style(f"  ℹ {auth['hint']}", dim=True))
 
+        preset_timeout_ms = spec.get("default_timeout_ms") or 0
+        try:
+            preset_timeout_s = float(preset_timeout_ms) / 1000.0
+        except (TypeError, ValueError):
+            preset_timeout_s = 0.0
+
         def _fetch_sync(s: dict) -> dict:
+            if preset_timeout_s > 0:
+                return run_command_with_default_timeout("page_fetch", s, preset_timeout_s)
             return run_command("page_fetch", s)
 
         preset_decode = spec.get("_ziniao_output_decode_encoding")
@@ -677,7 +685,10 @@ def _register_action(
             if fetch_all:
                 typer.echo("Error: --all is not supported for mode: ui presets.", err=True)
                 raise typer.Exit(1)
-            result = run_command("flow_run", spec)
+            if preset_timeout_s > 0:
+                result = run_command_with_default_timeout("flow_run", spec, preset_timeout_s)
+            else:
+                result = run_command("flow_run", spec)
         else:
             result = run_site_fetch(spec, plugin, _fetch_sync, fetch_all=fetch_all)
 
