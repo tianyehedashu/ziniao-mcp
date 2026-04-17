@@ -20,6 +20,28 @@ def _env_truthy(name: str) -> bool:
     return v in ("1", "true", "yes", "on")
 
 
+def _get_package_version() -> str:
+    """Return installed ziniao package version, or a sentinel if uninstalled."""
+    try:
+        from importlib.metadata import (  # pylint: disable=import-outside-toplevel
+            PackageNotFoundError,
+            version,
+        )
+    except ImportError:  # pragma: no cover — Py<3.8 已不在 requires-python
+        return "0.0.0.dev"
+    try:
+        return version("ziniao")
+    except PackageNotFoundError:
+        return "0.0.0.dev"
+
+
+def _version_callback(value: bool) -> None:
+    """Eager ``--version`` / ``-V``: 打印后立即退出，不走 daemon / 不解析其它参数。"""
+    if value:
+        typer.echo(f"ziniao {_get_package_version()}")
+        raise typer.Exit(0)
+
+
 # Paragraph breaks: Rich keeps separate paragraphs readable in root --help.
 _CLI_EPILOG = """
 
@@ -153,6 +175,15 @@ def _main_callback(
         "--timeout",
         help="Daemon timeout seconds (0=auto: 120s slow cmds else 60s). E.g. ziniao --timeout 180 navigate URL",
     ),
+    # 放在最后，eager=True 保证比其它选项先跑，--version / -V 不会再触发 daemon。
+    version: Optional[bool] = typer.Option(  # noqa: ARG001 — 由 callback 处理并 Exit
+        None,
+        "--version",
+        "-V",
+        callback=_version_callback,
+        is_eager=True,
+        help="Show ziniao version and exit.",
+    ),
 ) -> None:
     global _GLOBAL_STORE, _GLOBAL_SESSION, _GLOBAL_JSON, _GLOBAL_JSON_LEGACY  # noqa: PLW0603
     global _GLOBAL_TIMEOUT, _GLOBAL_TIMEOUT_EXPLICIT  # noqa: PLW0603
@@ -256,6 +287,14 @@ def _register_commands() -> None:
     lifecycle.register_top_level(app)
     get.register_top_level(app)
     scroll.register_top_level(app)
+
+    # ---------------------------------------------------------------------------
+    # ziniao version — print version (offline; not via daemon)
+    # ---------------------------------------------------------------------------
+    @app.command("version")
+    def version_cmd() -> None:
+        """Show ziniao version and exit (equivalent to ``ziniao --version``)."""
+        typer.echo(f"ziniao {_get_package_version()}")
 
     # ---------------------------------------------------------------------------
     # ziniao update — upgrade CLI via uv (not via daemon)

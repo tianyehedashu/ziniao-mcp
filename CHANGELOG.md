@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [0.2.54] - 2026-04-17
+
+### Added
+
+- **CLI 版本查询**：根命令支持 `ziniao --version` / `ziniao -V`（`is_eager`，不经 daemon）；子命令 `ziniao version` 等价输出
+
 ## [0.2.52] - 2026-04-17
 
 ### Fixed
