@@ -2458,6 +2458,10 @@ async def _dispatch_flow_step(sm: Any, step: dict, ctx: dict) -> dict:
         )
     if action == "snapshot":
         return await _snapshot(sm, {})
+    if action == "clear-overlay":
+        return await _clear_overlay(sm, {})
+    if action == "douyin-publish":
+        return await _douyin_publish(sm, step)
     if action == "eval":
         return await _eval(
             sm,
