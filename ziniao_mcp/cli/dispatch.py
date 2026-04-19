@@ -588,6 +588,145 @@ async def _upload(sm: Any, args: dict) -> dict:
     return {"ok": True, "uploaded": len(file_paths)}
 
 
+
+async def _upload_hijack(sm: Any, args: dict) -> dict:
+    """Upload files by hijacking Document.prototype.createElement.
+
+    Works for sites that create ``<input type="file">`` programmatically
+    and never append it to the DOM (e.g. Douyin, many React SPA uploaders).
+
+    Chrome 147+ removed ``Page.handleFileChooser``, and CDP's
+    ``DOM.setFileInputFiles`` requires the input to be in the DOM.
+    This command bypasses both limitations by injecting a JS hook that
+    intercepts ``createElement('input')``, hooks ``addEventListener('change')``
+    and ``click()``, then dispatches the file via ``DataTransfer`` and calls
+    the captured change handler directly.
+
+    Files are read on the daemon side (not sent over TCP), so there is
+    no size limit beyond Chrome's WebSocket frame budget.
+
+    Args (from CLI):
+        file_paths: list[str] — local file paths to upload
+        trigger: str (optional) — CSS selector to click to trigger upload;
+                if omitted, the caller clicks manually after hook install.
+        wait_ms: int (optional, default 30000) — max wait for hook to fire.
+    """
+    import asyncio
+    import base64 as _b64
+    from pathlib import Path as _Path
+
+    file_paths: list[str] = args.get("file_paths", [])
+    trigger: str = args.get("trigger", "")
+    wait_ms: int = int(args.get("wait_ms", 30000))
+
+    if not file_paths:
+        return {"error": "file_paths is required"}
+
+    # Read files as base64 on the daemon side (avoids TCP size limits)
+    file_entries: list[dict] = []
+    for fp in file_paths:
+        p = _Path(fp)
+        if not p.is_file():
+            return {"error": f"File not found: {fp}"}
+        raw = p.read_bytes()
+        if len(raw) > 50 * 1024 * 1024:
+            return {"error": f"File too large ({len(raw)} bytes, limit 50MB): {fp}"}
+        b64 = _b64.b64encode(raw).decode("ascii")
+        ext = p.suffix.lower()
+        mime = {
+            ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+            ".png": "image/png", ".gif": "image/gif", ".webp": "image/webp",
+            ".pdf": "application/pdf", ".mp4": "video/mp4",
+        }.get(ext, "application/octet-stream")
+        file_entries.append({"b64": b64, "name": p.name, "mime": mime})
+
+    tab = sm.get_active_tab()
+    store = sm.get_active_session()
+
+    # Build and inject the createElement hook
+    files_js = json.dumps(file_entries, ensure_ascii=False)
+    hook_script = """(() => {
+        const files = __FILES__;
+        window.__ziniao_upload_hijack = { fired: 0, done: false, error: null };
+        const origCE = Document.prototype.createElement;
+        Document.prototype.createElement = function(tag) {
+            const el = origCE.call(this, tag);
+            if (String(tag).toLowerCase() === 'input') {
+                const origAEL = el.addEventListener.bind(el);
+                el.addEventListener = function(type, fn, opts) {
+                    if (type === 'change') {
+                        const handler = fn;
+                        const origClick = el.click.bind(el);
+                        el.click = function() {
+                            const dt = new DataTransfer();
+                            for (const f of files) {
+                                const bin = atob(f.b64);
+                                const u = new Uint8Array(bin.length);
+                                for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+                                dt.items.add(new File([new Blob([u], {type: f.mime})], f.name, {type: f.mime}));
+                            }
+                            this.files = dt.files;
+                            window.__ziniao_upload_hijack.fired++;
+                            const inp = this;
+                            requestAnimationFrame(() => {
+                                try {
+                                    handler({target: inp, currentTarget: inp});
+                                    window.__ziniao_upload_hijack.done = true;
+                                } catch(e) {
+                                    window.__ziniao_upload_hijack.error = e.message;
+                                }
+                            });
+                        };
+                    }
+                    return origAEL(type, fn, opts);
+                };
+            }
+            return el;
+        };
+        return 'hook_installed';
+    })()""".replace("__FILES__", files_js)
+
+    try:
+        result = await _run_js_in_context(tab, store, hook_script, await_promise=False)
+    except RuntimeError as exc:
+        return {"error": f"hook install failed: {exc}"}
+
+    if result != "hook_installed":
+        return {"error": f"hook install returned unexpected: {result}"}
+
+    # If no trigger, return immediately — caller will click manually
+    if not trigger:
+        return {"ok": True, "hook": "installed", "files": len(file_entries)}
+
+    # Click the trigger element via _click dispatch (reuses all existing logic)
+    click_result = await _click(sm, {"selector": trigger})
+    if click_result.get("error"):
+        return click_result
+
+    # Poll for hook to fire
+    poll_js = "window.__ziniao_upload_hijack"
+    loop = asyncio.get_event_loop()
+    deadline = loop.time() + wait_ms / 1000
+    while loop.time() < deadline:
+        await asyncio.sleep(0.5)
+        try:
+            status = await _run_js_in_context(tab, store, poll_js, await_promise=False)
+        except RuntimeError:
+            continue
+        if not status:
+            continue
+        if status.get("done"):
+            return {"ok": True, "hijacked": status["fired"], "files": len(file_entries)}
+        if status.get("error"):
+            return {"ok": False, "hijacked": status["fired"], "error": status["error"]}
+
+    return {
+        "ok": False,
+        "hijacked": 0,
+        "error": f"timeout after {wait_ms}ms (hook never fired)",
+    }
+
+
 async def _handle_dialog(sm: Any, args: dict) -> dict:
     action = args.get("action", "accept")
     text = args.get("text", "")
@@ -2213,6 +2352,16 @@ async def _dispatch_flow_step(sm: Any, step: dict, ctx: dict) -> dict:
                 or ([step["file_path"]] if step.get("file_path") else []),
             },
         )
+    if action == "upload-hijack":
+        return await _upload_hijack(
+            sm,
+            {
+                "file_paths": step.get("file_paths")
+                or ([step["file_path"]] if step.get("file_path") else []),
+                "trigger": step.get("trigger", ""),
+                "wait_ms": step.get("wait_ms", 30000),
+            },
+        )
     if action == "screenshot":
         return await _screenshot(
             sm,
@@ -2390,6 +2539,7 @@ _COMMANDS: dict[str, Any] = {
     "hover": _hover,
     "drag": _drag,
     "upload": _upload,
+    "upload-hijack": _upload_hijack,
     "handle_dialog": _handle_dialog,
     "dblclick": _dblclick,
     "focus": _focus,

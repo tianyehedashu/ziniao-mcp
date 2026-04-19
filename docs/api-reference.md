@@ -278,6 +278,22 @@
 
 **返回**：`string` — 上传数量确认
 
+### `upload_hijack`
+
+通过拦截 `Document.prototype.createElement` 上传文件，适用于 input 不在 DOM 中的 SPA（如 React/Vue 动态创建的隐藏文件输入框）。Chrome 147+ 移除了 `Page.handleFileChooser`，此命令可绕过该限制。
+
+**参数**：
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `file_paths` | `list[str]` | 是 | 文件路径列表 |
+| `trigger` | `str` | 否 | CSS 选择器：点击后触发上传流程。省略则仅安装 hook，由调用方手动触发 |
+| `wait_ms` | `int` | 否 | 等待 hook 触发的最大毫秒数（默认 30000） |
+
+**返回**：`{ok, hijacked, files}` 或 `{error}`
+
+**注意**：文件在 daemon 端读取转 base64，通过 CDP WebSocket 注入 JS，不受 TCP 大小限制。
+
 ---
 
 ## 导航

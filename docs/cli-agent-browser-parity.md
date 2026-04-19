@@ -58,6 +58,7 @@
 | `hover` / `focus` / `check` / `uncheck` / `select` | `act …` | |
 | `dblclick` | `act dblclick` | |
 | `drag` / `upload` | `act drag` / `act upload` | |
+| `upload-hijack` | `upload-hijack <files...> [--trigger SEL]` | SPA 隐藏 input 上传 |
 | `download <sel> <path>` | **无** | agent-browser 专用 |
 | `dialog`（handle） | `act dialog` | |
 
@@ -145,7 +146,7 @@
 - **Chrome**：`launch_chrome`、`connect_chrome`、`list_chrome`、`close_chrome`
 - **会话**：`session_list`、`session_switch`、`session_info`
 - **导航**：`navigate`、`tab`、`frame`、`wait`、`back`、`forward`、`reload`
-- **交互**：`click`、`fill`、`type_text`、`press_key`、`hover`、`drag`、`upload`、`handle_dialog`、`dblclick`、`focus`、`select_option`、`check`、`uncheck`、`keydown`、`keyup`
+- **交互**：`click`、`fill`、`type_text`、`press_key`、`hover`、`drag`、`upload`、`upload-hijack`、`handle_dialog`、`dblclick`、`focus`、`select_option`、`check`、`uncheck`、`keydown`、`keyup`
 - **信息**：`snapshot`、`snapshot_enhanced`、`screenshot`、`eval`、`console`、`network`
 - **查询**：`get_text`、`get_html`、`get_value`、`get_attr`、`get_title`、`get_url`、`get_count`
 - **查找**：`find_nth`、`find_text`、`find_role`

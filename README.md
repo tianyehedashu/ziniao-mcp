@@ -206,6 +206,7 @@ ziniao type <text> [-s <selector>]
 ziniao press <key>                        # Enter / Tab / Ctrl+a
 ziniao act drag <src> <dst>
 ziniao act upload <selector> <file...>
+ziniao upload-hijack <file...> [--trigger SEL]  # SPA 隐藏 input 上传
 ziniao act focus / select / check / uncheck / dialog / keydown / keyup
 ```
 
@@ -294,7 +295,7 @@ ziniao --json --content-boundaries --max-output 8000 info snapshot
 | 店铺 | `start_client` / `stop_client` / `list_stores` / `list_open_stores` / `open_store` / `connect_store` / `close_store` |
 | Chrome / 会话 | `launch_chrome` / `connect_chrome` / `list_chrome` / `close_chrome` / `browser_session` |
 | 导航 | `navigate_page` / `list_pages` / `select_page` / `new_page` / `close_page` / `wait_for` |
-| 输入 | `click` / `fill` / `fill_form` / `type_text` / `press_key` / `hover` / `drag` / `handle_dialog` / `upload_file` |
+| 输入 | `click` / `fill` / `fill_form` / `type_text` / `press_key` / `hover` / `drag` / `handle_dialog` / `upload_file` / `upload_hijack` |
 | 调试 | `evaluate_script` / `take_screenshot` / `take_snapshot` / `list_console_messages` / `get_console_message` |
 | 网络 / 仿真 / 录制 | `list_network_requests` / `get_network_request` / `emulate` / `resize_page` / `recorder` |
 
