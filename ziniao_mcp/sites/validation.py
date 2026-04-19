@@ -15,7 +15,7 @@ from typing import Any
 
 UI_ACTION_WHITELIST = frozenset({
     "navigate", "wait", "click", "fill", "type_text", "insert_text",
-    "press_key", "hover", "dblclick", "upload", "screenshot", "snapshot",
+    "press_key", "hover", "dblclick", "upload", "upload-hijack", "screenshot", "snapshot",
     "eval", "extract", "fetch",
 })
 

@@ -90,6 +90,20 @@ def upload(
     print_result(result, json_mode=get_json_mode())
 
 
+@app.command("upload-hijack")
+def upload_hijack(
+    files: List[str] = typer.Argument(..., help="File paths to upload."),
+    trigger: Optional[str] = typer.Option(None, "--trigger", "-t", help="CSS selector to click to trigger the upload dialog."),
+    wait_ms: int = typer.Option(30000, "--wait-ms", help="Max ms to wait for hook to fire."),
+) -> None:
+    """Upload by hijacking createElement (works with hidden inputs / Chrome 147+)."""
+    result = run_command(
+        "upload-hijack",
+        {"file_paths": files, "trigger": trigger or "", "wait_ms": wait_ms},
+    )
+    print_result(result, json_mode=get_json_mode())
+
+
 @app.command()
 def dialog(
     action: str = typer.Argument("accept", help="Dialog action: accept or dismiss."),
@@ -213,6 +227,27 @@ def register_top_level(parent: typer.Typer) -> None:
     ) -> None:
         """upload <selector> <files...> — Upload files. Same as ``ziniao act upload``."""
         upload(selector, files)
+
+    @parent.command("upload-hijack")
+    def _upload_hijack(
+        files: List[str] = typer.Argument(..., help="File paths to upload."),
+        trigger: Optional[str] = typer.Option(None, "--trigger", "-t", help="CSS selector to click to trigger the upload dialog. Omit to install hook only."),
+        wait_ms: int = typer.Option(30000, "--wait-ms", help="Max milliseconds to wait for the hook to fire after clicking trigger."),
+    ) -> None:
+        """upload-hijack <files...> [--trigger SEL] — Upload by hijacking createElement (works with hidden inputs / Chrome 147+).
+
+        Bypasses CDP file-chooser limitations by injecting a JS hook into
+        Document.prototype.createElement.  The hook intercepts programmatic
+        input creation, hooks addEventListener('change') and click(), then
+        dispatches files via DataTransfer.
+
+        Files are read on the daemon side — no TCP size limit.
+        """
+        result = run_command(
+            "upload-hijack",
+            {"file_paths": files, "trigger": trigger or "", "wait_ms": wait_ms},
+        )
+        print_result(result, json_mode=get_json_mode())
 
     @parent.command("dialog")
     def _dialog(

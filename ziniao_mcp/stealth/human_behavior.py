@@ -9,7 +9,6 @@ from __future__ import annotations
 import asyncio
 import math
 import random
-import weakref
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional, Union
 
@@ -20,12 +19,8 @@ if TYPE_CHECKING:
     from ..iframe import IFrameElement
 
 
-_MOUSE_POS_CACHE: "weakref.WeakKeyDictionary[Tab, tuple[float, float]]" = (
-    weakref.WeakKeyDictionary()
-)
-"""Per-tab last-known mouse position. Uses weak references so closed tabs are
-garbage-collected instead of leaking entries; avoids polluting ``Tab``'s
-attribute namespace (which belongs to the nodriver library)."""
+_MOUSE_POS_CACHE: dict[int, tuple[float, float]] = {}
+"""Per-tab last-known mouse position (keyed by ``id(tab)``)."""
 
 
 @dataclass
@@ -112,7 +107,7 @@ async def _move_mouse_humanlike(
     from nodriver import cdp  # pylint: disable=import-outside-toplevel
 
     c = cfg or _DEFAULT_CFG
-    start = _MOUSE_POS_CACHE.get(tab, (0, 0))
+    start = _MOUSE_POS_CACHE.get(id(tab), (0, 0))
     end = (target_x, target_y)
     points = _bezier_curve(start, end, c.mouse_steps)
 
@@ -121,7 +116,7 @@ async def _move_mouse_humanlike(
         await asyncio.sleep(random.uniform(0.005, 0.02))
 
     try:
-        _MOUSE_POS_CACHE[tab] = (target_x, target_y)
+        _MOUSE_POS_CACHE[id(tab)] = (target_x, target_y)
     except TypeError:
         # Defensive: some mocks/tabs may not support weak references.
         # Losing the cache just resets the next move's start to (0,0),
