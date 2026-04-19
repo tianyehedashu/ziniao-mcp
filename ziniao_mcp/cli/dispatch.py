@@ -382,6 +382,14 @@ async def _click(sm: Any, args: dict) -> dict:
         return {"error": "selector is required"}
     tab = sm.get_active_tab()
     store = sm.get_active_session()
+
+    # Auto-clear overlays before clicking (unless disabled)
+    if not args.get("no_auto_clear"):
+        try:
+            await _clear_overlay(sm, {})
+        except Exception:
+            pass
+
     elem = await find_element(tab, selector, store, timeout=10)
     if not elem:
         return {"error": f"Element not found: {selector}"}
@@ -589,6 +597,44 @@ async def _upload(sm: Any, args: dict) -> dict:
 
 
 
+async def _clear_overlay(sm: Any, args: dict) -> dict:
+    """Remove transparent overlay divs that block user interaction.
+
+    Common anti-automation pattern: position:fixed div with high z-index
+    covering the viewport, with no visible content (empty or transparent).
+    Works across React, Vue, Angular — purely DOM-based, framework agnostic.
+    """
+    js = """(() => {
+        let removed = 0;
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        document.querySelectorAll('div').forEach(el => {
+            try {
+                const s = getComputedStyle(el);
+                if (s.position !== 'fixed') return;
+                const zI = parseInt(s.zIndex) || 0;
+                if (zI < 1000) return;
+                const w = el.offsetWidth;
+                const h = el.offsetHeight;
+                if (w < vw * 0.5 || h < vh * 0.5) return;
+                const textLen = (el.innerText || '').trim().length;
+                if (textLen > 20) return;
+                if (el.children.length > 3) return;
+                el.remove();
+                removed++;
+            } catch(e) {}
+        });
+        return removed;
+    })()"""
+    tab = sm.get_active_tab()
+    store = sm.get_active_session()
+    try:
+        result = await _run_js_in_context(tab, store, js, await_promise=False)
+        return {"ok": True, "removed": result or 0}
+    except RuntimeError as exc:
+        return {"ok": False, "error": str(exc)}
+
+
 async def _upload_hijack(sm: Any, args: dict) -> dict:
     """Upload files by hijacking Document.prototype.createElement.
 
@@ -609,11 +655,29 @@ async def _upload_hijack(sm: Any, args: dict) -> dict:
         file_paths: list[str] — local file paths to upload
         trigger: str (optional) — CSS selector to click to trigger upload;
                 if omitted, the caller clicks manually after hook install.
+        object_id: str (optional) — CDP RemoteObject id of an existing <input type=file>;
+                if provided, skips hook injection and trigger click, directly sets files
+                via CDP DOM.setFileInputFiles. Useful when input is captured via
+                createElement hook separately.
         wait_ms: int (optional, default 30000) — max wait for hook to fire.
     """
     import asyncio
     import base64 as _b64
     from pathlib import Path as _Path
+
+    # Fast path: direct CDP setFileInputFiles via objectId (no hook needed)
+    object_id: str = args.get("object_id", "")
+    if object_id:
+        file_paths = args.get("file_paths", [])
+        if not file_paths:
+            return {"error": "file_paths is required with object_id"}
+        tab = sm.get_active_tab()
+        try:
+            from nodriver import cdp  # pylint: disable=import-outside-toplevel
+            await tab.send(cdp.dom.set_file_input_files(file_paths, object_id=object_id))
+        except Exception as exc:
+            return {"ok": False, "error": f"DOM.setFileInputFiles failed: {exc}"}
+        return {"ok": True, "method": "direct_cdp", "files": len(file_paths)}
 
     file_paths: list[str] = args.get("file_paths", [])
     trigger: str = args.get("trigger", "")
@@ -698,15 +762,23 @@ async def _upload_hijack(sm: Any, args: dict) -> dict:
     if not trigger:
         return {"ok": True, "hook": "installed", "files": len(file_entries)}
 
+    # Auto-clear overlays before clicking trigger (common anti-automation pattern)
+    if not args.get("no_auto_clear"):
+        try:
+            await _clear_overlay(sm, {})
+        except Exception:
+            pass  # best-effort, don't block upload
+
     # Click the trigger element via _click dispatch (reuses all existing logic)
     click_result = await _click(sm, {"selector": trigger})
     if click_result.get("error"):
         return click_result
 
-    # Poll for hook to fire
+    # Poll for hook to fire — but give fast feedback if nothing happens
     poll_js = "window.__ziniao_upload_hijack"
     loop = asyncio.get_event_loop()
     deadline = loop.time() + wait_ms / 1000
+    early_deadline = loop.time() + 3.0  # check after 3s
     while loop.time() < deadline:
         await asyncio.sleep(0.5)
         try:
@@ -719,11 +791,25 @@ async def _upload_hijack(sm: Any, args: dict) -> dict:
             return {"ok": True, "hijacked": status["fired"], "files": len(file_entries)}
         if status.get("error"):
             return {"ok": False, "hijacked": status["fired"], "error": status["error"]}
+        # Early warning if hook still not fired after 3s
+        if not status.get("fired") and loop.time() >= early_deadline and early_deadline > 0:
+            early_deadline = 0  # only warn once
+            # Try clearing overlays again
+            if not args.get("no_auto_clear"):
+                try:
+                    r = await _clear_overlay(sm, {})
+                    # Retry click after clearing
+                    click_result2 = await _click(sm, {"selector": trigger})
+                    if click_result2.get("error"):
+                        return {"ok": False, "hijacked": 0,
+                                "error": "trigger click blocked after overlay clear, and hook never fired (3s)"}
+                except Exception:
+                    pass
 
     return {
         "ok": False,
         "hijacked": 0,
-        "error": f"timeout after {wait_ms}ms (hook never fired)",
+        "error": f"timeout after {wait_ms}ms — hook never fired (trigger click may be blocked by overlay; try clear-overlay first)",
     }
 
 
@@ -2540,6 +2626,7 @@ _COMMANDS: dict[str, Any] = {
     "drag": _drag,
     "upload": _upload,
     "upload-hijack": _upload_hijack,
+    "clear-overlay": _clear_overlay,
     "handle_dialog": _handle_dialog,
     "dblclick": _dblclick,
     "focus": _focus,

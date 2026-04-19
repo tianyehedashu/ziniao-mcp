@@ -94,13 +94,22 @@ def upload(
 def upload_hijack(
     files: List[str] = typer.Argument(..., help="File paths to upload."),
     trigger: Optional[str] = typer.Option(None, "--trigger", "-t", help="CSS selector to click to trigger the upload dialog."),
+    object_id: Optional[str] = typer.Option(None, "--object-id", help="CDP RemoteObject id of existing file input (skips hook+click)."),
     wait_ms: int = typer.Option(30000, "--wait-ms", help="Max ms to wait for hook to fire."),
+    no_auto_clear: bool = typer.Option(False, "--no-auto-clear", help="Skip automatic overlay removal before trigger click."),
 ) -> None:
     """Upload by hijacking createElement (works with hidden inputs / Chrome 147+)."""
     result = run_command(
         "upload-hijack",
-        {"file_paths": files, "trigger": trigger or "", "wait_ms": wait_ms},
+        {"file_paths": files, "trigger": trigger or "", "object_id": object_id or "", "wait_ms": wait_ms, "no_auto_clear": no_auto_clear},
     )
+    print_result(result, json_mode=get_json_mode())
+
+
+@app.command("clear-overlay")
+def clear_overlay() -> None:
+    """Remove transparent overlay divs that block clicks (anti-automation pattern)."""
+    result = run_command("clear-overlay", {})
     print_result(result, json_mode=get_json_mode())
 
 
@@ -232,7 +241,9 @@ def register_top_level(parent: typer.Typer) -> None:
     def _upload_hijack(
         files: List[str] = typer.Argument(..., help="File paths to upload."),
         trigger: Optional[str] = typer.Option(None, "--trigger", "-t", help="CSS selector to click to trigger the upload dialog. Omit to install hook only."),
+        object_id: Optional[str] = typer.Option(None, "--object-id", help="CDP RemoteObject id of existing file input (skips hook+click)."),
         wait_ms: int = typer.Option(30000, "--wait-ms", help="Max milliseconds to wait for the hook to fire after clicking trigger."),
+        no_auto_clear: bool = typer.Option(False, "--no-auto-clear", help="Skip automatic overlay removal before trigger click."),
     ) -> None:
         """upload-hijack <files...> [--trigger SEL] — Upload by hijacking createElement (works with hidden inputs / Chrome 147+).
 
@@ -245,8 +256,14 @@ def register_top_level(parent: typer.Typer) -> None:
         """
         result = run_command(
             "upload-hijack",
-            {"file_paths": files, "trigger": trigger or "", "wait_ms": wait_ms},
+            {"file_paths": files, "trigger": trigger or "", "object_id": object_id or "", "wait_ms": wait_ms, "no_auto_clear": no_auto_clear},
         )
+        print_result(result, json_mode=get_json_mode())
+
+    @parent.command("clear-overlay")
+    def _clear_overlay() -> None:
+        """clear-overlay — Remove transparent overlay divs that block clicks (anti-automation pattern)."""
+        result = run_command("clear-overlay", {})
         print_result(result, json_mode=get_json_mode())
 
     @parent.command("dialog")

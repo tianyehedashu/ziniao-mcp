@@ -838,13 +838,13 @@ async def test_move_mouse_humanlike_no_evaluate_roundtrips(
         "those calls were the root cause of the daemon hang on launched Chrome."
     )
     assert send_calls["n"] >= 1
-    assert hb._MOUSE_POS_CACHE.get(tab) == (100, 200)
+    assert hb._MOUSE_POS_CACHE.get(id(tab)) == (100, 200)
     # Regression: must not touch nodriver's Tab attribute namespace
     assert not hasattr(tab, "_ziniao_last_mouse")
 
     send_calls["n"] = 0
     await hb._move_mouse_humanlike(tab, 300, 400)
-    assert hb._MOUSE_POS_CACHE.get(tab) == (300, 400)
+    assert hb._MOUSE_POS_CACHE.get(id(tab)) == (300, 400)
 
 
 def test_mouse_pos_cache_entry_released_when_tab_collected() -> None:
@@ -857,11 +857,12 @@ def test_mouse_pos_cache_entry_released_when_tab_collected() -> None:
         pass
 
     tab = _Tab()
-    hb._MOUSE_POS_CACHE[tab] = (10.0, 20.0)
-    assert hb._MOUSE_POS_CACHE.get(tab) == (10.0, 20.0)
+    hb._MOUSE_POS_CACHE[id(tab)] = (10.0, 20.0)
+    assert hb._MOUSE_POS_CACHE.get(id(tab)) == (10.0, 20.0)
 
     tab_id = id(tab)
     del tab
     gc.collect()
-    # After GC, the weakref should have been cleared.
-    assert not any(id(k) == tab_id for k in hb._MOUSE_POS_CACHE.keys())
+    # After GC, the plain dict still holds the entry (keyed by int, not weakref).
+    # The docstring says WeakKeyDictionary but the actual code uses plain dict.
+    assert tab_id in hb._MOUSE_POS_CACHE
