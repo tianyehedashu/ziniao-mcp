@@ -16,7 +16,7 @@ from typing import Any
 UI_ACTION_WHITELIST = frozenset({
     "navigate", "wait", "click", "fill", "type_text", "insert_text",
     "press_key", "hover", "dblclick", "upload", "upload-hijack", "screenshot", "snapshot",
-    "eval", "extract", "fetch", "clear-overlay",
+    "eval", "extract", "fetch", "clear-overlay", "upload-react", "inject-file", "inject-vars",
 })
 
 _VALID_INJECT_SOURCES = frozenset({"cookie", "localStorage", "sessionStorage", "eval"})

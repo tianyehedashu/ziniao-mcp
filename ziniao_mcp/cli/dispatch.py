@@ -791,26 +791,149 @@ async def _upload_hijack(sm: Any, args: dict) -> dict:
             return {"ok": True, "hijacked": status["fired"], "files": len(file_entries)}
         if status.get("error"):
             return {"ok": False, "hijacked": status["fired"], "error": status["error"]}
-        # Early warning if hook still not fired after 3s
+        # Early fallback if hook still not fired after 3s:
+        # Use createElement hook + React onClick + CDP setFileInputFiles
         if not status.get("fired") and loop.time() >= early_deadline and early_deadline > 0:
-            early_deadline = 0  # only warn once
-            # Try clearing overlays again
+            early_deadline = 0  # only attempt once
             if not args.get("no_auto_clear"):
                 try:
-                    r = await _clear_overlay(sm, {})
-                    # Retry click after clearing
-                    click_result2 = await _click(sm, {"selector": trigger})
-                    if click_result2.get("error"):
-                        return {"ok": False, "hijacked": 0,
-                                "error": "trigger click blocked after overlay clear, and hook never fired (3s)"}
+                    await _clear_overlay(sm, {})
                 except Exception:
                     pass
+            try:
+                # Inject createElement hook + click React onClick
+                inject_js = "(() => { window.__dp_inputs = []; const origCE = Document.prototype.createElement; Document.prototype.createElement = function(tag) { const el = origCE.call(this, tag); if (String(tag).toLowerCase() === 'input') window.__dp_inputs.push(el); return el; }; const a = document.querySelector(" + json.dumps(trigger) + "); if (!a) return 'not_found'; a.scrollIntoView({block:'center'}); const pk = Object.keys(a).find(k => k.startsWith('__reactProps')); if (pk && a[pk]?.onClick) { a[pk].onClick(); return 'created:' + window.__dp_inputs.length; } return 'no_react'; })()"
+                inject_result = await _run_js_in_context(tab, store, inject_js, await_promise=False)
+                _logger.info("[upload-hijack] react fallback inject: %s", inject_result)
+                if isinstance(inject_result, str) and "created:1" in inject_result:
+                    # Got the input — use CDP to set files
+                    await asyncio.sleep(0.5)
+                    from nodriver import cdp as _cdp  # pylint: disable=import-outside-toplevel
+                    obj_resp = await tab.send(_cdp.runtime.evaluate(
+                        expression="window.__dp_inputs[0]",
+                        return_by_value=False,
+                    ))
+                    if (obj_resp and hasattr(obj_resp, "result")
+                            and obj_resp.result and obj_resp.result.object_id):
+                        await tab.send(_cdp.dom.set_file_input_files(
+                            [fp for fp in file_paths],
+                            object_id=obj_resp.result.object_id,
+                        ))
+                        _logger.info("[upload-hijack] CDP setFileInputFiles OK")
+                        return {"ok": True, "method": "react_fallback_cdp", "files": len(file_entries)}
+            except Exception as exc:
+                _logger.warning("[upload-hijack] react fallback failed: %s", exc)
 
     return {
         "ok": False,
         "hijacked": 0,
         "error": f"timeout after {wait_ms}ms — hook never fired (trigger click may be blocked by overlay; try clear-overlay first)",
     }
+
+
+async def _upload_react(sm: Any, args: dict) -> dict:
+    """Upload files via CDP file chooser interception + real mouse click.
+
+    1. Enable Page.setInterceptFileChooserDialog
+    2. Register FileChooserOpened handler
+    3. Get trigger element coordinates via JS
+    4. Simulate real mouse click via CDP Input.dispatchMouseEvent
+    5. React onClick fires, creates input, calls input.click()
+    6. Chrome emits FileChooserOpened (intercepted)
+    7. Respond with file paths via Page.handleFileChooser
+    """
+    import asyncio
+    from pathlib import Path as _Path
+    from nodriver import cdp as _cdp
+
+    file_paths: list[str] = args.get("file_paths", [])
+    trigger: str = args.get("trigger", "")
+
+    if not file_paths:
+        return {"error": "file_paths is required"}
+    if not trigger:
+        return {"error": "trigger is required"}
+
+    for fp in file_paths:
+        if not _Path(fp).is_file():
+            return {"error": f"File not found: {fp}"}
+
+    tab = sm.get_active_tab()
+    store = sm.get_active_session()
+
+    # Step 1: Enable file chooser interception
+    await tab.send(_cdp.page.set_intercept_file_chooser_dialog(enabled=True))
+    _logger.info("[upload-react] file chooser interception enabled")
+
+    # Step 2: Register FileChooserOpened handler
+    fc_future: asyncio.Future = asyncio.get_event_loop().create_future()
+
+    def _on_fc(event: _cdp.page.FileChooserOpened):
+        if not fc_future.done():
+            fc_future.set_result(event)
+
+    tab.add_handler(_cdp.page.FileChooserOpened, _on_fc)
+
+    try:
+        # Step 3: Get trigger element and click via nodriver (real user gesture)
+        scroll_script = (
+            '(function() {'
+            + '  var a = document.querySelector(' + json.dumps(trigger) + ');'
+            + '  if (!a) return "not_found";'
+            + '  a.scrollIntoView({ block: "center" });'
+            + '})();'
+        )
+        scroll_result = await _run_js_in_context(tab, store, scroll_script, await_promise=False)
+        if scroll_result == "not_found":
+            # Page might be in stale state; try reloading
+            _logger.warning("[upload-react] trigger not found, reloading page")
+            current_url = await _run_js_in_context(tab, store, "location.href")
+            await tab.send(_cdp.page.navigate(url=current_url if current_url else navigate_url))
+            await asyncio.sleep(5)
+            # Retry scroll
+            scroll_result = await _run_js_in_context(tab, store, scroll_script, await_promise=False)
+            if scroll_result == "not_found":
+                return {"ok": False, "error": f"trigger element not found after reload: {trigger}"}
+        await asyncio.sleep(0.3)
+
+        # Get element via nodriver's select
+        elem = await tab.select(trigger, timeout=5)
+        if not elem:
+            return {"ok": False, "error": f"element not found: {trigger}"}
+
+        _logger.info("[upload-react] clicking element: %s", trigger)
+
+        # Step 4: Click the element (triggers React onClick -> input.click() -> file chooser)
+        await elem.click()
+        _logger.info("[upload-react] elem.click() done")
+
+        # Step 5: Wait for FileChooserOpened
+        try:
+            event = await asyncio.wait_for(fc_future, timeout=15.0)
+        except asyncio.TimeoutError:
+            return {"ok": False, "error": "fileChooser timeout"}
+
+        # Step 6: Handle file chooser
+        # Step 6: Set files on the input via DOM.setFileInputFiles using backend_node_id
+        await tab.send(_cdp.dom.set_file_input_files(
+            backend_node_id=event.backend_node_id,
+            files=file_paths,
+        ))
+        _logger.info("[upload-react] set_file_input_files OK, backend_node_id=%s, %d files",
+                     event.backend_node_id, len(file_paths))
+        _logger.info("[upload-react] handleFileChooser OK, %d files", len(file_paths))
+
+        # Wait for React to process the upload
+        await asyncio.sleep(2.0)
+
+        return {"ok": True, "method": "cdp_file_chooser", "files": len(file_paths)}
+
+    finally:
+        tab.remove_handler(_cdp.page.FileChooserOpened, _on_fc)
+        try:
+            await tab.send(_cdp.page.set_intercept_file_chooser_dialog(enabled=False))
+        except Exception:
+            pass
 
 
 async def _handle_dialog(sm: Any, args: dict) -> dict:
@@ -2415,7 +2538,19 @@ async def _dispatch_flow_step(sm: Any, step: dict, ctx: dict) -> dict:
                 "text": step.get("text", step.get("value", "")),
             },
         )
-    if action == "insert_text":
+    if action == "inject-file":
+        _path = step.get("path", "")
+        _var = step.get("var", "__injected_file")
+        from pathlib import Path as _P2  # pylint: disable=import-outside-toplevel
+        if not _P2(_path).is_file():
+            return {"error": f"File not found: {_path}"}
+        _content = _P2(_path).read_text(encoding="utf-8", errors="replace")
+        _tab = sm.get_active_tab()
+        _j = json.dumps(_content, ensure_ascii=False)
+        await _safe_eval_js(_tab, f"window['{_var}'] = {_j};")
+        return {"ok": True, "size": len(_content)}
+
+    if action == "insert-text":
         return await _insert_text(
             sm,
             {
@@ -2448,6 +2583,15 @@ async def _dispatch_flow_step(sm: Any, step: dict, ctx: dict) -> dict:
                 "wait_ms": step.get("wait_ms", 30000),
             },
         )
+    if action == "upload-react":
+        return await _upload_react(
+            sm,
+            {
+                "file_paths": step.get("file_paths")
+                or ([step["file_path"]] if step.get("file_path") else []),
+                "trigger": step.get("trigger", ""),
+            },
+        )
     if action == "screenshot":
         return await _screenshot(
             sm,
@@ -2470,6 +2614,19 @@ async def _dispatch_flow_step(sm: Any, step: dict, ctx: dict) -> dict:
                 "await_promise": step.get("await_promise", False),
             },
         )
+    if action == "inject-vars":
+        _tab = sm.get_active_tab()
+        _fvars = ctx.get("vars", {})
+        _sv = {k: v for k, v in _fvars.items() if isinstance(v, str) and len(str(v)) < 50000}
+        if _sv:
+            _vjs = json.dumps(_sv, ensure_ascii=False)
+            await _safe_eval_js(_tab, f"window.__flow_vars = {_vjs}")
+        for _k2, _v2 in _fvars.items():
+            if isinstance(_v2, str) and len(str(_v2)) >= 50000:
+                _j2 = json.dumps(_v2, ensure_ascii=False)
+                _js2 = "window.__flow_vars[" + json.dumps(_k2) + "] = " + _j2
+                await _safe_eval_js(_tab, _js2)
+        return {"ok": True, "injected": list(_fvars.keys())}
     if action == "extract":
         result = await _extract_step(sm, step)
         if result.get("ok") and "as" in step:
@@ -2525,26 +2682,56 @@ async def _flow_run(sm: Any, args: dict) -> dict:
     output_contract = dict(args.get("output_contract") or {})
     flow_vars = dict(args.get("_ziniao_merged_vars") or {})
 
+    # Resolve @file: values in flow_vars (skip large values >1MB)
+    from pathlib import Path as _P  # pylint: disable=import-outside-toplevel
+    for _k, _v in list(flow_vars.items()):
+        if isinstance(_v, str) and _v.startswith("@file:"):
+            _fp = _v[6:]
+            if _P(_fp).is_file():
+                _content = _P(_fp).read_text(encoding="utf-8", errors="replace")
+                if len(_content) > 1_000_000:
+                    # Too large for flow_vars injection; skip and store separately
+                    flow_vars.pop(_k, None)
+                    if not hasattr(sm, "_large_vars"):
+                        sm._large_vars = {}
+                    sm._large_vars[_k] = _content
+                else:
+                    flow_vars[_k] = _content
+
     if not isinstance(steps, list) or not steps:
         return {"error": "flow_run requires non-empty 'steps'."}
 
     tab = sm.get_active_tab()
     if navigate_url:
         current = tab.target.url or ""
-        if not current.startswith(navigate_url.split("?")[0].split("#")[0]):
+        base = navigate_url.split("?")[0].split("#")[0]
+        if not current.startswith(base):
             await tab.send(cdp.page.navigate(url=navigate_url))
             await tab.sleep(2.0)
+    # Inject flow vars AFTER navigate (so they survive page load)
 
     ctx: dict = {"steps": {}, "extracted": {}, "vars": flow_vars}
     failures: list[dict] = []
 
     # Inject flow vars into page so eval steps can access via window.__flow_vars
+    # Large values (>50KB) are injected individually via file to avoid CDP eval limits
     if flow_vars:
-        vars_js = json.dumps(flow_vars, ensure_ascii=False)
-        try:
-            await _safe_eval_js(tab, f"window.__flow_vars = {vars_js}")
-        except Exception:
-            pass
+        small_vars = {k: v for k, v in flow_vars.items() if isinstance(v, str) and len(str(v)) < 50000}
+        if small_vars:
+            vars_js = json.dumps(small_vars, ensure_ascii=False)
+            try:
+                await _safe_eval_js(tab, f"window.__flow_vars = {vars_js}")
+            except Exception:
+                pass
+        # Inject large vars individually
+        for _k, _v in flow_vars.items():
+            if isinstance(_v, str) and len(str(_v)) >= 50000:
+                _j = json.dumps(_v, ensure_ascii=False)
+                _js = "window.__flow_vars[" + json.dumps(_k) + "] = " + _j
+                try:
+                    await _safe_eval_js(tab, _js)
+                except Exception:
+                    pass
 
     for idx, raw_step in enumerate(steps):
         sid = raw_step.get("id") or f"step_{idx}"
