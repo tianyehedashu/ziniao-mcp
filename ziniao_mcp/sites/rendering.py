@@ -5,17 +5,26 @@
 fields, coercing each value to the type declared in the preset's ``vars``
 block.  Secret / file / file_list resolution is delegated to
 :mod:`ziniao_mcp.sites.variables`.
+
+Template syntax:
+
+- ``{{varname}}`` — resolved from preset vars (existing behaviour).
+- ``{{vars.X}}`` — treated as ``{{X}}`` (unified with flow runner syntax).
+- ``{{steps.X.value}}``, ``{{extracted.Y}}`` — pass through unchanged
+  (handled at execution time by the flow runner).
 """
 
 from __future__ import annotations
 
 import json
 import re
+from pathlib import Path
 from typing import Any
 
 from .variables import _read_file_as_base64, _read_file_list_as_refs, _resolve_secret
 
-_VAR_RE = re.compile(r"\{\{(\w+)\}\}")
+# Matches {{word}}, {{vars.word}}, {{steps.x.value}}, {{extracted.y}}, etc.
+_VAR_RE = re.compile(r"\{\{(\w+(?:\.\w+)*)\}\}")
 
 
 def render_vars(template: dict, var_values: dict[str, str]) -> dict:
@@ -25,6 +34,11 @@ def render_vars(template: dict, var_values: dict[str, str]) -> dict:
     - When ``"{{var}}"`` is the sole content of a JSON value and the var
       definition declares ``type: int/float/bool/file/file_list/secret``,
       the value is coerced via :func:`_coerce`.
+    - ``@file:path`` values in var_values are resolved to file text content
+      (centralised here, previously duplicated in flow_run).
+    - ``{{vars.X}}`` syntax is treated as ``{{X}}`` for compatibility with
+      the flow runner's token resolution.
+    - ``{{steps.X.value}}`` / ``{{extracted.Y}}`` pass through unchanged.
     - Resolved ``secret`` values are collected into
       ``result['_ziniao_secret_values']`` so the UI flow executor can mask
       them in logs / failure artefacts.  ``steps`` (used by ``mode: ui``)
@@ -51,26 +65,62 @@ def render_vars(template: dict, var_values: dict[str, str]) -> dict:
             return resolved_cache[var_name]
         vdef = dict(var_defs.get(var_name) or {})
         vdef.setdefault("_name", var_name)
-        coerced = _coerce(merged.get(var_name, ""), vdef)
+        raw_val = merged.get(var_name, "")
+
+        # Centralised @file: handling: read file text content
+        if isinstance(raw_val, str) and raw_val.startswith("@file:"):
+            fp = raw_val[6:]
+            if Path(fp).is_file():
+                raw_val = Path(fp).read_text(encoding="utf-8", errors="replace")
+
+        coerced = _coerce(raw_val, vdef)
         resolved_cache[var_name] = coerced
         if vdef.get("type") == "secret" and isinstance(coerced, str) and coerced:
             secret_values.append(coerced)
         return coerced
 
+    def _resolve_token(expr: str) -> Any | None:
+        """Resolve a template token.
+
+        - ``{{X}}`` or ``{{vars.X}}`` → look up var ``X``.
+        - ``{{steps.X.value}}`` / ``{{extracted.Y}}`` → return None (pass through).
+        """
+        parts = expr.split(".")
+        head = parts[0]
+
+        # {{vars.X}} → treat X as var name
+        if head == "vars" and len(parts) == 2:
+            var_name = parts[1]
+            if var_name in merged or var_name in var_defs:
+                return _resolve(var_name)
+            return None
+
+        # {{steps.X.value}} / {{extracted.Y}} → pass through (runtime resolution)
+        if head in ("steps", "extracted"):
+            return None
+
+        # Simple {{varname}}
+        if len(parts) == 1:
+            var_name = parts[0]
+            if var_name in merged or var_name in var_defs:
+                return _resolve(var_name)
+            return None
+
+        return None
+
     def _replace(obj: Any) -> Any:
         if isinstance(obj, str):
             match = _VAR_RE.fullmatch(obj)
             if match:
-                var_name = match.group(1)
-                if var_name in merged or var_name in var_defs:
-                    return _resolve(var_name)
+                resolved = _resolve_token(match.group(1))
+                if resolved is not None:
+                    return resolved
                 return obj
 
             def _sub(m: Any) -> str:
-                name = m.group(1)
-                if name in merged or name in var_defs:
-                    val = _resolve(name)
-                    return str(val) if not isinstance(val, str) else val
+                resolved = _resolve_token(m.group(1))
+                if resolved is not None:
+                    return str(resolved) if not isinstance(resolved, str) else resolved
                 return m.group(0)
 
             return _VAR_RE.sub(_sub, obj)
