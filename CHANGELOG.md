@@ -4,6 +4,24 @@
 
 ## [Unreleased]
 
+## [0.2.62] - 2026-04-20
+
+### Added
+
+- **`resolve_text_file_ref`（`ziniao_mcp/sites/variables.py`）**：统一 `@file:` 文本引用解析（文件不存在抛 `FileNotFoundError`）；`sites/request.py` 与 `sites/rendering.py` 去重复实现
+- **`_inject_flow_vars`（`ziniao_mcp/cli/dispatch.py`）**：`flow_run` 与 `inject-vars` step 共用注入逻辑，保证 `window.__flow_vars` 基线；大变量（≥50KB）单独注入以降低 CDP eval 体积风险
+- **文档与 SKILL**：`docs/site-ui-flows.md` 补全 `mode: ui` action 白名单（`upload-hijack` / `upload-react` / `clear-overlay` / `inject-file` / `inject-vars`）与顶层 `force_navigate`；`site-hub` 内 `site-development` SKILL 同步完整 primitives 说明
+
+### Fixed
+
+- **`force_navigate`**：`_page_fetch` 与 `_flow_run` 在 SPA 同 URL 场景下可按需强制 `Page.navigate`
+- **UI flow `insert_text`**：白名单为 `insert_text` 与 step dispatcher 曾判断 `insert-text` 不一致导致无法执行，已统一为 `insert_text`
+- **`douyin-publish` 死分支**：`_dispatch_flow_step` 中移除已无实现的 `douyin-publish` 路由，避免潜在 `NameError`
+
+### Changed
+
+- **`dispatch` 与站点包整理**：动作侧逻辑与模板/变量解析复用；`tests/test_flow_run.py`、`tests/test_overlay_and_upload.py` 增强（顺序断言、`importlib` 取子模块、`inject-vars` 等用例）
+
 ## [0.2.55] - 2026-04-17
 
 ### Added

@@ -854,7 +854,7 @@ async def _page_fetch(sm: Any, args: dict) -> dict:
     tab = sm.get_active_tab()
 
     if navigate_url:
-        force = args.get("force_navigate", False)
+        force = bool(args.get("force_navigate"))
         current = tab.target.url or ""
         if force or not current.startswith(navigate_url.split("?")[0].split("#")[0]):
             from nodriver import cdp  # pylint: disable=import-outside-toplevel
@@ -1285,7 +1285,7 @@ async def _dispatch_flow_step(sm: Any, step: dict, ctx: dict) -> dict:
         await _safe_eval_js(_tab, f"window['{_var}'] = {_j};")
         return {"ok": True, "size": len(_content)}
 
-    if action == "insert-text":
+    if action == "insert_text":
         return await _insert_text(
             sm,
             {
@@ -1339,8 +1339,6 @@ async def _dispatch_flow_step(sm: Any, step: dict, ctx: dict) -> dict:
         return await _snapshot(sm, {})
     if action == "clear-overlay":
         return await _clear_overlay(sm, {})
-    if action == "douyin-publish":
-        return await _douyin_publish(sm, step)
     if action == "eval":
         return await _eval(
             sm,
@@ -1350,18 +1348,8 @@ async def _dispatch_flow_step(sm: Any, step: dict, ctx: dict) -> dict:
             },
         )
     if action == "inject-vars":
-        _tab = sm.get_active_tab()
-        _fvars = ctx.get("vars", {})
-        _sv = {k: v for k, v in _fvars.items() if isinstance(v, str) and len(str(v)) < 50000}
-        if _sv:
-            _vjs = json.dumps(_sv, ensure_ascii=False)
-            await _safe_eval_js(_tab, f"window.__flow_vars = {_vjs}")
-        for _k2, _v2 in _fvars.items():
-            if isinstance(_v2, str) and len(str(_v2)) >= 50000:
-                _j2 = json.dumps(_v2, ensure_ascii=False)
-                _js2 = "window.__flow_vars[" + json.dumps(_k2) + "] = " + _j2
-                await _safe_eval_js(_tab, _js2)
-        return {"ok": True, "injected": list(_fvars.keys())}
+        injected = await _inject_flow_vars(sm.get_active_tab(), ctx.get("vars") or {})
+        return {"ok": True, "injected": injected}
     if action == "extract":
         result = await _extract_step(sm, step)
         if result.get("ok") and "as" in step:
@@ -1396,6 +1384,54 @@ def _apply_output_contract(contract: dict, envelope: dict) -> dict:
     return out
 
 
+_FLOW_VARS_SMALL_MAX = 50_000
+
+
+async def _inject_flow_vars(tab: Any, flow_vars: dict) -> list[str]:
+    """Inject *flow_vars* into ``window.__flow_vars`` on *tab*.
+
+    Strategy: small string values (< 50KB) are batched into a single eval so
+    ``window.__flow_vars`` is always established as an object baseline; large
+    values are assigned individually afterwards to dodge CDP eval size limits.
+    Callers can rely on ``window.__flow_vars`` being a well-formed object
+    after this function returns — even when every value is large.
+
+    Returns the list of keys that were attempted (order preserves *flow_vars*).
+    Failures in individual ``eval`` calls are swallowed: this matches the
+    original best-effort contract used at flow startup, where a missing JS
+    context should not abort the entire run.
+    """
+    keys = list(flow_vars.keys())
+    if not flow_vars:
+        return keys
+
+    small = {
+        k: v for k, v in flow_vars.items()
+        if isinstance(v, str) and len(v) < _FLOW_VARS_SMALL_MAX
+    }
+    # Always write the baseline so large-value assignments below don't hit
+    # "Cannot set properties of undefined" when no small values are present.
+    baseline = json.dumps(small, ensure_ascii=False)
+    try:
+        await _safe_eval_js(tab, f"window.__flow_vars = {baseline};")
+    except Exception:  # pylint: disable=broad-except
+        pass
+
+    for k, v in flow_vars.items():
+        if isinstance(v, str) and len(v) >= _FLOW_VARS_SMALL_MAX:
+            expr = (
+                "window.__flow_vars["
+                + json.dumps(k)
+                + "] = "
+                + json.dumps(v, ensure_ascii=False)
+            )
+            try:
+                await _safe_eval_js(tab, expr)
+            except Exception:  # pylint: disable=broad-except
+                pass
+    return keys
+
+
 async def _flow_run(sm: Any, args: dict) -> dict:
     """Execute a ``mode: ui`` preset: step-by-step UI actions with extract/fetch.
 
@@ -1417,43 +1453,23 @@ async def _flow_run(sm: Any, args: dict) -> dict:
     output_contract = dict(args.get("output_contract") or {})
     flow_vars = dict(args.get("_ziniao_merged_vars") or {})
 
-    # @file: resolution is now handled centrally in rendering.py._resolve()
-
     if not isinstance(steps, list) or not steps:
         return {"error": "flow_run requires non-empty 'steps'."}
 
     tab = sm.get_active_tab()
     if navigate_url:
-        force = args.get("force_navigate", False)
+        force = bool(args.get("force_navigate"))
         current = tab.target.url or ""
         base = navigate_url.split("?")[0].split("#")[0]
         if force or not current.startswith(base):
             await tab.send(cdp.page.navigate(url=navigate_url))
             await tab.sleep(2.0)
-    # Inject flow vars AFTER navigate (so they survive page load)
 
     ctx: dict = {"steps": {}, "extracted": {}, "vars": flow_vars}
     failures: list[dict] = []
 
-    # Inject flow vars into page so eval steps can access via window.__flow_vars
-    # Large values (>50KB) are injected individually via file to avoid CDP eval limits
-    if flow_vars:
-        small_vars = {k: v for k, v in flow_vars.items() if isinstance(v, str) and len(str(v)) < 50000}
-        if small_vars:
-            vars_js = json.dumps(small_vars, ensure_ascii=False)
-            try:
-                await _safe_eval_js(tab, f"window.__flow_vars = {vars_js}")
-            except Exception:
-                pass
-        # Inject large vars individually
-        for _k, _v in flow_vars.items():
-            if isinstance(_v, str) and len(str(_v)) >= 50000:
-                _j = json.dumps(_v, ensure_ascii=False)
-                _js = "window.__flow_vars[" + json.dumps(_k) + "] = " + _j
-                try:
-                    await _safe_eval_js(tab, _js)
-                except Exception:
-                    pass
+    # Inject flow vars AFTER navigate so eval steps can access window.__flow_vars.
+    await _inject_flow_vars(tab, flow_vars)
 
     for idx, raw_step in enumerate(steps):
         sid = raw_step.get("id") or f"step_{idx}"

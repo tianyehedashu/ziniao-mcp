@@ -22,6 +22,7 @@ from .discovery import load_preset
 from .plugin_loader import get_plugin
 from .rendering import render_vars
 from .validation import _validate_ui_preset
+from .variables import resolve_text_file_ref
 
 
 def parse_charset(content_type: str) -> str:
@@ -119,7 +120,10 @@ def prepare_request(
     if spec.get("vars"):
         var_defs = spec["vars"]
         defaults = {k: v["default"] for k, v in var_defs.items() if "default" in v}
-        merged_for_plugin = {**defaults, **merged_input}
+        merged_for_plugin = {
+            k: resolve_text_file_ref(v)
+            for k, v in {**defaults, **merged_input}.items()
+        }
         for k, vdef in var_defs.items():
             if vdef.get("required") and k not in merged_for_plugin:
                 if vdef.get("type") == "secret" and vdef.get("source"):

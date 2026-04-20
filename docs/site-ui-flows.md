@@ -26,6 +26,7 @@
   "name": "Example · UI Export",
   "mode": "ui",
   "navigate_url": "https://site.com/dashboard",   // 可选：执行前导航
+  "force_navigate": false,                         // 可选：强制重新跳转（见 3.0）
   "vars": {
     "start_date": { "type": "str",    "required": true },
     "password":   { "type": "secret", "source": "keyring:myapp:admin", "required": true }
@@ -47,6 +48,19 @@
   "on_error": { "screenshot": true, "snapshot": true }
 }
 ```
+
+### 3.0 Preset 顶层字段
+
+| 字段 | 说明 |
+|------|------|
+| `mode` | 必填；固定为 `"ui"` |
+| `name` / `description` | 展示用；`ziniao <site> <action> --help` 会读 |
+| `navigate_url` | 可选；执行 steps 前的目标 URL |
+| `force_navigate` | 可选 bool，默认 `false`。默认行为：只有当前 URL 的去 query/fragment 前缀**不等于** `navigate_url` 的同源段时才跳转（避免 SPA 同页无意义 reload）。传 `true` 会强制重新 `Page.navigate`，用于必须重置 JS 上下文的场景 |
+| `vars` | 变量声明（`str` / `int` / `float` / `bool` / `file` / `file_list` / `secret`） |
+| `steps` | 必填；见 3.1 / 3.2 |
+| `output_contract` | 可选；见 3.4 |
+| `on_error` | 可选；见 3.5 |
 
 ### 3.1 Step 通用字段
 
@@ -70,6 +84,11 @@
 | `hover` | 悬停 | `selector` |
 | `dblclick` | 双击 | `selector` |
 | `upload` | 上传文件到 `<input type=file>` | `selector`, `file_paths` 或 `file_path` |
+| `upload-hijack` | SPA 隐藏 input 上传：在触发元素点击前预置 `createElement('input')` hook 接管 `DOM.setFileInputFiles` | `file_paths` 或 `file_path`, `trigger`（点击目标 selector）, `wait_ms?`（默认 30000） |
+| `upload-react` | React/SPA 友好上传：CDP `Page.setInterceptFileChooserDialog` + 点击触发器 + `DOM.setFileInputFiles` | `file_paths` 或 `file_path`, `trigger`（点击目标 selector） |
+| `clear-overlay` | 主动关闭/移除页面遮罩、弹窗、cookie 条、强制登录 modal 等，释放后续点击目标。`click` / `upload-hijack` 已在内部自动先跑一次本 action | （无） |
+| `inject-file` | 读取本地文本文件写入浏览器 `window[var]`，供后续 `eval` step 消费大型 HTML/JSON | `path`（本地文件路径）, `var?`（默认 `__injected_file`） |
+| `inject-vars` | 把 `flow_vars`（即 preset `vars`）重新注入到 `window.__flow_vars`。用于 SPA 导航后 JS 上下文重置的场景（如抖音上传后裁剪页）。大值（≥50KB）会单独注入以避免 CDP eval 长度上限。`_flow_run` 启动时已自动跑一次 | （无） |
 | `screenshot` | 截图（手动存档；失败自动也会截） | `selector?`, `full_page?` |
 | `snapshot` | DOM HTML 快照 | （无） |
 | `eval` | 运行自定义 JS（返回值存入 `step.value`） | `script`, `await_promise?` |

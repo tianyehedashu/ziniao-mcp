@@ -10,10 +10,11 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from ziniao_mcp.cli import dispatch as _dispatch
 from ziniao_mcp.cli.dispatch import (  # type: ignore[attr-defined]
     _apply_output_contract,
     _mask_secrets,
@@ -866,3 +867,88 @@ def test_mouse_pos_cache_entry_released_when_tab_collected() -> None:
     # After GC, the plain dict still holds the entry (keyed by int, not weakref).
     # The docstring says WeakKeyDictionary but the actual code uses plain dict.
     assert tab_id in hb._MOUSE_POS_CACHE
+
+
+# ---------------------------------------------------------------------------
+# inject-vars — re-inject flow_vars into page after JS context reset
+#   (e.g. upload + crop on a SPA like Douyin resets window.__flow_vars).
+#   A single baseline eval always establishes ``window.__flow_vars`` as an
+#   object (so large-value assignments below never hit "undefined"); large
+#   values (>= 50KB) are then assigned individually to dodge CDP eval limits.
+# ---------------------------------------------------------------------------
+
+
+def _make_flow_step_sm():
+    tab = _tab_with_send(lambda _cmd: (None, None))
+    return type("SM", (), {"get_active_tab": lambda self: tab})()
+
+
+async def _run_inject_vars_step(flow_vars: dict) -> tuple[dict, list[str]]:
+    """Drive the ``inject-vars`` step and capture all ``_safe_eval_js`` exprs."""
+    eval_calls: list[str] = []
+
+    async def fake_safe_eval_js(_tab, expr):
+        eval_calls.append(expr)
+        return None
+
+    step = {"action": "inject-vars"}
+    ctx = {"vars": flow_vars, "steps": {}, "extracted": {}}
+    with patch.object(_dispatch, "_safe_eval_js", fake_safe_eval_js):
+        result = await _dispatch._dispatch_flow_step(_make_flow_step_sm(), step, ctx)
+    return result, eval_calls
+
+
+@pytest.mark.asyncio
+async def test_inject_vars_small_values_batched() -> None:
+    """All-small vars: one baseline eval that already contains the values."""
+    result, eval_calls = await _run_inject_vars_step({"title": "Hello", "body": "World"})
+
+    assert result["ok"] is True
+    assert set(result["injected"]) == {"title", "body"}
+    assert len(eval_calls) == 1
+    assert "window.__flow_vars" in eval_calls[0]
+    assert "Hello" in eval_calls[0] and "World" in eval_calls[0]
+
+
+@pytest.mark.asyncio
+async def test_inject_vars_large_value_injected_separately() -> None:
+    """>= 50KB values get their own eval; small values go into the baseline."""
+    big = "x" * 60000
+    result, eval_calls = await _run_inject_vars_step({"title": "Hi", "content_html": big})
+
+    assert result["ok"] is True
+    assert set(result["injected"]) == {"title", "content_html"}
+    # Baseline (small vars) + 1 per large var — match by content, not index.
+    assert len(eval_calls) == 2
+    large_evals = [e for e in eval_calls if "content_html" in e and len(e) > 60000]
+    assert len(large_evals) == 1, eval_calls
+
+
+@pytest.mark.asyncio
+async def test_inject_vars_empty_vars_returns_ok() -> None:
+    """Empty vars: no eval calls, empty injected list (step is still OK)."""
+    result, eval_calls = await _run_inject_vars_step({})
+
+    assert result["ok"] is True
+    assert result["injected"] == []
+    assert eval_calls == []
+
+
+@pytest.mark.asyncio
+async def test_inject_vars_only_large_values_still_initialises_baseline() -> None:
+    """All-large vars: baseline eval must still run so ``window.__flow_vars``
+    is an object before subsequent ``__flow_vars[key] = …`` assignments.
+    """
+    big1 = "a" * 55000
+    big2 = "b" * 70000
+    result, eval_calls = await _run_inject_vars_step({"html1": big1, "html2": big2})
+
+    assert result["ok"] is True
+    assert set(result["injected"]) == {"html1", "html2"}
+    # 1 baseline (empty object) + 2 large assignments.
+    assert len(eval_calls) == 3, eval_calls
+    baseline_evals = [e for e in eval_calls if "window.__flow_vars = {" in e]
+    assert len(baseline_evals) == 1, eval_calls
+    large_evals = [e for e in eval_calls if "window.__flow_vars[" in e]
+    assert any("html1" in e for e in large_evals)
+    assert any("html2" in e for e in large_evals)

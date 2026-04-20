@@ -18,10 +18,14 @@ from __future__ import annotations
 
 import json
 import re
-from pathlib import Path
 from typing import Any
 
-from .variables import _read_file_as_base64, _read_file_list_as_refs, _resolve_secret
+from .variables import (
+    _read_file_as_base64,
+    _read_file_list_as_refs,
+    _resolve_secret,
+    resolve_text_file_ref,
+)
 
 # Matches {{word}}, {{vars.word}}, {{steps.x.value}}, {{extracted.y}}, etc.
 _VAR_RE = re.compile(r"\{\{(\w+(?:\.\w+)*)\}\}")
@@ -65,14 +69,7 @@ def render_vars(template: dict, var_values: dict[str, str]) -> dict:
             return resolved_cache[var_name]
         vdef = dict(var_defs.get(var_name) or {})
         vdef.setdefault("_name", var_name)
-        raw_val = merged.get(var_name, "")
-
-        # Centralised @file: handling: read file text content
-        if isinstance(raw_val, str) and raw_val.startswith("@file:"):
-            fp = raw_val[6:]
-            if Path(fp).is_file():
-                raw_val = Path(fp).read_text(encoding="utf-8", errors="replace")
-
+        raw_val = resolve_text_file_ref(merged.get(var_name, ""))
         coerced = _coerce(raw_val, vdef)
         resolved_cache[var_name] = coerced
         if vdef.get("type") == "secret" and isinstance(coerced, str) and coerced:

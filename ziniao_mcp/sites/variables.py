@@ -14,7 +14,24 @@ from typing import Any
 
 _FILE_REF_PREFIX = "@@ZFILE@@"
 _URL_REF_PREFIX = "@@ZURL@@"
+_TEXT_FILE_REF_PREFIX = "@file:"
 _FILE_MAX_BYTES = 50 * 1024 * 1024  # 50 MB safety limit
+
+
+def resolve_text_file_ref(value: Any) -> Any:
+    """Expand a ``@file:<path>`` string into the file's UTF-8 text content.
+
+    Non-string values and strings without the prefix pass through unchanged.
+    Raises ``FileNotFoundError`` when the referenced path is missing, so
+    callers fail fast rather than silently shipping a literal ``@file:…``
+    string downstream.
+    """
+    if not isinstance(value, str) or not value.startswith(_TEXT_FILE_REF_PREFIX):
+        return value
+    fp = Path(value[len(_TEXT_FILE_REF_PREFIX):])
+    if not fp.is_file():
+        raise FileNotFoundError(f"@file: reference not found: {fp}")
+    return fp.read_text(encoding="utf-8", errors="replace")
 
 
 def _resolve_secret(value: Any, var_def: dict) -> str:
