@@ -4,6 +4,17 @@
 
 ## [Unreleased]
 
+## [0.2.66] - 2026-04-20
+
+### Fixed
+
+- **ziniao-cli 技能文档**：纠正全局标志 `--json` 等须写在子命令前的用法（例如 `ziniao --json list-stores`）；补充 Troubleshooting（daemon 首次启动、`~/.ziniao/.env` 与守护进程重启）
+- **`ziniao snapshot` 内联帮助**：示例由 `ziniao snapshot --json` 改为 `ziniao --json snapshot`
+
+### Changed
+
+- **`skills/ziniao-cli/references/commands.md`**：Global flags 须紧跟在 `ziniao` 后的说明
+
 ## [0.2.63] - 2026-04-21
 
 ### Added

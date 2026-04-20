@@ -161,6 +161,8 @@ More detail: [docs/site-fetch-and-presets.md](../../docs/site-fetch-and-presets.
 
 ## Global flags
 
+These apply to **any** command but must be placed **immediately after** `ziniao`, before the subcommand — e.g. `ziniao --json list-stores`, not `ziniao list-stores --json`.
+
 - `--store <id>` — Target store without switching
 - `--session <id>` — Target session (store or Chrome) without switching
 - `--json` — JSON output

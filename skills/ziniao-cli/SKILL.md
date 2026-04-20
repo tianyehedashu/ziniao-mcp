@@ -173,6 +173,8 @@ ziniao quit                               # Stop daemon
 
 ## Global Flags
 
+**Placement:** Global flags (`--json`, `--store`, …) apply to the **root** CLI and must appear **before** the subcommand. Wrong: `ziniao list-stores --json` → `No such option: --json`. Right: `ziniao --json list-stores`. You can also set `ZINIAO_JSON=1` to avoid relying on flag order.
+
 | Flag | Description |
 |------|-------------|
 | `--store <id>` | Target a Ziniao store (no session switch) |
@@ -186,9 +188,9 @@ ziniao quit                               # Stop daemon
 Env equivalents: `ZINIAO_JSON=1`, `ZINIAO_CONTENT_BOUNDARIES=1`, `ZINIAO_MAX_OUTPUT=N`.
 
 ```bash
-# Parse JSON results under .data
-ACTIVE=$(ziniao session list --json | jq -r '.data.active')
-ziniao is visible ".next" --json | jq -e '.data.visible'
+# Parse JSON results under .data (--json before subcommand)
+ACTIVE=$(ziniao --json session list | jq -r '.data.active')
+ziniao --json is visible ".next" | jq -e '.data.visible'
 
 # Content boundaries for LLM consumption
 ziniao --json --content-boundaries snapshot
@@ -221,7 +223,7 @@ done
 ### List Iteration
 
 ```bash
-COUNT=$(ziniao get count ".item" --json | jq '.data.count')
+COUNT=$(ziniao --json get count ".item" | jq '.data.count')
 for i in $(seq 0 $((COUNT - 1))); do
     ziniao find nth $i ".item a" click && ziniao back
 done
@@ -373,6 +375,9 @@ If `ziniao` is not recognized: run `uv tool dir` to find the bin directory, add 
 | Daemon won't start | Check `~/.ziniao/daemon.log` |
 | Connection refused | `ziniao quit` then retry |
 | `list-stores` / 店铺：WebDriver 端口未开放 | `ziniao store start-client` |
+| `No such option: --json` | Use `ziniao --json <command>` (global flags before subcommand), or `ZINIAO_JSON=1` |
+| `store start-client` / first command seems stuck | Normal on first run: daemon startup + WebDriver client can take tens of seconds; see `~/.ziniao/daemon.log` |
+| Edited `~/.ziniao/.env` but old values persist | Restart daemon: `ziniao quit` then run any command. Also: variables **already in** `os.environ` (system / user env) are **not** overridden by `.env`; unset them or rename keys. See `ziniao config show` |
 | Store not found | `ziniao list-stores` to check IDs |
 | Timeout | `--timeout 120` or `ziniao wait` before next step |
 

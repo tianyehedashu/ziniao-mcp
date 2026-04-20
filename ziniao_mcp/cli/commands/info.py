@@ -26,7 +26,7 @@ def snapshot(
     Examples:
         ziniao info snapshot
         ziniao snapshot --interactive -o snap.html
-        ziniao snapshot --json | jq '.data.html[:200]'
+        ziniao --json snapshot | jq '.data.html[:200]'
     """
     if selector or interactive or compact:
         result = run_command("snapshot_enhanced", {
