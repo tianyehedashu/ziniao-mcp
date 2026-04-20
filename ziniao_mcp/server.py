@@ -15,16 +15,12 @@ except (ImportError, PackageNotFoundError):
 
 from mcp.server.fastmcp import FastMCP
 
-from .session import SessionManager, _STATE_DIR
+from .logging_setup import configure_logging
+from .session import SessionManager, _STATE_DIR  # noqa: F401  (保留再导出兼容)
 
-_debug_log = _STATE_DIR / "mcp_debug.log"
-_STATE_DIR.mkdir(parents=True, exist_ok=True)
-logging.basicConfig(
-    filename=str(_debug_log),
-    level=logging.DEBUG,
-    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    encoding="utf-8",
-)
+# logger 仅取 handle；handler/级别等实际配置延迟到 main()/create_server()
+# 执行，避免 import 副作用——特别是 daemon 子进程在启动时会先 import
+# ziniao_mcp 根包，不应让它提前以 "server" 角色抢先 configure_logging。
 _logger = logging.getLogger("ziniao-debug")
 
 
@@ -152,6 +148,7 @@ def _has_ziniao_config(config: dict[str, Any]) -> bool:
 
 
 def create_server(config: dict[str, Any] | None = None) -> tuple[FastMCP, SessionManager]:
+    configure_logging(role="server")
     if config is None:
         config = _resolve_config()
 
@@ -290,6 +287,7 @@ When the user asks to record, stop recording, or replay, call the matching actio
 
 
 def main() -> None:
+    configure_logging(role="server")
     config = _resolve_config()
 
     _logger.info("=== ziniao serve starting ===")

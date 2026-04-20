@@ -16,17 +16,17 @@ import time
 from pathlib import Path
 from typing import Any
 
+from ..logging_setup import configure_logging
+
 _STATE_DIR = Path.home() / ".ziniao"
 _PID_FILE = _STATE_DIR / "daemon.pid"
 _DEFAULT_PORT = 19816
 _IDLE_TIMEOUT = 30 * 60  # 30 minutes
 
-logging.basicConfig(
-    filename=str(_STATE_DIR / "daemon.log"),
-    level=logging.DEBUG,
-    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    encoding="utf-8",
-)
+# daemon 默认走共享的 mcp_debug.log；需要独立 daemon.log 时可通过
+# ``ZINIAO_LOG_FILE`` 覆盖。关键是不再在根 logger 上直接 DEBUG。
+os.environ.setdefault("ZINIAO_LOG_FILE", str(_STATE_DIR / "daemon.log"))
+configure_logging(role="daemon")
 _logger = logging.getLogger("ziniao-daemon")
 
 

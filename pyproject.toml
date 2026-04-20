@@ -1,6 +1,6 @@
 [project]
 name = "ziniao"
-version = "0.2.63"
+version = "0.2.64"
 description = "紫鸟与 Chrome 浏览器 AI 自动化 — 让 AI Agent 操控紫鸟店铺与本地 Chrome"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -20,7 +20,11 @@ dependencies = [
     "PyYAML>=6.0",
     "mcp>=1.0.0",
     "httpx>=0.27.0",
-    "nodriver>=0.48.0",
+    # 0.48.1 对 Chrome 147+ 的 CDP schema drift (Cookie.sameParty /
+    # privateNetworkRequestPolicy 缺省字段) 会在 _listener 抛 KeyError 并
+    # 打印完整 cookie dump；ziniao_mcp.logging_setup 已把 nodriver 日志
+    # 压到 ERROR 做兜底，等上游发新版后再上提下限。
+    "nodriver>=0.48.1",
     "typer>=0.12.0",
     "rich>=13.0.0",
     # Windows 默认无系统 IANA 时区库；zoneinfo 需 tzdata 才能解析 Asia/Tokyo（乐天日界）。
