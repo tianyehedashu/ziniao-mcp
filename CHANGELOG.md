@@ -4,6 +4,21 @@
 
 ## [Unreleased]
 
+## [0.2.68] - 2026-04-20
+
+### Fixed
+
+- **`ziniao skill update` / `skill install`（Windows）**：指向已删除目录的「悬空」目录联接在 `Path.exists()` 为假时未被 `unlink`，导致 `mklink /J` 失败；`_symlink_skill` 改为先识别联接/符号链接再删除。
+- **`ziniao skill remove`**：悬空联接不再被误判为「未安装」而无法清理。
+
+### Added
+
+- **测试**：`tests/test_skill_junction_windows.py` 覆盖悬空联接替换场景（仅 Windows）。
+
+### Changed
+
+- **`pyproject.toml`**：增加 `[tool.pyright]`（`venvPath` / `venv`），便于 Pylance/pyright 从仓库 `.venv` 解析 `typer` 等待办依赖。
+
 ## [0.2.67] - 2026-04-20
 
 ### Fixed

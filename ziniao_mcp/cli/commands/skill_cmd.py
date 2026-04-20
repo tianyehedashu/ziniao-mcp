@@ -60,14 +60,17 @@ def _resolve_agents(agent: Optional[str]) -> list[tuple[str, Path]]:
 
 def _symlink_skill(source_dir: Path, target_dir: Path) -> None:
     target_dir.parent.mkdir(parents=True, exist_ok=True)
-    if target_dir.exists() or target_dir.is_symlink():
-        if _is_symlink_or_junction(target_dir):
-            target_dir.unlink()
-        else:
-            raise FileExistsError(
-                f"'{target_dir}' exists and is not a symlink/junction. "
-                f"Remove it manually first."
-            )
+    # Windows: a directory junction whose target was deleted can report
+    # ``exists() is False`` and ``is_symlink() is False`` while the reparse
+    # point still occupies the name — ``mklink /J`` then fails. Unlink any
+    # junction/symlink first, then reject only real files/dirs.
+    if _is_symlink_or_junction(target_dir):
+        target_dir.unlink()
+    elif target_dir.exists() or target_dir.is_symlink():
+        raise FileExistsError(
+            f"'{target_dir}' exists and is not a symlink/junction. "
+            f"Remove it manually first."
+        )
     import platform
     if platform.system() == "Windows":
         import subprocess
@@ -264,7 +267,11 @@ def skill_remove(
     removed = 0
     for agent_name, agent_dir in targets:
         target = agent_dir / skill_name
-        if not target.exists() and not target.is_symlink():
+        if (
+            not target.exists()
+            and not target.is_symlink()
+            and not _is_symlink_or_junction(target)
+        ):
             typer.echo(f"  — {skill_name} not installed for {agent_name}")
             continue
         if not _is_symlink_or_junction(target):
