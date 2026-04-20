@@ -110,9 +110,33 @@ class DaemonServer:
         # finally 反而会在没 +1 的情况下 -1，真的造成计数错位。
         self._inflight += 1
         command: str | None = None
+        max_line = 64 * 1024 * 1024
         try:
-            data = await asyncio.wait_for(reader.read(1024 * 1024), timeout=5.0)
-            if not data:
+            # 不能单次 read(上限)：首包可能远小于完整 JSON（flow_run + 内联 HTML），
+            # 会截断 → json.loads 报 Unterminated string。按换行累积读到完整一行。
+            # 也不用 readuntil(..., n=)：部分 Python/asyncio 组合不支持该关键字参数。
+            buf = bytearray()
+            raw = ""
+            too_large = False
+            while True:
+                chunk = await asyncio.wait_for(reader.read(65536), timeout=60.0)
+                if not chunk:
+                    break
+                buf.extend(chunk)
+                if len(buf) > max_line:
+                    too_large = True
+                    break
+                nl = buf.find(b"\n")
+                if nl != -1:
+                    raw = buf[:nl].decode("utf-8").strip()
+                    break
+            if too_large:
+                response = {
+                    "error": (
+                        f"Request line exceeds maximum ({max_line} bytes before newline)."
+                    ),
+                }
+            elif not raw and not buf:
                 # 空包通常意味着客户端异常断开 / 旧 PowerShell 发送空行 / 端口嗅探。
                 # 不刷 _last_activity：否则 find_daemon 的 _is_port_open 探测或
                 # 外部端口嗅探会让 idle watchdog 永远到不了阈值。
@@ -120,13 +144,15 @@ class DaemonServer:
                     "空连接来自 %s，立即关闭（客户端未发送数据）", addr,
                 )
                 return
-            raw = data.decode("utf-8").strip()
-            request = json.loads(raw)
-            command = request.get("command")
-            # 只有解析出真实请求后才算作活跃：进入函数即刷会被空包 / 无效 JSON 污染。
-            self._last_activity = time.monotonic()
-            _logger.debug("Request from %s: %s", addr, command)
-            response = await self._dispatch(request)
+            else:
+                if not raw:
+                    raw = buf.decode("utf-8").strip()
+                request = json.loads(raw)
+                command = request.get("command")
+                # 只有解析出真实请求后才算作活跃：进入函数即刷会被空包 / 无效 JSON 污染。
+                self._last_activity = time.monotonic()
+                _logger.debug("Request from %s: %s", addr, command)
+                response = await self._dispatch(request)
         except asyncio.TimeoutError:
             response = {"error": "Read timeout"}
         except json.JSONDecodeError as e:

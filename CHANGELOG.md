@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [0.2.67] - 2026-04-20
+
+### Fixed
+
+- **`daemon.handle_client`**：CLI 与 daemon 之间为「单行 JSON + `\n`」时，单次 `StreamReader.read(n)` 可能在首包即返回，大请求体（如 `flow_run` 携带 `@file:` 展开后的 `content_html`）被截断，导致 `json.loads` 报 `Unterminated string`；改为分块读取并累积至换行符，且限制单行最大长度（64 MiB），避免畸形对端撑爆内存。
+
 ## [0.2.66] - 2026-04-20
 
 ### Fixed
