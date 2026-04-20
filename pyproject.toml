@@ -1,6 +1,6 @@
 [project]
 name = "ziniao"
-version = "0.2.62"
+version = "0.2.63"
 description = "紫鸟与 Chrome 浏览器 AI 自动化 — 让 AI Agent 操控紫鸟店铺与本地 Chrome"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -51,6 +51,11 @@ dev = [
     "python-dotenv>=1.2.2",
     "ruff>=0.9.0",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# 项目根下 basetemp，减少 Windows 在 %TEMP% 清理 pytest 目录时的 PermissionError
+addopts = "--basetemp=.pytest_basetemp"
 
 [tool.ruff]
 target-version = "py310"

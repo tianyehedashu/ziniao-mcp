@@ -12,7 +12,7 @@ description: ziniao 仓库 Python 3.10+（uv、ziniao / ziniao_mcp / ziniao_webd
 | 维度 | 约定 |
 |------|------|
 | 语言 | Python ≥3.10（`pyproject.toml` `[project].requires-python`） |
-| 运行 | `uv sync` / `uv run …`；Windows 可用 `task.ps1` |
+| 运行 | `uv sync` / `uv run …`；Windows 一键 `scripts/run_tests.ps1`；环境偏好见 `docs/dev-environment-windows.md` |
 | 包 | `ziniao`、`ziniao_mcp`、`ziniao_webdriver` |
 | Lint | Ruff 为主（`[tool.ruff]` / `[tool.ruff.lint]`），Pylint 为辅（`[tool.pylint]`）；根目录 `skills/` 在 Ruff `extend-exclude` 中 |
 | 测试 | pytest、pytest-asyncio；分层见 `tests/CLAUDE.md` |

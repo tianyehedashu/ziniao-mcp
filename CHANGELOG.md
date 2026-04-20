@@ -4,6 +4,25 @@
 
 ## [Unreleased]
 
+## [0.2.63] - 2026-04-21
+
+### Added
+
+- **`SessionManager.invalidate_session` / `reap_dead_sessions`**：CDP 断开后清理内存缓存与状态文件；daemon idle watchdog 每轮调用 `reap_dead_sessions`，主动剔除幽灵会话，避免 `session list` / `active_store_count` 与真实进程不一致
+- **`dispatch`**：识别 CDP/WebSocket 断开类异常，返回 `code: "cdp_disconnected"` 并 `invalidate_session`
+- **`connection.send_command`**：在**未发送 payload 前**对 TCP 连接失败做一次重试（清 stale PID 文件以触发 daemon 重启）
+- **测试**：`tests/test_daemon_idle.py`、`tests/test_cli_connection.py` 等覆盖上述行为；`pyproject` 增加 `[tool.pytest.ini_options]`（`testpaths`、`--basetemp=.pytest_basetemp`）
+- **文档与脚本**：[docs/dev-environment-windows.md](docs/dev-environment-windows.md)（用户级 `uv.toml`、`uv tool` 与 IDE 建议）；`scripts/run_tests.ps1` / `run_tests.sh` 一键 `uv sync` + pytest
+
+### Fixed
+
+- **`daemon.handle_client`**：仅在成功解析 JSON 请求后刷新 `_last_activity`，避免空连接/扫描误重置 idle；写回响应失败时记录 **warning** 并带上 `command`，提示潜在重复副作用
+- **`connect_store` / `connect_chrome`**：命中缓存前对 CDP 端口做轻量探活，不可达则先 `invalidate_session` 再走重建路径
+
+### Changed
+
+- **`.gitignore`**：忽略 `.pytest_basetemp/`、`_regress_venv/`、`.venv-test/` 等本地目录；`CLAUDE.md` / `tests/CLAUDE.md` / `engineering-lint-test` 等与上述约定对齐
+
 ## [0.2.62] - 2026-04-20
 
 ### Added

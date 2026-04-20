@@ -578,6 +578,57 @@ class SessionManager:
         """从状态文件中移除指定店铺记录。"""
         _update_state_file(lambda s: s.pop(store_id, None))
 
+    def invalidate_session(self, store_id: str) -> None:
+        """移除已不可用的会话：停 browser、清内存缓存、清状态文件。
+
+        用于 CDP/WebSocket 断开后让下一次 connect_store / open_store 走重建路径，
+        避免在 ``_stores`` 中留下幽灵会话导致后续调用持续抛 WebSocket 关闭异常。
+        同步方法：不做网络探活，仅做本地清理，供异常恢复路径安全调用。
+        """
+        sess = self._stores.pop(store_id, None)
+        if sess is not None:
+            try:
+                sess.browser.stop()
+            except Exception:  # noqa: BLE001  # browser 已断时 stop 必然抛，忽略
+                pass
+        if self._active_store_id == store_id:
+            self._active_store_id = next(iter(self._stores), None)
+        self._remove_store_state(store_id)
+
+    async def reap_dead_sessions(self, probe_timeout: float = 1.0) -> list[str]:
+        """并行探活所有内存缓存会话，对已不可达的调用 ``invalidate_session``。
+
+        供 daemon 的 idle watchdog 每轮顺带调用：把"幽灵会话"的暴露点从
+        "下次用户调用时"提前到"后台定期清理时"，让 ``list_all_sessions`` /
+        ``active_store_count`` 等只读视图始终反映真实状态。
+
+        Args:
+            probe_timeout: 单次 /json/version 探测超时（秒）。不要过大，
+                否则一个卡住的会话会拖慢整轮清理。
+
+        Returns:
+            本次被清理掉的 store_id 列表。
+        """
+        if not self._stores:
+            return []
+        items = [(sid, s.cdp_port) for sid, s in self._stores.items()]
+        results = await asyncio.gather(
+            *(_is_cdp_alive(port, timeout=probe_timeout) for _, port in items),
+            return_exceptions=True,
+        )
+        dead: list[str] = []
+        for (sid, _port), ok in zip(items, results):
+            # 探测异常与 False 同等处理：保守视为不可用，避免假活导致幽灵累积。
+            if ok is not True:
+                dead.append(sid)
+        for sid in dead:
+            _logger.info("watchdog 清理幽灵会话 %s（CDP 已不可达）", sid)
+            try:
+                self.invalidate_session(sid)
+            except Exception:  # pylint: disable=broad-exception-caught
+                _logger.debug("invalidate_session(%s) 失败", sid, exc_info=True)
+        return dead
+
     @staticmethod
     async def get_persisted_stores(
         backend_type: Optional[str] = "ziniao",
@@ -844,9 +895,19 @@ class SessionManager:
 
     async def connect_store(self, store_id: str) -> StoreSession:
         """从状态文件恢复 CDP 连接。连接失败时自动 fallback 到 open_store。"""
-        if store_id in self._stores:
-            self._active_store_id = store_id
-            return self._stores[store_id]
+        cached = self._stores.get(store_id)
+        if cached is not None:
+            # 命中内存缓存前必须做一次轻量探活：用户/紫鸟空闲回收/进程异常都会
+            # 让底层 CDP WebSocket 断开而缓存对象仍在，直接返回会让后续 tab.send
+            # 持续抛 ConnectionClosed，必须重启 daemon 才能恢复。
+            if await _is_cdp_alive(cached.cdp_port, timeout=1.0):
+                self._active_store_id = store_id
+                return cached
+            _logger.warning(
+                "缓存会话 %s 的 CDP 端口 %s 已不可达，清理并走重建路径",
+                store_id, cached.cdp_port,
+            )
+            self.invalidate_session(store_id)
 
         state = _read_state_file()
         info = state.get(store_id)
@@ -1276,9 +1337,16 @@ class SessionManager:
         再对**当前活跃 tab** evaluate 一次，避免对每个页面跑大脚本导致极慢。
         """
         session_id = name or f"chrome-{cdp_port}"
-        if session_id in self._stores:
-            self._active_store_id = session_id
-            return self._stores[session_id]
+        cached = self._stores.get(session_id)
+        if cached is not None:
+            if await _is_cdp_alive(cached.cdp_port, timeout=1.0):
+                self._active_store_id = session_id
+                return cached
+            _logger.warning(
+                "缓存 Chrome 会话 %s 的 CDP 端口 %s 已不可达，清理并重建",
+                session_id, cached.cdp_port,
+            )
+            self.invalidate_session(session_id)
 
         if not await _is_cdp_alive(cdp_port):
             raise RuntimeError(

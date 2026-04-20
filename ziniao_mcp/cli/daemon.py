@@ -99,7 +99,6 @@ class DaemonServer:
     async def handle_client(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter,
     ) -> None:
-        self._last_activity = time.monotonic()
         addr = writer.get_extra_info("peername")
         # 必须在 try 之前初始化：空数据分支会 return，finally 里仍会引用 response；
         # None 表示"无需回写响应"（客户端未发送任何数据），避免历史上靠 broad-except
@@ -110,18 +109,23 @@ class DaemonServer:
         # 不要把 +1 挪到 try 内：万一未来在 += 1 之前加了会抛的同步代码，
         # finally 反而会在没 +1 的情况下 -1，真的造成计数错位。
         self._inflight += 1
+        command: str | None = None
         try:
             data = await asyncio.wait_for(reader.read(1024 * 1024), timeout=5.0)
             if not data:
                 # 空包通常意味着客户端异常断开 / 旧 PowerShell 发送空行 / 端口嗅探。
-                # 既然路径已显式处理，必须留下可观测的痕迹，避免未来排查时再次踩坑。
+                # 不刷 _last_activity：否则 find_daemon 的 _is_port_open 探测或
+                # 外部端口嗅探会让 idle watchdog 永远到不了阈值。
                 _logger.debug(
                     "空连接来自 %s，立即关闭（客户端未发送数据）", addr,
                 )
                 return
             raw = data.decode("utf-8").strip()
             request = json.loads(raw)
-            _logger.debug("Request from %s: %s", addr, request.get("command"))
+            command = request.get("command")
+            # 只有解析出真实请求后才算作活跃：进入函数即刷会被空包 / 无效 JSON 污染。
+            self._last_activity = time.monotonic()
+            _logger.debug("Request from %s: %s", addr, command)
             response = await self._dispatch(request)
         except asyncio.TimeoutError:
             response = {"error": "Read timeout"}
@@ -131,8 +135,10 @@ class DaemonServer:
             _logger.exception("Error handling request")
             response = {"error": str(exc)}
         finally:
-            # 请求完成后再刷一次活跃时间：长耗时命令期间 watchdog 不会误判空闲。
-            self._last_activity = time.monotonic()
+            # 长耗时命令结束后再刷一次：watchdog 在命令执行期间不会误判空闲。
+            # 仅在 command 已解析出（即真实请求）时更新，保持与进入时的判定一致。
+            if command is not None:
+                self._last_activity = time.monotonic()
             self._inflight = max(0, self._inflight - 1)
             if response is not None:
                 try:
@@ -142,7 +148,14 @@ class DaemonServer:
                     writer.write(payload.encode("utf-8"))
                     await writer.drain()
                 except Exception:  # pylint: disable=broad-exception-caught
-                    _logger.debug("写回响应失败 (addr=%s)", addr, exc_info=True)
+                    # 升到 warning：CLI 超时后 daemon 仍可能已执行完带副作用的命令
+                    # （click/flow_run/page_fetch 等），用户重试会造成重复副作用。
+                    # 带上 command 便于事后对账，确认是否出现孤儿执行。
+                    _logger.warning(
+                        "写回响应失败 (addr=%s, command=%s)：CLI 可能已超时断开，"
+                        "若命令具有副作用请检查是否重复执行",
+                        addr, command, exc_info=True,
+                    )
             try:
                 writer.close()
                 await writer.wait_closed()
@@ -184,6 +197,12 @@ class DaemonServer:
     async def _idle_watchdog(self) -> None:
         while not self._shutting_down:
             await asyncio.sleep(60)
+            # 顺带清理幽灵会话：用户手动关 Chrome / 紫鸟空闲回收 / 进程崩溃都会
+            # 让缓存中的 StoreSession 对应的 CDP 已死但对象仍在。定期探活 +
+            # invalidate 让只读视图（session list 等）始终反映真实状态，也能
+            # 避免 active_store_count 误报而阻塞下面的 idle 判定。
+            # 不把它放在 idle 判定之后：清理掉幽灵会话恰恰能让 daemon 进入空闲。
+            await self._reap_dead_sessions()
             idle = time.monotonic() - self._last_activity
             if idle <= _IDLE_TIMEOUT:
                 continue
@@ -211,6 +230,22 @@ class DaemonServer:
             _logger.info("Idle timeout reached (%.0fs), shutting down", idle)
             await self.shutdown()
             break
+
+    async def _reap_dead_sessions(self) -> None:
+        """调用 SessionManager.reap_dead_sessions，任何异常都吞掉避免终止 watchdog。
+
+        加 10s 总超时兜底：探活协程被某种底层卡死时，watchdog 不至于永久阻塞。
+        """
+        if self._session_manager is None:
+            return
+        try:
+            await asyncio.wait_for(
+                self._session_manager.reap_dead_sessions(), timeout=10.0,
+            )
+        except asyncio.TimeoutError:
+            _logger.warning("reap_dead_sessions 超过 10s 未完成，下轮重试")
+        except Exception:  # pylint: disable=broad-exception-caught
+            _logger.debug("reap_dead_sessions 失败（非致命）", exc_info=True)
 
     async def shutdown(self) -> None:
         if self._shutting_down:

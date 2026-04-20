@@ -62,6 +62,32 @@ from ziniao_mcp.cli.actions import (
 _logger = logging.getLogger("ziniao-daemon")
 
 
+def _is_cdp_disconnected_error(exc: BaseException) -> bool:
+    """识别 nodriver / websockets 抛出的 CDP 链路断开类异常。
+
+    覆盖三类来源：
+    1. ``websockets.exceptions.ConnectionClosed*``（WS 正常/异常关闭）；
+    2. 标准库 ``ConnectionResetError`` / ``BrokenPipeError``（底层 socket 被 RST/FIN）；
+    3. nodriver 在连接失效后常见的 ``AttributeError: 'NoneType' ...`` /
+       ``RuntimeError: connection is closed`` 等字符串兜底。
+    我们只用异常类型优先，字符串匹配仅作补充，避免误杀正常业务错误。
+    """
+    if isinstance(exc, (ConnectionResetError, BrokenPipeError, ConnectionAbortedError)):
+        return True
+    try:
+        from websockets.exceptions import ConnectionClosed  # pylint: disable=import-outside-toplevel
+        if isinstance(exc, ConnectionClosed):
+            return True
+    except ImportError:
+        pass
+    msg = str(exc).lower()
+    return (
+        "connection is closed" in msg
+        or "no close frame received" in msg
+        or "websocket" in msg and "closed" in msg
+    )
+
+
 async def dispatch(sm: Any, request: dict) -> dict:
     """Dispatch a CLI request to the appropriate SessionManager operation.
 
@@ -88,8 +114,28 @@ async def dispatch(sm: Any, request: dict) -> dict:
     try:
         result = await _execute(sm, command, args)
     except Exception as exc:
-        _logger.exception("Command '%s' failed", command)
-        result = {"error": str(exc)}
+        if _is_cdp_disconnected_error(exc):
+            # CDP WebSocket 已断：清理对应会话缓存，让下次命令走重建路径。
+            # 不记 exception 级日志，避免每次都打整段 traceback。
+            victim = target or sm.active_session_id
+            _logger.warning(
+                "命令 '%s' 遭遇 CDP 断开 (%s)，已清理会话 %s",
+                command, type(exc).__name__, victim,
+            )
+            if victim:
+                try:
+                    sm.invalidate_session(victim)
+                except Exception:  # noqa: BLE001
+                    _logger.debug("invalidate_session 失败", exc_info=True)
+            result = {
+                "error": "CDP WebSocket 已断开，店铺/浏览器可能被关闭或紫鸟回收。"
+                         "请重试命令以自动重建连接。",
+                "code": "cdp_disconnected",
+                "store_id": victim,
+            }
+        else:
+            _logger.exception("Command '%s' failed", command)
+            result = {"error": str(exc)}
     finally:
         if target:
             sm._active_store_id = original_active

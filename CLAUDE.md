@@ -54,7 +54,7 @@ flowchart TB
 
 - **目录规范**：物理目录用途、wheel 边界与 `exports/` 等落盘约定见 [docs/directory-conventions.md](docs/directory-conventions.md)。
 - **Python**：`>=3.10`；风格与静态检查以 **Ruff** 为主、Pylint 为辅（见 `pyproject.toml` `[tool.ruff]` / `[tool.pylint]`）。
-- **测试**：`uv run pytest`；异步用 `pytest-asyncio`。
+- **测试**：`uv run pytest`；异步用 `pytest-asyncio`。Windows 一键 `scripts/run_tests.ps1`；环境偏好见 [docs/dev-environment-windows.md](docs/dev-environment-windows.md)。
 - **不改业务代码边界**：`/init-project` 仅维护文档索引；功能改动需单独 PR。
 - **依赖关键包**：`mcp`、`nodriver`、`typer`、`rich`、`httpx`、`requests`、`PyYAML`；Windows 时区场景依赖 `tzdata`（乐天日界等）。
 

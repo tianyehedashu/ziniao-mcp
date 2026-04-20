@@ -160,7 +160,6 @@ def send_command(
     if timeout <= 0:
         timeout = 120.0 if command in _SLOW_COMMANDS else 60.0
 
-    port = ensure_daemon()
     request = {"command": command, "args": _json_safe(args or {})}
     if target_session:
         request["target_session"] = target_session
@@ -168,7 +167,32 @@ def send_command(
     payload = json.dumps(request, ensure_ascii=False) + "\n"
 
     deadline = time.monotonic() + timeout
-    with socket.create_connection(("127.0.0.1", port), timeout=min(timeout, 10)) as sock:
+    # 连接阶段允许 1 次重试：daemon 在 30min idle 退出的瞬间、或异常崩溃后
+    # find_daemon 仍短暂返回旧 port 时会出现 ConnectionRefusedError。重试仅
+    # 发生在**未写入任何数据前**，不会造成重复副作用。
+    last_exc: OSError | None = None
+    sock: socket.socket | None = None
+    for attempt in range(2):
+        port = ensure_daemon()
+        try:
+            sock = socket.create_connection(
+                ("127.0.0.1", port), timeout=min(timeout, 10),
+            )
+            break
+        except (ConnectionRefusedError, ConnectionResetError, OSError) as exc:
+            last_exc = exc
+            # 清理 pid 文件，强制下轮 ensure_daemon 重新拉起 daemon。
+            try:
+                _PID_FILE.unlink(missing_ok=True)
+            except OSError:
+                pass
+            time.sleep(0.3)
+    if sock is None:
+        raise RuntimeError(
+            f"无法连接 daemon (port={port}): {last_exc}"
+        ) from last_exc
+
+    with sock:
         sock.sendall(payload.encode("utf-8"))
         sock.shutdown(socket.SHUT_WR)
 

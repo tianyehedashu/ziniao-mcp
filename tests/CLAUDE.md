@@ -12,10 +12,17 @@
 ## 运行
 
 ```bash
+uv sync
 uv run pytest
 ```
 
-（根目录 `pyproject.toml` 中 `[dependency-groups] dev` 含 `pytest`、`pytest-asyncio`。）
+`dependency-groups.dev` 提供 pytest、pytest-asyncio、Ruff、Pylint、keyring（测 secret 用）。
+
+**Windows 一键**（见 [docs/dev-environment-windows.md](../docs/dev-environment-windows.md) 的环境偏好建议）：
+
+```powershell
+.\scripts\run_tests.ps1
+```
 
 ## 注意
 

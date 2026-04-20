@@ -53,6 +53,10 @@ pip install uv
 uv self update
 ```
 
+## 在本仓库里开发（Windows）
+
+克隆后若 `uv sync` / `pytest` 遇权限或文件占用，见 [dev-environment-windows.md](dev-environment-windows.md)（用户级 `uv.toml`、`uv tool install` 规避 `Scripts\*.exe` 占用、pytest basetemp、一键脚本）。
+
 ## 参考
 
 - 官方安装文档：[Installation | uv](https://docs.astral.sh/uv/getting-started/installation/)

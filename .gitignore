@@ -11,6 +11,11 @@ build/
 .venv/
 venv/
 ENV/
+_regress_venv/
+.venv-test/
+
+# pytest --basetemp（见 pyproject [tool.pytest.ini_options]）
+.pytest_basetemp/
 
 # uv
 uv.lock

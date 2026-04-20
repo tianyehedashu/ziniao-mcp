@@ -16,3 +16,5 @@
 ## 运行约定
 
 在项目根使用 `uv run python scripts/<name>.py`（Windows 路径见 `scripts/README.md` 示例）。
+
+**回归测试**：`run_tests.ps1`（Windows）与 `run_tests.sh`（POSIX）在仓库根执行 `uv sync` + `pytest`；Windows 细节见 [docs/dev-environment-windows.md](../docs/dev-environment-windows.md)。

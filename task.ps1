@@ -19,7 +19,7 @@ function Invoke-Uv {
 switch ($Task.ToLower()) {
     "help" {
         Write-Host "常用任务："
-        Write-Host "  .\task.ps1 install         - 安装依赖"
+        Write-Host "  .\task.ps1 install         - 安装依赖（uv sync）"
         Write-Host "  .\task.ps1 run             - 启动 MCP 服务器 (ziniao serve)"
         Write-Host "  .\task.ps1 test            - 运行单元/常规测试（不含集成）"
         Write-Host "  .\task.ps1 test-all        - 运行全部测试（含集成，需 .env）"
