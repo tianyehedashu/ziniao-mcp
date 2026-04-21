@@ -4,6 +4,27 @@
 
 ## [Unreleased]
 
+## [0.2.69] - 2026-04-21
+
+### Fixed
+
+- **`is_visible` / `is_enabled` / `is_checked`**：`tab.evaluate` 在 `return_by_value=True` 时对 **falsy** JSON 标量返回 `RemoteObject`，`bool(RemoteObject)` 恒为真导致探测结果反转；统一经 **`cdp.runtime.evaluate` + `safe_eval_js`**（`ziniao_mcp/core/_eval.py`）按 `value is not None` 反序列化。
+- **同源路径**：`find`、`get_info`、`scroll`、`iframe` 等与 evaluate 结果相关的逻辑与 `_eval` 对齐。
+
+### Added
+
+- **`ziniao_mcp/core/_eval.py`**：`safe_eval_js`、`format_cdp_exception`，供 `core` 复用并避免 `cli` 反向依赖。
+- **文档**：`docs/chrome-security-boundaries-automation.md`（Chromium `isTrusted`、用户激活、权限/WebAuthn 等与 CDP 自动化预期）；`docs/CLAUDE.md`、`docs/stealth.md` 索引与交叉引用。
+
+### Changed
+
+- **`ziniao_mcp/cli/actions/js.py`**：从 `core._eval` 重导出 `safe_eval_js`；`run_js_in_context` 主文档与 iframe 路径共用同一 falsy 语义。
+- **`ziniao get title`**：移除对已修复后端的 `_unwrap_remote_value` 兜底。
+
+### Chore
+
+- **`.gitignore`**：忽略本地 Chrome 配置目录 `.ziniao-chrome-douyin-20260420/`。
+
 ## [0.2.68] - 2026-04-20
 
 ### Fixed

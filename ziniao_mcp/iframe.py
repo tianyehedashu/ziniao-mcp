@@ -14,6 +14,8 @@ import random
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Optional, Union
 
+from .core._eval import format_cdp_exception as _format_cdp_exception
+
 if TYPE_CHECKING:
     from nodriver import Tab
     from nodriver.core.element import Element
@@ -21,6 +23,13 @@ if TYPE_CHECKING:
     from .session import StoreSession
 
 _logger = logging.getLogger("ziniao-mcp-debug")
+
+# ``_format_cdp_exception`` historically lived in this module; it now lives in
+# ``core/_eval.py`` so that the ``core/`` layer (which must not reverse-depend
+# on ``cli/`` or ``iframe``) can share a single implementation.  The
+# underscore-prefixed alias above is kept because a handful of external
+# callers (``cli/actions/js.py`` in older checkouts, tests) imported it from
+# here by name — re-binding is cheap and keeps the public surface stable.
 
 
 # ---------------------------------------------------------------------------
@@ -209,20 +218,6 @@ class IFrameElement:
 # ---------------------------------------------------------------------------
 
 
-def _format_cdp_exception(exc: Any) -> str:
-    """Render a ``cdp.runtime.ExceptionDetails`` into a human-readable string.
-
-    Only reads string-typed fields (``text``, ``exception.description``); the
-    ``exception`` field itself is a ``RemoteObject`` so it must never be used
-    as the message directly or callers will see ``repr(RemoteObject(...))``.
-    """
-    text = getattr(exc, "text", "") or ""
-    exc_obj = getattr(exc, "exception", None)
-    desc = getattr(exc_obj, "description", None) if exc_obj is not None else None
-    parts = [p for p in (text, desc) if p]
-    return ": ".join(parts) or "unknown error"
-
-
 async def eval_in_frame(
     tab: "Tab",
     context_id: int,
@@ -236,7 +231,7 @@ async def eval_in_frame(
 
     ``await_promise`` 与顶层 ``tab.evaluate`` 一致：为 True 时等待 Promise 解析。
 
-    解包规则与 :func:`ziniao_mcp.cli.dispatch._safe_eval_js` 对齐——``value``
+    解包规则与 :func:`ziniao_mcp.core._eval.safe_eval_js` 对齐——``value``
     字段用 ``is not None`` 判断（避免 ``0``/``""``/``False``/``[]`` 这类
     JSON-falsy 值被当空返回），并兜底处理 ``unserializable_value``。
 

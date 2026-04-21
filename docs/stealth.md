@@ -483,6 +483,8 @@ ziniao_mcp/stealth/
 | HTTP/2 指纹 | 取决于网络栈配置 | Chromium |
 | Screen 属性一致性 | `outerWidth/Height` 等与窗口尺寸匹配 | 紫鸟客户端 |
 
+与上表互补：**Chromium 安全边界**（`Event.isTrusted`、用户激活与 `Runtime.evaluate` 的 `userGesture`、自动填充语义、权限/WebAuthn/支付等）与「纯 CDP 能否等价真人」的预期管理，见 [chrome-security-boundaries-automation.md](./chrome-security-boundaries-automation.md)。
+
 ---
 
 ## 测试
