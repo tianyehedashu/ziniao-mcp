@@ -18,6 +18,12 @@ nodriver 原生不产生 __playwright*/__pw_* 全局变量，也不设置 naviga
 
 PATCH_NATIVE_TOSTRING = """
 (() => {
+    // 幂等 flag：build_stealth_js 外层 guard 依赖此标记，
+    // 保证同一 realm 多次注册/evaluate 脚本时只完整执行一次。
+    Object.defineProperty(window, '__stealth_applied__', {
+        value: true, configurable: true, writable: false, enumerable: false,
+    });
+
     const _origToString = Function.prototype.toString;
     const _overrides = new WeakMap();
 
@@ -154,10 +160,17 @@ PATCH_NAVIGATOR_PERMISSIONS = """
 
 PATCH_WINDOW_CHROME = """
 (() => {
+    const mark = (fn, name) => {
+        if (fn && window.__stealth_native) {
+            try { window.__stealth_native(fn, name); } catch (e) {}
+        }
+        return fn;
+    };
+
     if (!window.chrome) window.chrome = {};
 
     if (!window.chrome.app) {
-        window.chrome.app = {
+        const app = {
             InstallState: {
                 DISABLED: 'disabled',
                 INSTALLED: 'installed',
@@ -168,25 +181,92 @@ PATCH_WINDOW_CHROME = """
                 READY_TO_RUN: 'ready_to_run',
                 RUNNING: 'running',
             },
-            getDetails: function() { return null; },
-            getIsInstalled: function() { return false; },
-            installState: function(cb) { if (cb) cb('not_installed'); },
+            getDetails: mark(function getDetails() { return null; }, 'getDetails'),
+            getIsInstalled: mark(function getIsInstalled() { return false; }, 'getIsInstalled'),
+            installState: mark(function installState(cb) { if (cb) cb('not_installed'); }, 'installState'),
             isInstalled: false,
         };
+        window.chrome.app = app;
     }
 
+    // chrome.runtime 在「非扩展页面」的真实 Chrome 里通常只有少量属性
+    // （id 属性并不存在）；仅当被访问/序列化时暴露必要的 API。
+    // 既有 runtime 不覆盖，避免把真实扩展环境干掉。
     if (!window.chrome.runtime) {
-        window.chrome.runtime = {
-            connect: function() { return { onMessage: { addListener: function() {} },
-                                           postMessage: function() {}, onDisconnect: { addListener: function() {} } }; },
-            sendMessage: function(msg, cb) { if (cb) cb(); },
-            onMessage: { addListener: function() {}, removeListener: function() {} },
-            onConnect: { addListener: function() {} },
-            id: undefined,
+        const noop = mark(function () {}, '');
+        const addListener = mark(function addListener() {}, 'addListener');
+        const removeListener = mark(function removeListener() {}, 'removeListener');
+        const hasListener = mark(function hasListener() { return false; }, 'hasListener');
+
+        const makeEvent = () => ({
+            addListener,
+            removeListener,
+            hasListener,
+        });
+
+        const runtime = {
+            OnInstalledReason: {
+                CHROME_UPDATE: 'chrome_update',
+                INSTALL: 'install',
+                SHARED_MODULE_UPDATE: 'shared_module_update',
+                UPDATE: 'update',
+            },
+            OnRestartRequiredReason: {
+                APP_UPDATE: 'app_update',
+                OS_UPDATE: 'os_update',
+                PERIODIC: 'periodic',
+            },
+            PlatformArch: {
+                ARM: 'arm', ARM64: 'arm64',
+                MIPS: 'mips', MIPS64: 'mips64',
+                X86_32: 'x86-32', X86_64: 'x86-64',
+            },
+            PlatformNaclArch: {
+                ARM: 'arm', MIPS: 'mips', MIPS64: 'mips64',
+                X86_32: 'x86-32', X86_64: 'x86-64',
+            },
+            PlatformOs: {
+                ANDROID: 'android', CROS: 'cros', FUCHSIA: 'fuchsia',
+                LINUX: 'linux', MAC: 'mac', OPENBSD: 'openbsd', WIN: 'win',
+            },
+            RequestUpdateCheckStatus: {
+                NO_UPDATE: 'no_update',
+                THROTTLED: 'throttled',
+                UPDATE_AVAILABLE: 'update_available',
+            },
+            connect: mark(function connect() {
+                return {
+                    name: '',
+                    sender: undefined,
+                    disconnect: mark(function disconnect() {}, 'disconnect'),
+                    postMessage: mark(function postMessage() {}, 'postMessage'),
+                    onDisconnect: makeEvent(),
+                    onMessage: makeEvent(),
+                };
+            }, 'connect'),
+            sendMessage: mark(function sendMessage(_msg, _opts, cb) {
+                const callback = typeof _opts === 'function' ? _opts : cb;
+                if (typeof callback === 'function') {
+                    Promise.resolve().then(() => callback());
+                }
+            }, 'sendMessage'),
+            onConnect: makeEvent(),
+            onConnectExternal: makeEvent(),
+            onMessage: makeEvent(),
+            onMessageExternal: makeEvent(),
+            onInstalled: makeEvent(),
+            onStartup: makeEvent(),
+            onSuspend: makeEvent(),
+            onSuspendCanceled: makeEvent(),
+            onUpdateAvailable: makeEvent(),
         };
+        // 真实 Chrome 非扩展页面 chrome.runtime 不暴露 id 属性
+        // （即 `'id' in chrome.runtime === false`）；刻意**不**设置该字段。
+        window.chrome.runtime = runtime;
     }
+
     if (!window.chrome.loadTimes) {
-        window.chrome.loadTimes = function() {
+        window.chrome.loadTimes = mark(function loadTimes() {
             return {
                 commitLoadTime: Date.now() / 1000,
                 connectionInfo: 'http/1.1',
@@ -202,27 +282,17 @@ PATCH_WINDOW_CHROME = """
                 wasFetchedViaSpdy: false,
                 wasNpnNegotiated: false,
             };
-        };
+        }, 'loadTimes');
     }
     if (!window.chrome.csi) {
-        window.chrome.csi = function() {
+        window.chrome.csi = mark(function csi() {
             return {
                 onloadT: Date.now(),
                 startE: Date.now() - 500,
                 pageT: 500 + Math.random() * 100,
                 tran: 15,
             };
-        };
-    }
-
-    if (window.__stealth_native) {
-        window.__stealth_native(window.chrome.loadTimes, 'loadTimes');
-        window.__stealth_native(window.chrome.csi, 'csi');
-        if (window.chrome.app) {
-            window.__stealth_native(window.chrome.app.getDetails, 'getDetails');
-            window.__stealth_native(window.chrome.app.getIsInstalled, 'getIsInstalled');
-            window.__stealth_native(window.chrome.app.installState, 'installState');
-        }
+        }, 'csi');
     }
 })();
 """
@@ -237,8 +307,8 @@ PATCH_IFRAME_WEBDRIVER = """
         try {
             if (iframe.contentWindow && iframe.contentWindow.navigator) {
                 Object.defineProperty(iframe.contentWindow.navigator, 'webdriver', {
-                    get: () => undefined,
-                    configurable: false,
+                    get: () => false,
+                    configurable: true,
                 });
             }
         } catch(e) {}
@@ -407,23 +477,34 @@ PATCH_WEBRTC_LEAK = """
     const OrigRTC = window.RTCPeerConnection || window.webkitRTCPeerConnection;
     if (!OrigRTC) return;
 
+    // 用 Proxy 透明地改写 config.iceTransportPolicy=relay，
+    // 同时保留原型链、name、length 等元信息。
     const handler = {
-        construct(target, args) {
+        construct(target, args, newTarget) {
             const config = Object.assign({}, args[0] || {});
             config.iceTransportPolicy = 'relay';
-            if (!config.iceServers) config.iceServers = [];
-            args[0] = config;
-            return Reflect.construct(target, args);
+            if (!Array.isArray(config.iceServers)) config.iceServers = [];
+            const newArgs = [config, ...args.slice(1)];
+            return Reflect.construct(target, newArgs, newTarget);
+        },
+        get(target, prop, receiver) {
+            // 确保 PatchedRTC.name / .prototype / .length 都透传到原构造器。
+            return Reflect.get(target, prop, receiver);
         },
     };
 
     const PatchedRTC = new Proxy(OrigRTC, handler);
 
+    // 兜底：即便 Proxy 的 toString 通过 Function.prototype.toString 走到 target，
+    // 仍显式登记为 native，避免某些实现里 Proxy 显示异常。
+    if (window.__stealth_native) {
+        try {
+            window.__stealth_native(PatchedRTC, OrigRTC.name || 'RTCPeerConnection');
+        } catch (e) {}
+    }
+
     if (window.RTCPeerConnection) {
         window.RTCPeerConnection = PatchedRTC;
-        if (window.__stealth_native) {
-            window.__stealth_native(PatchedRTC, 'RTCPeerConnection');
-        }
     }
     if (window.webkitRTCPeerConnection) {
         window.webkitRTCPeerConnection = PatchedRTC;
@@ -482,6 +563,18 @@ PATCH_STEALTH_CLEANUP = """
 # 构建函数
 # ---------------------------------------------------------------------------
 
+_IDEMPOTENT_GUARD_PREFIX = """
+// Stealth 整体幂等 guard：多次 addScript 注册或重复 evaluate 时，
+// 跳过第二次及之后的执行，避免 permissions/canvas/webrtc 等补丁被双层包装。
+// 真实幂等判定在 PATCH_NATIVE_TOSTRING 内设置 window.__stealth_applied__。
+if (!window.__stealth_applied__) {
+"""
+
+_IDEMPOTENT_GUARD_SUFFIX = """
+}
+"""
+
+
 def build_stealth_js(
     *,
     native_tostring: bool = True,
@@ -500,6 +593,9 @@ def build_stealth_js(
 
     注入顺序有约束：native_tostring 必须在最前，cleanup 在最后。
     webgl_vendor 默认关闭，因为紫鸟浏览器通常自行处理 WebGL 指纹。
+
+    输出脚本整体带幂等 guard：多次 addScript 注册（每新 tab 都要重注册）
+    或重复 evaluate 时，只有第一次完整执行，避免双重包装与 WeakMap 重置。
     """
     parts: list[str] = []
 
@@ -530,7 +626,10 @@ def build_stealth_js(
     if native_tostring:
         parts.append(PATCH_STEALTH_CLEANUP)
 
-    return "\n".join(parts)
+    inner = "\n".join(parts)
+    if not inner.strip():
+        return ""
+    return _IDEMPOTENT_GUARD_PREFIX + inner + _IDEMPOTENT_GUARD_SUFFIX
 
 
 STEALTH_JS = build_stealth_js()

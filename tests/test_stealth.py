@@ -106,8 +106,19 @@ class TestBuildStealthJs:
 
     def test_cleanup_is_last_when_native_tostring_enabled(self):
         js = build_stealth_js()
-        assert js.rstrip().endswith("})();")
+        # 外层幂等 guard 以 `}` 收尾；cleanup 的 IIFE `})();` 应为 guard 之前的最后一个补丁。
         assert "delete window.__stealth_native" in js
+        stripped = js.rstrip()
+        assert stripped.endswith("}")
+        # 确认 cleanup IIFE 出现在脚本后半段（位置接近末尾）
+        cleanup_pos = js.rfind("})();")
+        assert cleanup_pos > len(js) * 0.7
+
+    def test_idempotent_guard_present(self):
+        """整体脚本应带 __stealth_applied__ 幂等 guard，允许重复注入不重置状态。"""
+        js = build_stealth_js()
+        assert "__stealth_applied__" in js
+        assert "if (!window.__stealth_applied__)" in js
 
     def test_native_marks_applied_to_overridden_fns(self):
         js = build_stealth_js()

@@ -273,6 +273,9 @@ class TestConnectChromeStealthOrder:
 
         browser.get.assert_awaited()
         mock_apply_stealth.assert_awaited_once()
-        assert mock_apply_stealth.await_args.kwargs.get("evaluate_existing_documents") is False
+        # connect_chrome 现在并行 evaluate 所有 tab（`apply_stealth` 内部 gather 保证速度）。
+        assert mock_apply_stealth.await_args.kwargs.get("evaluate_existing_documents") is True
+        # Chrome 场景默认抹平 WebGL vendor，避免真实 GPU 在 WebGL Report 泄露。
+        assert mock_apply_stealth.await_args.kwargs.get("webgl_vendor") is True
         assert mock_apply_stealth.await_args.args[0] is browser
         assert browser.tabs, "stealth 应在 browser.get 填充 tabs 之后执行"

@@ -29,6 +29,7 @@ __all__ = [
     "StealthConfig",
     "apply_stealth",
     "evaluate_stealth_existing_document",
+    "build_stealth_js",
     "BehaviorConfig",
     "human_click",
     "human_fill",
@@ -53,6 +54,10 @@ class StealthConfig:
     typing_min_ms: int = 50
     typing_max_ms: int = 150
     mouse_movement: bool = True
+    # 是否伪造 WebGL vendor/renderer。
+    # 紫鸟客户端通常自行处理 WebGL 指纹，默认关闭以避免双重改写。
+    # Chrome launch/connect 场景应显式开启以抹平真实 GPU 信息。
+    webgl_vendor: bool = False
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "StealthConfig":
@@ -69,6 +74,7 @@ class StealthConfig:
             typing_min_ms=typing_speed[0] if isinstance(typing_speed, list) else 50,
             typing_max_ms=typing_speed[1] if isinstance(typing_speed, list) else 150,
             mouse_movement=data.get("mouse_movement", True),
+            webgl_vendor=data.get("webgl_vendor", False),
         )
 
     def to_behavior_config(self) -> BehaviorConfig:
@@ -81,17 +87,24 @@ class StealthConfig:
         )
 
 
+def _resolve_webgl_vendor(cfg: StealthConfig, override: bool | None) -> bool:
+    """将显式参数与配置合并；显式 *override* 优先，None 回退到配置。"""
+    if override is not None:
+        return override
+    return cfg.webgl_vendor
+
+
 async def evaluate_stealth_existing_document(
     tab: "Tab",
     *,
     config: StealthConfig | None = None,
-    webgl_vendor: bool = False,
+    webgl_vendor: bool | None = None,
 ) -> None:
     """对当前文档执行一次 stealth 脚本（不注册 addScriptToEvaluateOnNewDocument）。"""
     cfg = config or StealthConfig()
     if not cfg.enabled or not cfg.js_patches:
         return
-    script = build_stealth_js(webgl_vendor=webgl_vendor)
+    script = build_stealth_js(webgl_vendor=_resolve_webgl_vendor(cfg, webgl_vendor))
     try:
         await tab.evaluate(script)
         _logger.debug("stealth 已 evaluate 到已有 tab: %s", tab.target.url)
@@ -103,15 +116,18 @@ async def apply_stealth(
     browser: "Browser",
     *,
     config: StealthConfig | None = None,
-    webgl_vendor: bool = False,
+    webgl_vendor: bool | None = None,
     evaluate_existing_documents: bool = True,
 ) -> None:
     """为 Browser 的所有 tab 注入反检测脚本。
 
     通过 CDP Page.addScriptToEvaluateOnNewDocument 注入，
     确保后续新页面自动继承。若 *evaluate_existing_documents* 为 True，
-    还对每个已有页面执行 evaluate 立即生效（tab 很多时较慢）。
+    还对每个已有页面并行执行 evaluate 立即生效；并行化避免了
+    外部 Chrome tab 较多时按序 evaluate 导致的长尾等待。
     """
+    import asyncio  # pylint: disable=import-outside-toplevel
+
     from nodriver import cdp  # pylint: disable=import-outside-toplevel
 
     cfg = config or StealthConfig()
@@ -119,11 +135,11 @@ async def apply_stealth(
         _logger.debug("stealth JS patches 未启用，跳过注入")
         return
 
-    script = build_stealth_js(webgl_vendor=webgl_vendor)
+    script = build_stealth_js(webgl_vendor=_resolve_webgl_vendor(cfg, webgl_vendor))
 
     from ziniao_webdriver.cdp_tabs import filter_tabs  # pylint: disable=import-outside-toplevel
 
-    for tab in filter_tabs(browser.tabs):
+    async def _inject_init(tab: "Tab") -> None:
         try:
             await tab.send(
                 cdp.page.add_script_to_evaluate_on_new_document(source=script)
@@ -132,11 +148,25 @@ async def apply_stealth(
         except Exception:  # pylint: disable=broad-exception-caught
             _logger.debug("注入 init_script 到 tab 失败（tab 可能已关闭）")
 
-        if not evaluate_existing_documents:
-            continue
-
+    async def _evaluate_existing(tab: "Tab") -> None:
         try:
             await tab.evaluate(script)
             _logger.debug("stealth 已 evaluate 到已有 tab: %s", tab.target.url)
         except Exception:  # pylint: disable=broad-exception-caught
             _logger.debug("evaluate stealth 到 tab 失败（tab 可能已关闭）")
+
+    tabs = list(filter_tabs(browser.tabs))
+    if not tabs:
+        return
+
+    # 先并行注册 init_script，保证后续新 tab 即时继承；
+    # 再按需对已有文档并行 evaluate。gather return_exceptions 吞掉单 tab 失败。
+    await asyncio.gather(
+        *[_inject_init(tab) for tab in tabs],
+        return_exceptions=True,
+    )
+    if evaluate_existing_documents:
+        await asyncio.gather(
+            *[_evaluate_existing(tab) for tab in tabs],
+            return_exceptions=True,
+        )

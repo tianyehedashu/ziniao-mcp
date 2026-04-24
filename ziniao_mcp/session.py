@@ -508,11 +508,14 @@ class SessionManager:
         browser: "Browser",
         *,
         evaluate_existing_documents: bool = True,
+        webgl_vendor: bool | None = None,
     ) -> None:
         """向 Browser 的 tab 注入反检测脚本（若启用）。
 
         *evaluate_existing_documents=False* 时仅注册 addScriptToEvaluateOnNewDocument，
         不对每个已有页面 evaluate（tab 很多时更快）；调用方应对当前操作页再补一次 evaluate。
+        *webgl_vendor* 显式覆盖 ``StealthConfig.webgl_vendor``；Chrome launch/connect
+        场景建议传 ``True`` 抹平真实 GPU，紫鸟场景保持默认由客户端处理。
         """
         if not self.stealth_config.enabled:
             return
@@ -521,6 +524,7 @@ class SessionManager:
             browser,
             config=self.stealth_config,
             evaluate_existing_documents=evaluate_existing_documents,
+            webgl_vendor=webgl_vendor,
         )
 
     async def _evaluate_stealth_on_tab(self, tab: "Tab") -> None:
@@ -1171,7 +1175,8 @@ class SessionManager:
                 _logger.warning("自动创建新标签页失败（tabs 为空）: %s", exc)
 
         # Stealth 必须在「至少已有 tab」之后注入，否则 addScript 不会挂到新开的页面上。
-        await self._apply_stealth_to_browser(browser)
+        # 本机 Chrome launch：默认启用 WebGL vendor 伪造，避免真实 GPU 通过 WebGL Report 泄露。
+        await self._apply_stealth_to_browser(browser, webgl_vendor=True)
 
         session = StoreSession(
             store_id=session_id,
@@ -1333,8 +1338,9 @@ class SessionManager:
         """连接到一个已运行的 Chrome 实例（通过 CDP 端口）。
 
         与 ``launch_chrome`` / ``open_store`` 一致：按配置注入 stealth（若启用）。
-        外部 Chrome 往往已有大量 tab：仅对每个 tab 注册 *addScriptToEvaluateOnNewDocument*，
-        再对**当前活跃 tab** evaluate 一次，避免对每个页面跑大脚本导致极慢。
+        外部 Chrome 往往已有大量 tab：注册 *addScriptToEvaluateOnNewDocument* 的同时
+        对**所有常规 tab** 并行执行 evaluate，使已存在文档也立即生效；并行调度
+        由 ``apply_stealth`` 内部保证，避免按序 evaluate 导致的长尾延迟。
         """
         session_id = name or f"chrome-{cdp_port}"
         cached = self._stores.get(session_id)
@@ -1366,8 +1372,10 @@ class SessionManager:
                 _logger.warning("自动创建新标签页失败（tabs 为空）: %s", exc)
 
         # 先保证 tab 列表就绪再注册 addScript；否则后续新建的 tab 没有 OnNewDocument 钩子。
+        # evaluate_existing_documents=True：并行对所有 tab evaluate（由 apply_stealth 内部 gather）。
+        # 外部 Chrome：默认启用 WebGL vendor 伪造，抹平真实 GPU 信息。
         await self._apply_stealth_to_browser(
-            browser, evaluate_existing_documents=False,
+            browser, evaluate_existing_documents=True, webgl_vendor=True,
         )
 
         session = StoreSession(
@@ -1383,7 +1391,6 @@ class SessionManager:
         if session.tabs:
             active_tab = session.tabs[session.active_tab_index]
             await self.setup_tab_listeners(session, active_tab)
-            await self._evaluate_stealth_on_tab(active_tab)
 
         self._stores[session_id] = session
         self._active_store_id = session_id
@@ -1467,7 +1474,13 @@ class SessionManager:
         }
 
     async def setup_tab_listeners(self, store: StoreSession, tab: "Tab") -> None:
-        """为 tab 绑定 console/network/dialog 等事件监听。"""
+        """为 tab 绑定 console/network/dialog 等事件监听。
+
+        顺带对**首次接入**的 tab 注入 stealth 脚本，确保通过 ``tab new`` 等路径
+        创建的新 tab 也被覆盖（否则仅 open_store / launch / connect 时存在的
+        tab 有 OnNewDocument 钩子，新 tab 指纹裸奔）。整个 stealth 脚本自带
+        ``__stealth_applied__`` 幂等 guard，重复注册/evaluate 安全。
+        """
         if not _is_regular_tab(tab):
             return
         from nodriver import cdp  # pylint: disable=import-outside-toplevel
@@ -1476,6 +1489,24 @@ class SessionManager:
         if tab_id in store._listened_tab_ids:
             return
         store._listened_tab_ids.add(tab_id)
+
+        if self.stealth_config.enabled and self.stealth_config.js_patches:
+            from .stealth import build_stealth_js, _resolve_webgl_vendor  # pylint: disable=import-outside-toplevel
+            wv = _resolve_webgl_vendor(
+                self.stealth_config,
+                True if store.backend_type == "chrome" else None,
+            )
+            script = build_stealth_js(webgl_vendor=wv)
+            try:
+                await tab.send(
+                    cdp.page.add_script_to_evaluate_on_new_document(source=script)
+                )
+            except Exception:  # pylint: disable=broad-exception-caught
+                _logger.debug("setup_tab_listeners: addScript 失败（tab 可能已关闭）")
+            try:
+                await tab.evaluate(script)
+            except Exception:  # pylint: disable=broad-exception-caught
+                _logger.debug("setup_tab_listeners: evaluate 失败（tab 可能已关闭）")
 
         try:
             await tab.send(
