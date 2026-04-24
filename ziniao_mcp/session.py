@@ -599,9 +599,17 @@ class SessionManager:
 
     def _save_store_state(self, store_id: str, store_name: str,
                           cdp_port: int, browser_oauth: str,
-                          backend_type: str = "ziniao") -> None:
-        """将已打开会话的 CDP 信息持久化到状态文件。"""
-        entry = {
+                          backend_type: str = "ziniao",
+                          profile_seed: str | None = None) -> None:
+        """将已打开会话的 CDP 信息持久化到状态文件。
+
+        ``profile_seed`` 为稳定指纹派生来源（见 ``derive_profile_fingerprint``），
+        必须持久化到磁盘：每条 ziniao CLI 命令都是独立 Python 进程，
+        ``connect_chrome`` 重建 ``StoreSession`` 时若拿不到原始 seed，
+        ``setup_tab_listeners`` 给 ``tab new`` 注入的脚本就会走 port 兜底，
+        与 ``launch_chrome`` 首 tab 的 user_data_dir 派生不一致，
+        WebGL/Canvas 指纹跨 tab 分裂。"""
+        entry: dict[str, Any] = {
             "store_id": store_id,
             "store_name": store_name,
             "cdp_port": cdp_port,
@@ -609,6 +617,8 @@ class SessionManager:
             "backend_type": backend_type,
             "opened_at": time.time(),
         }
+        if profile_seed:
+            entry["profile_seed"] = profile_seed
         _update_state_file(lambda s: s.update({store_id: entry}))
 
     @staticmethod
@@ -929,7 +939,10 @@ class SessionManager:
         await self._sync_viewport_to_window(session)
 
         browser_oauth = result.get("browserOauth", store_id)
-        self._save_store_state(store_id, store_name, cdp_port, browser_oauth)
+        self._save_store_state(
+            store_id, store_name, cdp_port, browser_oauth,
+            profile_seed=profile_seed,
+        )
 
         return session
 
@@ -956,7 +969,12 @@ class SessionManager:
             if cdp_port and await _is_cdp_alive(cdp_port):
                 try:
                     browser = await _connect_cdp(cdp_port)
-                    profile_seed = _ziniao_profile_seed(store_id)
+                    # state 文件里的 seed 优先（兼容未来派生策略变更），
+                    # 缺失时回退纯函数推导——紫鸟侧仅依赖 store_id，跨进程本就稳定。
+                    profile_seed = (
+                        info.get("profile_seed")
+                        or _ziniao_profile_seed(store_id)
+                    )
                     await self._apply_stealth_to_browser(
                         browser, profile_seed=profile_seed,
                     )
@@ -1259,6 +1277,7 @@ class SessionManager:
         self._save_store_state(
             session_id, session.store_name, connected_port, session_id,
             backend_type="chrome",
+            profile_seed=profile_seed,
         )
 
         return session
@@ -1425,8 +1444,12 @@ class SessionManager:
         # 先保证 tab 列表就绪再注册 addScript；否则后续新建的 tab 没有 OnNewDocument 钩子。
         # evaluate_existing_documents=True：并行对所有 tab evaluate（由 apply_stealth 内部 gather）。
         # 外部 Chrome：默认启用 WebGL vendor 伪造，抹平真实 GPU 信息。
-        # connect 场景无从获知 user_data_dir，profile_seed 按 port 维度稳定。
-        profile_seed = _chrome_profile_seed(None, cdp_port)
+        # profile_seed 优先沿用 state 文件中上次 launch 记录的值（避免每个 CLI
+        # 子进程换算出新 seed、与首 tab 闭包捕获的指纹分裂）；否则按 port 兜底。
+        profile_seed = (
+            _read_state_file().get(session_id, {}).get("profile_seed")
+            or _chrome_profile_seed(None, cdp_port)
+        )
         await self._apply_stealth_to_browser(
             browser,
             evaluate_existing_documents=True,
@@ -1457,6 +1480,7 @@ class SessionManager:
         self._save_store_state(
             session_id, session.store_name, cdp_port, session_id,
             backend_type="chrome",
+            profile_seed=profile_seed,
         )
 
         return session
