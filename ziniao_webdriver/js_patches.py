@@ -9,8 +9,14 @@ nodriver 原生不产生 __playwright*/__pw_* 全局变量，也不设置 naviga
 
 补丁注入顺序：
 - PATCH_NATIVE_TOSTRING 必须最先注入，为后续所有被覆盖函数建立 toString 保护
+- PATCH_SEED_INJECTION 紧随其后（若有 profile_seed），为 Canvas/Audio/WebGL 提供稳定种子
 - PATCH_STEALTH_CLEANUP 必须最后注入，清除临时辅助属性
 """
+
+from __future__ import annotations
+
+import hashlib
+import json
 
 # ---------------------------------------------------------------------------
 # 基础设施 — 必须第一个注入
@@ -350,12 +356,20 @@ PATCH_IFRAME_WEBDRIVER = """
 
 PATCH_WEBGL_VENDOR = """
 (() => {
+    // vendor/renderer 默认走 Intel 占位；若 PATCH_SEED_INJECTION 已按 profile
+    // 种子赋值到 window.__STEALTH_WEBGL_VENDOR__ / __STEALTH_WEBGL_RENDERER__，
+    // 则读取之以得到贴近真实硬件分布的组合（见 _WEBGL_POOL）。
+    const SEED_VENDOR = (typeof window.__STEALTH_WEBGL_VENDOR__ === 'string')
+        ? window.__STEALTH_WEBGL_VENDOR__ : 'Intel Inc.';
+    const SEED_RENDERER = (typeof window.__STEALTH_WEBGL_RENDERER__ === 'string')
+        ? window.__STEALTH_WEBGL_RENDERER__ : 'Intel Iris OpenGL Engine';
+
     const getParameterProto = WebGLRenderingContext.prototype.getParameter;
     WebGLRenderingContext.prototype.getParameter = function(param) {
         const UNMASKED_VENDOR  = 0x9245;
         const UNMASKED_RENDERER = 0x9246;
-        if (param === UNMASKED_VENDOR)  return 'Intel Inc.';
-        if (param === UNMASKED_RENDERER) return 'Intel Iris OpenGL Engine';
+        if (param === UNMASKED_VENDOR)  return SEED_VENDOR;
+        if (param === UNMASKED_RENDERER) return SEED_RENDERER;
         return getParameterProto.call(this, param);
     };
 
@@ -364,8 +378,8 @@ PATCH_WEBGL_VENDOR = """
         WebGL2RenderingContext.prototype.getParameter = function(param) {
             const UNMASKED_VENDOR  = 0x9245;
             const UNMASKED_RENDERER = 0x9246;
-            if (param === UNMASKED_VENDOR)  return 'Intel Inc.';
-            if (param === UNMASKED_RENDERER) return 'Intel Iris OpenGL Engine';
+            if (param === UNMASKED_VENDOR)  return SEED_VENDOR;
+            if (param === UNMASKED_RENDERER) return SEED_RENDERER;
             return getParameterProto2.call(this, param);
         };
     }
@@ -393,7 +407,11 @@ PATCH_CANVAS_FINGERPRINT = """
     const origToBlob = HTMLCanvasElement.prototype.toBlob;
     const origGetImageData = CanvasRenderingContext2D.prototype.getImageData;
 
-    const seed = Math.floor(Math.random() * 256);
+    // 优先读取 PATCH_SEED_INJECTION 注入的稳定种子（基于 profile 派生），
+    // 缺省回退到页面会话级随机：单 IIFE 内 seed 一致，跨刷新不同。
+    const seed = (typeof window.__STEALTH_SEED_CANVAS__ === 'number')
+        ? (window.__STEALTH_SEED_CANVAS__ & 0xFF)
+        : Math.floor(Math.random() * 256);
 
     function addNoise(data) {
         for (let i = 0; i < data.length; i += 4) {
@@ -452,7 +470,9 @@ PATCH_AUDIO_FINGERPRINT = """
     if (typeof AudioBuffer === 'undefined') return;
 
     const origGetChannelData = AudioBuffer.prototype.getChannelData;
-    const seed = Math.floor(Math.random() * 10000);
+    const seed = (typeof window.__STEALTH_SEED_AUDIO__ === 'number')
+        ? (window.__STEALTH_SEED_AUDIO__ & 0xFFFF)
+        : Math.floor(Math.random() * 10000);
 
     AudioBuffer.prototype.getChannelData = function(channel) {
         const buf = origGetChannelData.call(this, channel);
@@ -559,6 +579,126 @@ PATCH_STEALTH_CLEANUP = """
 """
 
 
+# 当启用 profile_seed 时追加：额外清理注入的 SEED 全局，避免残留痕迹。
+# 与 PATCH_STEALTH_CLEANUP 分离，以便无 seed 时输出里不出现相关字面量。
+_PATCH_SEED_CLEANUP = """
+(() => {
+    const gone = [
+        '__STEALTH_SEED_CANVAS__',
+        '__STEALTH_SEED_AUDIO__',
+        '__STEALTH_WEBGL_VENDOR__',
+        '__STEALTH_WEBGL_RENDERER__',
+    ];
+    for (const k of gone) {
+        try { delete window[k]; } catch (e) {
+            try {
+                Object.defineProperty(window, k, {
+                    value: undefined, configurable: true, writable: true,
+                });
+            } catch (e2) {}
+        }
+    }
+})();
+"""
+
+
+# ---------------------------------------------------------------------------
+# Profile 稳定种子池 — 基于 profile_seed 派生贴近真实硬件分布的组合
+# ---------------------------------------------------------------------------
+#
+# 真实 Windows + Chrome + ANGLE 的 UNMASKED_VENDOR / UNMASKED_RENDERER 样本。
+# 覆盖 Intel 集显、NVIDIA 独显、AMD 独显三大家族常见型号；分布接近 Steam
+# 硬件普查与 Chrome Platform Status 的 GPU 装机率，避免出现一看就是 stealth
+# 占位的 "Intel Inc. / Intel Iris OpenGL Engine" 这类非典型组合。
+
+_WEBGL_POOL: tuple[tuple[str, str], ...] = (
+    ("Google Inc. (Intel)",
+     "ANGLE (Intel, Intel(R) UHD Graphics 630 Direct3D11 vs_5_0 ps_5_0, D3D11)"),
+    ("Google Inc. (Intel)",
+     "ANGLE (Intel, Intel(R) UHD Graphics 730 Direct3D11 vs_5_0 ps_5_0, D3D11)"),
+    ("Google Inc. (Intel)",
+     "ANGLE (Intel, Intel(R) Iris(R) Xe Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)"),
+    ("Google Inc. (NVIDIA)",
+     "ANGLE (NVIDIA, NVIDIA GeForce GTX 1650 Direct3D11 vs_5_0 ps_5_0, D3D11)"),
+    ("Google Inc. (NVIDIA)",
+     "ANGLE (NVIDIA, NVIDIA GeForce GTX 1660 Ti Direct3D11 vs_5_0 ps_5_0, D3D11)"),
+    ("Google Inc. (NVIDIA)",
+     "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11 vs_5_0 ps_5_0, D3D11)"),
+    ("Google Inc. (NVIDIA)",
+     "ANGLE (NVIDIA, NVIDIA GeForce RTX 4060 Laptop GPU Direct3D11 vs_5_0 ps_5_0, D3D11)"),
+    ("Google Inc. (AMD)",
+     "ANGLE (AMD, AMD Radeon(TM) Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)"),
+    ("Google Inc. (AMD)",
+     "ANGLE (AMD, Radeon RX 580 Series Direct3D11 vs_5_0 ps_5_0, D3D11)"),
+)
+
+
+def derive_profile_fingerprint(profile_seed: str | None) -> dict[str, object]:
+    """基于 *profile_seed* 稳定派生 Canvas/Audio/WebGL 指纹参数。
+
+    *profile_seed* 为 None 或空串时返回全 None，表示不启用稳定种子；
+    JS 侧会回退到原有 ``Math.random()`` 逻辑与默认 Intel 占位。
+
+    使用 BLAKE2b 将任意字符串映射为 16 字节摘要，各字段互不相关：
+    - bytes[0]      → canvas_seed  (0..255)
+    - bytes[1:3]    → audio_seed   (0..65535)
+    - bytes[3]      → webgl_idx    (mod len(_WEBGL_POOL))
+
+    seed 越稳定越贴近"真实用户固定指纹"的行为，代价是失去反追踪能力；
+    调用方应保证同一物理机/profile 只传一个稳定 key。
+    """
+    if not profile_seed:
+        return {
+            "canvas_seed": None,
+            "audio_seed": None,
+            "webgl_vendor": None,
+            "webgl_renderer": None,
+        }
+
+    digest = hashlib.blake2b(
+        profile_seed.encode("utf-8"), digest_size=16
+    ).digest()
+    canvas_seed = digest[0]
+    audio_seed = int.from_bytes(digest[1:3], "big")
+    gpu_idx = digest[3] % len(_WEBGL_POOL)
+    vendor, renderer = _WEBGL_POOL[gpu_idx]
+    return {
+        "canvas_seed": canvas_seed,
+        "audio_seed": audio_seed,
+        "webgl_vendor": vendor,
+        "webgl_renderer": renderer,
+    }
+
+
+def _build_seed_injection(fp: dict[str, object]) -> str:
+    """构造 seed 注入 JS 片段：把派生值以非枚举属性挂到 window。
+
+    放置在 PATCH_NATIVE_TOSTRING 之后、其他补丁之前；CLEANUP 负责收尾删除。
+    全 None 时返回空串（等价于不启用稳定种子，补丁走随机回退分支）。
+    """
+    has_any = any(v is not None for v in fp.values())
+    if not has_any:
+        return ""
+
+    def _js_define(name: str, value: object) -> str:
+        if value is None:
+            return ""
+        return (
+            "    Object.defineProperty(window, "
+            f"{json.dumps(name)}, {{ value: {json.dumps(value)}, "
+            "configurable: true, writable: false, enumerable: false });"
+        )
+
+    lines = [
+        _js_define("__STEALTH_SEED_CANVAS__", fp.get("canvas_seed")),
+        _js_define("__STEALTH_SEED_AUDIO__", fp.get("audio_seed")),
+        _js_define("__STEALTH_WEBGL_VENDOR__", fp.get("webgl_vendor")),
+        _js_define("__STEALTH_WEBGL_RENDERER__", fp.get("webgl_renderer")),
+    ]
+    body = "\n".join(ln for ln in lines if ln)
+    return "(() => {\n" + body + "\n})();\n"
+
+
 # ---------------------------------------------------------------------------
 # 构建函数
 # ---------------------------------------------------------------------------
@@ -588,11 +728,16 @@ def build_stealth_js(
     audio_fingerprint: bool = True,
     webrtc_leak: bool = True,
     automation_flags: bool = True,
+    profile_seed: str | None = None,
 ) -> str:
     """按需拼接反检测 JS 脚本。
 
-    注入顺序有约束：native_tostring 必须在最前，cleanup 在最后。
+    注入顺序有约束：native_tostring 必须在最前，seed 注入紧随其后，cleanup 在最后。
     webgl_vendor 默认关闭，因为紫鸟浏览器通常自行处理 WebGL 指纹。
+
+    *profile_seed* 非空时从 ``_WEBGL_POOL`` 派生稳定的 Canvas/Audio/WebGL 参数
+    （见 ``derive_profile_fingerprint``）：同一 profile 多次打开指纹稳定、
+    不同 profile 互不相同；为 None/空时保留原页面级随机行为。
 
     输出脚本整体带幂等 guard：多次 addScript 注册（每新 tab 都要重注册）
     或重复 evaluate 时，只有第一次完整执行，避免双重包装与 WeakMap 重置。
@@ -601,6 +746,10 @@ def build_stealth_js(
 
     if native_tostring:
         parts.append(PATCH_NATIVE_TOSTRING)
+
+    seed_js = _build_seed_injection(derive_profile_fingerprint(profile_seed))
+    if seed_js:
+        parts.append(seed_js)
 
     if webdriver:
         parts.append(PATCH_NAVIGATOR_WEBDRIVER)
@@ -625,6 +774,8 @@ def build_stealth_js(
 
     if native_tostring:
         parts.append(PATCH_STEALTH_CLEANUP)
+        if seed_js:
+            parts.append(_PATCH_SEED_CLEANUP)
 
     inner = "\n".join(parts)
     if not inner.strip():

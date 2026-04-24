@@ -15,6 +15,10 @@ from ziniao_mcp.stealth.js_patches import (
     STEALTH_JS_MINIMAL,
     build_stealth_js,
 )
+from ziniao_webdriver.js_patches import (
+    _WEBGL_POOL,
+    derive_profile_fingerprint,
+)
 from ziniao_mcp.stealth.human_behavior import (
     random_delay,
     _bezier_curve,
@@ -138,6 +142,113 @@ class TestBuildStealthJs:
 
 
 # ------------------------------------------------------------------ #
+#  稳定 profile_seed 派生：Canvas/Audio/WebGL 指纹
+# ------------------------------------------------------------------ #
+
+class TestProfileSeedDerivation:
+
+    def test_none_returns_all_none(self):
+        fp = derive_profile_fingerprint(None)
+        assert fp == {
+            "canvas_seed": None,
+            "audio_seed": None,
+            "webgl_vendor": None,
+            "webgl_renderer": None,
+        }
+
+    def test_empty_string_returns_all_none(self):
+        fp = derive_profile_fingerprint("")
+        assert all(v is None for v in fp.values())
+
+    def test_same_seed_is_stable(self):
+        fp1 = derive_profile_fingerprint("ziniao:store-42")
+        fp2 = derive_profile_fingerprint("ziniao:store-42")
+        assert fp1 == fp2
+
+    def test_different_seed_differs(self):
+        # 两个不同 profile_seed 至少有一项输出不同（冲突概率可忽略）。
+        fp_a = derive_profile_fingerprint("ziniao:store-A")
+        fp_b = derive_profile_fingerprint("ziniao:store-B")
+        assert fp_a != fp_b
+
+    def test_canvas_seed_range(self):
+        fp = derive_profile_fingerprint("ziniao:store-range")
+        assert isinstance(fp["canvas_seed"], int)
+        assert 0 <= fp["canvas_seed"] <= 0xFF
+
+    def test_audio_seed_range(self):
+        fp = derive_profile_fingerprint("ziniao:store-audio")
+        assert isinstance(fp["audio_seed"], int)
+        assert 0 <= fp["audio_seed"] <= 0xFFFF
+
+    def test_webgl_pair_from_pool(self):
+        fp = derive_profile_fingerprint("ziniao:store-webgl")
+        assert (fp["webgl_vendor"], fp["webgl_renderer"]) in _WEBGL_POOL
+
+    def test_pool_is_nonempty_and_realistic(self):
+        assert len(_WEBGL_POOL) >= 5
+        for vendor, renderer in _WEBGL_POOL:
+            # 规避占位值：真实 Chrome 格式应带 "Google Inc." 前缀，
+            # 绝非 "Intel Inc. / Intel Iris OpenGL Engine"。
+            assert vendor.startswith("Google Inc."), vendor
+            assert renderer.startswith("ANGLE ("), renderer
+
+
+class TestBuildStealthJsWithSeed:
+
+    def test_no_seed_has_no_seed_injection(self):
+        # 没有 profile_seed 时，不应生成 defineProperty 赋值段；
+        # PATCH_CANVAS_FINGERPRINT 里仍保留 typeof 兜底分支，属预期。
+        js = build_stealth_js()
+        assert 'value: ' not in js or \
+            "Object.defineProperty(window, \"__STEALTH_SEED_CANVAS__\"" not in js
+
+    def test_seed_injects_canvas_constant(self):
+        js = build_stealth_js(profile_seed="ziniao:store-1")
+        # 稳定 seed 下必有 defineProperty 写入 Canvas/Audio 两个全局。
+        assert 'Object.defineProperty(window, "__STEALTH_SEED_CANVAS__"' in js
+        assert 'Object.defineProperty(window, "__STEALTH_SEED_AUDIO__"' in js
+
+    def test_seed_injects_webgl_when_enabled(self):
+        js = build_stealth_js(
+            profile_seed="ziniao:store-1", webgl_vendor=True,
+        )
+        assert "__STEALTH_WEBGL_VENDOR__" in js
+        # 应包含 _WEBGL_POOL 中某一条 renderer 字符串（不再是 Intel 占位）。
+        fp = derive_profile_fingerprint("ziniao:store-1")
+        assert fp["webgl_renderer"] in js
+
+    def test_cleanup_always_removes_seed_globals(self):
+        js = build_stealth_js(profile_seed="ziniao:store-1")
+        # CLEANUP 应统一清理所有 stealth 全局，避免残留痕迹。
+        for name in (
+            "__stealth_native",
+            "__STEALTH_SEED_CANVAS__",
+            "__STEALTH_SEED_AUDIO__",
+            "__STEALTH_WEBGL_VENDOR__",
+            "__STEALTH_WEBGL_RENDERER__",
+        ):
+            assert name in js
+
+    def test_seed_stable_build_output(self):
+        # 同 seed 构建的 JS 字节串稳定（便于 addScript 缓存/幂等 guard）。
+        a = build_stealth_js(profile_seed="ziniao:store-42")
+        b = build_stealth_js(profile_seed="ziniao:store-42")
+        assert a == b
+
+    def test_different_seed_produces_different_script(self):
+        a = build_stealth_js(profile_seed="ziniao:store-A")
+        b = build_stealth_js(profile_seed="ziniao:store-B")
+        assert a != b
+
+    def test_stealth_js_minimal_still_has_no_seed(self):
+        # 模块级 STEALTH_JS_MINIMAL 不带 profile_seed，保持向后兼容；
+        # 也不包含 Canvas/Audio 指纹补丁，故完全不应出现 SEED 全局名。
+        assert "__STEALTH_SEED_CANVAS__" not in STEALTH_JS_MINIMAL
+        assert "__STEALTH_WEBGL_VENDOR__" not in STEALTH_JS_MINIMAL
+
+
+# ------------------------------------------------------------------ #
 #  StealthConfig
 # ------------------------------------------------------------------ #
 
@@ -175,6 +286,14 @@ class TestStealthConfig:
     def test_from_dict_none(self):
         cfg = StealthConfig.from_dict(None)
         assert cfg.enabled is True
+
+    def test_profile_seed_default_none(self):
+        cfg = StealthConfig()
+        assert cfg.profile_seed is None
+
+    def test_profile_seed_from_dict(self):
+        cfg = StealthConfig.from_dict({"profile_seed": "ziniao:store-dict"})
+        assert cfg.profile_seed == "ziniao:store-dict"
 
     def test_to_behavior_config(self):
         cfg = StealthConfig(delay_min_ms=100, delay_max_ms=400,

@@ -155,6 +155,10 @@ class StoreSession:
     fetch_enabled: bool = False
     har_recording: bool = False
     har_start_time: float = 0.0
+    # 基于 profile 的稳定指纹 seed（见 derive_profile_fingerprint）：
+    # 紫鸟店铺用 store_id，本机 Chrome 用规范化 user_data_dir 或 port 兜底。
+    # 会话级缓存，供 setup_tab_listeners 对新 tab 注入时复用。
+    profile_seed: str | None = None
 
     @property
     def pages(self) -> list["Tab"]:
@@ -262,6 +266,23 @@ async def _is_cdp_alive(port: int, timeout: float = 2.0) -> bool:
             return resp.status_code == 200
     except (httpx.HTTPError, OSError):
         return False
+
+
+def _ziniao_profile_seed(store_id: str) -> str:
+    """紫鸟店铺的稳定指纹 seed：同一 store_id 跨重启稳定。"""
+    return f"ziniao:{store_id}"
+
+
+def _chrome_profile_seed(user_data_dir: str | None, cdp_port: int) -> str:
+    """本机 Chrome 的稳定指纹 seed。
+
+    优先使用规范化绝对路径的 user_data_dir（跨重启、跨端口稳定）；
+    缺失时退化为 ``chrome:port:<port>``（同一端口稳定，不同端口互不同）。
+    """
+    if user_data_dir:
+        norm = os.path.normcase(os.path.normpath(os.path.abspath(user_data_dir)))
+        return f"chrome:ud:{norm}"
+    return f"chrome:port:{cdp_port}"
 
 
 async def _cdp_port_from_profile(user_data_dir: str) -> int | None:
@@ -509,6 +530,7 @@ class SessionManager:
         *,
         evaluate_existing_documents: bool = True,
         webgl_vendor: bool | None = None,
+        profile_seed: Any = None,
     ) -> None:
         """向 Browser 的 tab 注入反检测脚本（若启用）。
 
@@ -516,23 +538,35 @@ class SessionManager:
         不对每个已有页面 evaluate（tab 很多时更快）；调用方应对当前操作页再补一次 evaluate。
         *webgl_vendor* 显式覆盖 ``StealthConfig.webgl_vendor``；Chrome launch/connect
         场景建议传 ``True`` 抹平真实 GPU，紫鸟场景保持默认由客户端处理。
+        *profile_seed* 非空字符串时启用稳定指纹派生（见 ``derive_profile_fingerprint``），
+        会话级缓存在 ``StoreSession.profile_seed``；为 ``None`` 则 sentinel 走默认路径。
         """
         if not self.stealth_config.enabled:
             return
-        from .stealth import apply_stealth  # pylint: disable=import-outside-toplevel
+        from .stealth import _SEED_UNSET, apply_stealth  # pylint: disable=import-outside-toplevel
         await apply_stealth(
             browser,
             config=self.stealth_config,
             evaluate_existing_documents=evaluate_existing_documents,
             webgl_vendor=webgl_vendor,
+            profile_seed=profile_seed if profile_seed is not None else _SEED_UNSET,
         )
 
-    async def _evaluate_stealth_on_tab(self, tab: "Tab") -> None:
+    async def _evaluate_stealth_on_tab(
+        self, tab: "Tab", *, profile_seed: str | None = None,
+    ) -> None:
         """对单个 tab 的当前文档执行 stealth（与 apply_stealth 的 evaluate 段一致）。"""
         if not self.stealth_config.enabled or not self.stealth_config.js_patches:
             return
-        from .stealth import evaluate_stealth_existing_document  # pylint: disable=import-outside-toplevel
-        await evaluate_stealth_existing_document(tab, config=self.stealth_config)
+        from .stealth import (  # pylint: disable=import-outside-toplevel
+            _SEED_UNSET,
+            evaluate_stealth_existing_document,
+        )
+        await evaluate_stealth_existing_document(
+            tab,
+            config=self.stealth_config,
+            profile_seed=profile_seed if profile_seed is not None else _SEED_UNSET,
+        )
 
     async def _sync_viewport_to_window(self, store: StoreSession) -> None:
         """将 CDP 视口同步为当前窗口内容区尺寸，避免连接后出现右侧/底部大片空白。"""
@@ -851,7 +885,8 @@ class SessionManager:
         except Exception as exc:
             raise RuntimeError(_format_cdp_connection_error(cdp_port, exc)) from exc
 
-        await self._apply_stealth_to_browser(browser)
+        profile_seed = _ziniao_profile_seed(store_id)
+        await self._apply_stealth_to_browser(browser, profile_seed=profile_seed)
         tabs = _filter_tabs(browser.tabs)
 
         if not tabs:
@@ -873,6 +908,7 @@ class SessionManager:
             active_tab_index=0,
             launcher_page=launcher_page,
             open_result=result,
+            profile_seed=profile_seed,
         )
 
         for tab in session.tabs:
@@ -920,7 +956,10 @@ class SessionManager:
             if cdp_port and await _is_cdp_alive(cdp_port):
                 try:
                     browser = await _connect_cdp(cdp_port)
-                    await self._apply_stealth_to_browser(browser)
+                    profile_seed = _ziniao_profile_seed(store_id)
+                    await self._apply_stealth_to_browser(
+                        browser, profile_seed=profile_seed,
+                    )
                     tabs = _filter_tabs(browser.tabs)
 
                     if not tabs:
@@ -939,6 +978,7 @@ class SessionManager:
                         tabs=tabs,
                         active_tab_index=0,
                         open_result=info,
+                        profile_seed=profile_seed,
                     )
                     for tab in session.tabs:
                         await self.setup_tab_listeners(session, tab)
@@ -1159,8 +1199,13 @@ class SessionManager:
         connected_port: int,
         url: str,
         chrome_process: Any,
+        user_data_dir: str | None = None,
     ) -> StoreSession:
-        """在已知 CDP 端口就绪后完成 stealth、会话对象构建与导航。"""
+        """在已知 CDP 端口就绪后完成 stealth、会话对象构建与导航。
+
+        *user_data_dir* 参与 profile 稳定 seed：同一 user-data-dir 跨重启
+        指纹一致；缺失时退化到 port 维度稳定。
+        """
         browser = await _connect_cdp(connected_port)
         tabs = _filter_tabs(browser.tabs)
 
@@ -1176,7 +1221,10 @@ class SessionManager:
 
         # Stealth 必须在「至少已有 tab」之后注入，否则 addScript 不会挂到新开的页面上。
         # 本机 Chrome launch：默认启用 WebGL vendor 伪造，避免真实 GPU 通过 WebGL Report 泄露。
-        await self._apply_stealth_to_browser(browser, webgl_vendor=True)
+        profile_seed = _chrome_profile_seed(user_data_dir, connected_port)
+        await self._apply_stealth_to_browser(
+            browser, webgl_vendor=True, profile_seed=profile_seed,
+        )
 
         session = StoreSession(
             store_id=session_id,
@@ -1187,6 +1235,7 @@ class SessionManager:
             active_tab_index=0,
             backend_type="chrome",
             chrome_process=chrome_process,
+            profile_seed=profile_seed,
         )
 
         if session.tabs:
@@ -1248,6 +1297,7 @@ class SessionManager:
                 profile_port,
                 url,
                 None,
+                user_data_dir=user_data_dir,
             )
 
         session_id = name or f"chrome-{cdp_port}"
@@ -1330,6 +1380,7 @@ class SessionManager:
             connected_port,
             url,
             proc if owns_process else None,
+            user_data_dir=user_data_dir,
         )
 
     async def connect_chrome(
@@ -1374,8 +1425,13 @@ class SessionManager:
         # 先保证 tab 列表就绪再注册 addScript；否则后续新建的 tab 没有 OnNewDocument 钩子。
         # evaluate_existing_documents=True：并行对所有 tab evaluate（由 apply_stealth 内部 gather）。
         # 外部 Chrome：默认启用 WebGL vendor 伪造，抹平真实 GPU 信息。
+        # connect 场景无从获知 user_data_dir，profile_seed 按 port 维度稳定。
+        profile_seed = _chrome_profile_seed(None, cdp_port)
         await self._apply_stealth_to_browser(
-            browser, evaluate_existing_documents=True, webgl_vendor=True,
+            browser,
+            evaluate_existing_documents=True,
+            webgl_vendor=True,
+            profile_seed=profile_seed,
         )
 
         session = StoreSession(
@@ -1386,6 +1442,7 @@ class SessionManager:
             tabs=tabs,
             active_tab_index=0,
             backend_type="chrome",
+            profile_seed=profile_seed,
         )
 
         if session.tabs:
@@ -1496,7 +1553,10 @@ class SessionManager:
                 self.stealth_config,
                 True if store.backend_type == "chrome" else None,
             )
-            script = build_stealth_js(webgl_vendor=wv)
+            # 使用会话级缓存的 profile_seed：open_store / launch_chrome / connect_chrome
+            # 已在 StoreSession 上写入；缺失则回落到 StealthConfig.profile_seed。
+            seed = store.profile_seed or self.stealth_config.profile_seed
+            script = build_stealth_js(webgl_vendor=wv, profile_seed=seed)
             try:
                 await tab.send(
                     cdp.page.add_script_to_evaluate_on_new_document(source=script)
