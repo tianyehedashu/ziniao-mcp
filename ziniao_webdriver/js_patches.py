@@ -4,8 +4,8 @@
 覆盖可能暴露的自动化痕迹。
 
 nodriver 原生不产生 __playwright*/__pw_* 全局变量，也不设置 navigator.webdriver，
-因此相比 Playwright 时代精简了 PATCH_PLAYWRIGHT_GLOBALS 和 PATCH_CONSOLE_DEBUG_TRAP
-两个补丁。但仍主动覆盖 navigator.webdriver 作为安全兜底。
+因此相比 Playwright 时代精简了 PATCH_PLAYWRIGHT_GLOBALS。但仍主动覆盖
+navigator.webdriver，并保留 console 序列化防护作为 CDP 连接场景的安全兜底。
 
 补丁注入顺序：
 - PATCH_NATIVE_TOSTRING 必须最先注入，为后续所有被覆盖函数建立 toString 保护
@@ -58,15 +58,66 @@ PATCH_NATIVE_TOSTRING = """
 """
 
 # ---------------------------------------------------------------------------
+# Console 序列化防护
+# ---------------------------------------------------------------------------
+
+PATCH_CONSOLE_DEBUG_TRAP = """
+(() => {
+    if (!window.console) return;
+    const methods = ['debug', 'log', 'info', 'warn', 'error', 'dir', 'table'];
+
+    const sanitizeArg = (arg) => {
+        try {
+            if (!arg || typeof arg !== 'object') return arg;
+            const ownStack = Object.getOwnPropertyDescriptor(arg, 'stack');
+            if (ownStack && typeof ownStack.get === 'function') {
+                return { name: 'Error', message: '', stack: '' };
+            }
+            if (arg instanceof Error) {
+                return { name: arg.name || 'Error', message: arg.message || '' };
+            }
+        } catch(e) {
+            return '[console-arg]';
+        }
+        return arg;
+    };
+
+    for (const method of methods) {
+        const orig = console[method];
+        if (typeof orig !== 'function') continue;
+        const wrapped = function(...args) {
+            return orig.apply(this, args.map(sanitizeArg));
+        };
+        try {
+            Object.defineProperty(console, method, {
+                configurable: true,
+                writable: true,
+                value: wrapped,
+            });
+            if (window.__stealth_native) {
+                window.__stealth_native(wrapped, method);
+            }
+        } catch(e) {}
+    }
+})();
+"""
+
+# ---------------------------------------------------------------------------
 # Navigator 系列
 # ---------------------------------------------------------------------------
 
 PATCH_NAVIGATOR_WEBDRIVER = """
 (() => {
-    Object.defineProperty(navigator, 'webdriver', {
-        get: () => false,
-        configurable: true,
-    });
+    if (navigator.webdriver !== false) {
+        const getWebdriver = function() { return false; };
+        if (window.__stealth_native) {
+            window.__stealth_native(getWebdriver, 'get webdriver');
+        }
+        Object.defineProperty(navigator, 'webdriver', {
+            get: getWebdriver,
+            configurable: true,
+        });
+    }
 })();
 """
 
@@ -130,8 +181,12 @@ PATCH_NAVIGATOR_PLUGINS = """
             },
         ];
         const fakePlugins = makePluginArray(pluginData);
+        const getPlugins = function() { return fakePlugins; };
+        if (window.__stealth_native) {
+            window.__stealth_native(getPlugins, 'get plugins');
+        }
         Object.defineProperty(navigator, 'plugins', {
-            get: () => fakePlugins,
+            get: getPlugins,
             configurable: true,
         });
     }
@@ -195,111 +250,6 @@ PATCH_WINDOW_CHROME = """
         window.chrome.app = app;
     }
 
-    // chrome.runtime 在「非扩展页面」的真实 Chrome 里通常只有少量属性
-    // （id 属性并不存在）；仅当被访问/序列化时暴露必要的 API。
-    // 既有 runtime 不覆盖，避免把真实扩展环境干掉。
-    if (!window.chrome.runtime) {
-        const noop = mark(function () {}, '');
-        const addListener = mark(function addListener() {}, 'addListener');
-        const removeListener = mark(function removeListener() {}, 'removeListener');
-        const hasListener = mark(function hasListener() { return false; }, 'hasListener');
-
-        const makeEvent = () => ({
-            addListener,
-            removeListener,
-            hasListener,
-        });
-
-        const runtime = {
-            OnInstalledReason: {
-                CHROME_UPDATE: 'chrome_update',
-                INSTALL: 'install',
-                SHARED_MODULE_UPDATE: 'shared_module_update',
-                UPDATE: 'update',
-            },
-            OnRestartRequiredReason: {
-                APP_UPDATE: 'app_update',
-                OS_UPDATE: 'os_update',
-                PERIODIC: 'periodic',
-            },
-            PlatformArch: {
-                ARM: 'arm', ARM64: 'arm64',
-                MIPS: 'mips', MIPS64: 'mips64',
-                X86_32: 'x86-32', X86_64: 'x86-64',
-            },
-            PlatformNaclArch: {
-                ARM: 'arm', MIPS: 'mips', MIPS64: 'mips64',
-                X86_32: 'x86-32', X86_64: 'x86-64',
-            },
-            PlatformOs: {
-                ANDROID: 'android', CROS: 'cros', FUCHSIA: 'fuchsia',
-                LINUX: 'linux', MAC: 'mac', OPENBSD: 'openbsd', WIN: 'win',
-            },
-            RequestUpdateCheckStatus: {
-                NO_UPDATE: 'no_update',
-                THROTTLED: 'throttled',
-                UPDATE_AVAILABLE: 'update_available',
-            },
-            connect: mark(function connect() {
-                return {
-                    name: '',
-                    sender: undefined,
-                    disconnect: mark(function disconnect() {}, 'disconnect'),
-                    postMessage: mark(function postMessage() {}, 'postMessage'),
-                    onDisconnect: makeEvent(),
-                    onMessage: makeEvent(),
-                };
-            }, 'connect'),
-            sendMessage: mark(function sendMessage(_msg, _opts, cb) {
-                const callback = typeof _opts === 'function' ? _opts : cb;
-                if (typeof callback === 'function') {
-                    Promise.resolve().then(() => callback());
-                }
-            }, 'sendMessage'),
-            onConnect: makeEvent(),
-            onConnectExternal: makeEvent(),
-            onMessage: makeEvent(),
-            onMessageExternal: makeEvent(),
-            onInstalled: makeEvent(),
-            onStartup: makeEvent(),
-            onSuspend: makeEvent(),
-            onSuspendCanceled: makeEvent(),
-            onUpdateAvailable: makeEvent(),
-        };
-        // 真实 Chrome 非扩展页面 chrome.runtime 不暴露 id 属性
-        // （即 `'id' in chrome.runtime === false`）；刻意**不**设置该字段。
-        window.chrome.runtime = runtime;
-    }
-
-    if (!window.chrome.loadTimes) {
-        window.chrome.loadTimes = mark(function loadTimes() {
-            return {
-                commitLoadTime: Date.now() / 1000,
-                connectionInfo: 'http/1.1',
-                finishDocumentLoadTime: Date.now() / 1000 + 0.1,
-                finishLoadTime: Date.now() / 1000 + 0.2,
-                firstPaintAfterLoadTime: 0,
-                firstPaintTime: Date.now() / 1000 + 0.05,
-                navigationType: 'Other',
-                npnNegotiatedProtocol: 'unknown',
-                requestTime: Date.now() / 1000 - 0.3,
-                startLoadTime: Date.now() / 1000 - 0.2,
-                wasAlternateProtocolAvailable: false,
-                wasFetchedViaSpdy: false,
-                wasNpnNegotiated: false,
-            };
-        }, 'loadTimes');
-    }
-    if (!window.chrome.csi) {
-        window.chrome.csi = mark(function csi() {
-            return {
-                onloadT: Date.now(),
-                startE: Date.now() - 500,
-                pageT: 500 + Math.random() * 100,
-                tran: 15,
-            };
-        }, 'csi');
-    }
 })();
 """
 
@@ -309,11 +259,36 @@ PATCH_WINDOW_CHROME = """
 
 PATCH_IFRAME_WEBDRIVER = """
 (() => {
+    const iframeGetWebdriver = function() { return false; };
+    if (window.__stealth_native) {
+        window.__stealth_native(iframeGetWebdriver, 'get webdriver');
+    }
+
+    const contentWindowDesc = Object.getOwnPropertyDescriptor(
+        HTMLIFrameElement.prototype, 'contentWindow'
+    );
+    const getContentWindow = function() {
+        const win = contentWindowDesc.get.call(this);
+        try {
+            if (win && win.navigator && win.navigator.webdriver !== false) {
+                Object.defineProperty(win.navigator, 'webdriver', {
+                    get: iframeGetWebdriver,
+                    configurable: true,
+                });
+            }
+        } catch(e) {}
+        return win;
+    };
+    if (window.__stealth_native) {
+        window.__stealth_native(getContentWindow, 'get contentWindow');
+    }
+
     function patchIframe(iframe) {
         try {
-            if (iframe.contentWindow && iframe.contentWindow.navigator) {
+            if (iframe.contentWindow && iframe.contentWindow.navigator &&
+                iframe.contentWindow.navigator.webdriver !== false) {
                 Object.defineProperty(iframe.contentWindow.navigator, 'webdriver', {
-                    get: () => false,
+                    get: iframeGetWebdriver,
                     configurable: true,
                 });
             }
@@ -324,21 +299,49 @@ PATCH_IFRAME_WEBDRIVER = """
         iframe.addEventListener('load', () => patchIframe(iframe));
     }
 
+    function prepareIframe(iframe) {
+        observeIframe(iframe);
+        patchIframe(iframe);
+        try {
+            if (contentWindowDesc && contentWindowDesc.get &&
+                !iframe.__stealth_iframe_contentWindow__) {
+                Object.defineProperty(iframe, '__stealth_iframe_contentWindow__', {
+                    value: true, configurable: true, enumerable: false,
+                });
+                Object.defineProperty(iframe, 'contentWindow', {
+                    configurable: true,
+                    get: getContentWindow,
+                });
+            }
+        } catch(e) {}
+    }
+
+    const origCreateElement = Document.prototype.createElement;
+    Document.prototype.createElement = function(...args) {
+        const el = origCreateElement.apply(this, args);
+        try {
+            if (String(args[0]).toLowerCase() === 'iframe') {
+                prepareIframe(el);
+            }
+        } catch(e) {}
+        return el;
+    };
+    if (window.__stealth_native) {
+        window.__stealth_native(Document.prototype.createElement, 'createElement');
+    }
+
     document.querySelectorAll('iframe').forEach(f => {
-        observeIframe(f);
-        patchIframe(f);
+        prepareIframe(f);
     });
 
     const observer = new MutationObserver(mutations => {
         for (const m of mutations) {
             for (const node of m.addedNodes) {
                 if (node.tagName === 'IFRAME') {
-                    observeIframe(node);
-                    patchIframe(node);
+                    prepareIframe(node);
                 } else if (node.querySelectorAll) {
                     node.querySelectorAll('iframe').forEach(f => {
-                        observeIframe(f);
-                        patchIframe(f);
+                        prepareIframe(f);
                     });
                 }
             }
@@ -347,6 +350,73 @@ PATCH_IFRAME_WEBDRIVER = """
     observer.observe(document.documentElement || document, {
         childList: true, subtree: true
     });
+})();
+"""
+
+# ---------------------------------------------------------------------------
+# 用户活动与焦点信号
+# ---------------------------------------------------------------------------
+
+PATCH_USER_ACTIVITY = """
+(() => {
+    let activeUntil = Date.now() + 45000;
+    const markActive = () => { activeUntil = Date.now() + 45000; };
+    const isActive = () => Date.now() < activeUntil;
+    const getHasBeenActive = function() { return true; };
+    const getIsActive = function() { return isActive(); };
+    const getUserActivation = function() {
+        return { hasBeenActive: true, isActive: isActive() };
+    };
+    if (window.__stealth_native) {
+        window.__stealth_native(getHasBeenActive, 'get hasBeenActive');
+        window.__stealth_native(getIsActive, 'get isActive');
+        window.__stealth_native(getUserActivation, 'get userActivation');
+    }
+
+    [
+        'pointerdown', 'pointermove', 'mousedown', 'mouseup', 'click',
+        'keydown', 'touchstart', 'wheel',
+    ].forEach(type => {
+        try {
+            window.addEventListener(type, markActive, { capture: true, passive: true });
+        } catch(e) {}
+    });
+
+    if (typeof document.hasFocus === 'function') {
+        document.hasFocus = function hasFocus() { return true; };
+        if (window.__stealth_native) {
+            window.__stealth_native(document.hasFocus, 'hasFocus');
+        }
+    }
+
+    const defineActivation = (obj) => {
+        if (!obj) return false;
+        let ok = false;
+        try {
+            Object.defineProperty(obj, 'hasBeenActive', {
+                get: getHasBeenActive,
+                configurable: true,
+            });
+            ok = true;
+        } catch(e) {}
+        try {
+            Object.defineProperty(obj, 'isActive', {
+                get: getIsActive,
+                configurable: true,
+            });
+            ok = true;
+        } catch(e) {}
+        return ok;
+    };
+
+    if (!defineActivation(navigator.userActivation)) {
+        try {
+            Object.defineProperty(navigator, 'userActivation', {
+                get: getUserActivation,
+                configurable: true,
+            });
+        } catch(e) {}
+    }
 })();
 """
 
@@ -540,24 +610,38 @@ PATCH_AUTOMATION_FLAGS = """
 (() => {
     const origLangs = navigator.languages;
     if (!origLangs || origLangs.length === 0) {
+        const getLanguages = function() { return ['en-US', 'en']; };
+        if (window.__stealth_native) {
+            window.__stealth_native(getLanguages, 'get languages');
+        }
         Object.defineProperty(navigator, 'languages', {
-            get: () => ['en-US', 'en'],
+            get: getLanguages,
             configurable: true,
         });
     }
 
     const origHWC = navigator.hardwareConcurrency;
     if (!origHWC || origHWC < 2) {
+        const getHardwareConcurrency = function() { return 4; };
+        if (window.__stealth_native) {
+            window.__stealth_native(
+                getHardwareConcurrency, 'get hardwareConcurrency'
+            );
+        }
         Object.defineProperty(navigator, 'hardwareConcurrency', {
-            get: () => 4,
+            get: getHardwareConcurrency,
             configurable: false,
         });
     }
 
     const origMem = navigator.deviceMemory;
     if (!origMem || origMem < 2) {
+        const getDeviceMemory = function() { return 8; };
+        if (window.__stealth_native) {
+            window.__stealth_native(getDeviceMemory, 'get deviceMemory');
+        }
         Object.defineProperty(navigator, 'deviceMemory', {
-            get: () => 8,
+            get: getDeviceMemory,
             configurable: false,
         });
     }
@@ -718,14 +802,16 @@ _IDEMPOTENT_GUARD_SUFFIX = """
 def build_stealth_js(
     *,
     native_tostring: bool = True,
+    console_debug_trap: bool = True,
     webdriver: bool = True,
     plugins: bool = True,
     permissions: bool = True,
     chrome_obj: bool = True,
     iframe_webdriver: bool = True,
+    user_activity: bool = True,
     webgl_vendor: bool = False,
-    canvas_fingerprint: bool = True,
-    audio_fingerprint: bool = True,
+    canvas_fingerprint: bool = False,
+    audio_fingerprint: bool = False,
     webrtc_leak: bool = True,
     automation_flags: bool = True,
     profile_seed: str | None = None,
@@ -737,7 +823,8 @@ def build_stealth_js(
 
     *profile_seed* 非空时从 ``_WEBGL_POOL`` 派生稳定的 Canvas/Audio/WebGL 参数
     （见 ``derive_profile_fingerprint``）：同一 profile 多次打开指纹稳定、
-    不同 profile 互不相同；为 None/空时保留原页面级随机行为。
+    不同 profile 互不相同。Canvas/Audio 默认不改写，避免复用真实
+    profile 时与站点已记录的历史设备指纹不一致；需要反追踪时再显式开启。
 
     输出脚本整体带幂等 guard：多次 addScript 注册（每新 tab 都要重注册）
     或重复 evaluate 时，只有第一次完整执行，避免双重包装与 WeakMap 重置。
@@ -746,6 +833,8 @@ def build_stealth_js(
 
     if native_tostring:
         parts.append(PATCH_NATIVE_TOSTRING)
+    if console_debug_trap:
+        parts.append(PATCH_CONSOLE_DEBUG_TRAP)
 
     seed_js = _build_seed_injection(derive_profile_fingerprint(profile_seed))
     if seed_js:
@@ -761,6 +850,8 @@ def build_stealth_js(
         parts.append(PATCH_WINDOW_CHROME)
     if iframe_webdriver:
         parts.append(PATCH_IFRAME_WEBDRIVER)
+    if user_activity:
+        parts.append(PATCH_USER_ACTIVITY)
     if webgl_vendor:
         parts.append(PATCH_WEBGL_VENDOR)
     if canvas_fingerprint:

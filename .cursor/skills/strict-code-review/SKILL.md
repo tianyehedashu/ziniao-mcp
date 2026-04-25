@@ -1,6 +1,6 @@
 ---
 name: strict-code-review
-description: 以资深架构师视角对 Diff/源码做深度 Code Review：正确性与防御性、架构合规、DRY、KISS、测试完备性；禁止格式挑刺；单次最多 5 条高价值问题；无重大问题输出 LGTM。在用户附上改动、请求审查、PR review、走查、diff 评审时触发。
+description: 以资深架构师视角对 Diff/源码做深度 Code Review：正确性与防御性、架构合规、DRY、KISS、测试完备性；禁止格式挑刺；单次最多 10 条高价值问题；无重大问题输出 LGTM。在用户附上改动、请求审查、PR review、走查、diff 评审时触发。
 ---
 
 # 严苛架构师式 Code Review

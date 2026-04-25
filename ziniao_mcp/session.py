@@ -24,11 +24,14 @@ from .recording_context import RecordingBrowserContext
 
 if os.name == "nt":
     import msvcrt
+
+    fcntl = None
 else:
+    msvcrt = None
     try:
         import fcntl
     except ImportError:
-        fcntl = None  # type: ignore[assignment]
+        fcntl = None
 
 if TYPE_CHECKING:
     from ziniao_webdriver import ZiniaoClient
@@ -182,7 +185,7 @@ def _acquire_lock():
     """获取跨进程文件锁，返回锁文件描述符。调用方负责用 _release_lock 释放。"""
     _STATE_DIR.mkdir(parents=True, exist_ok=True)
     fd = os.open(str(_LOCK_FILE), os.O_CREAT | os.O_RDWR)
-    if os.name == "nt":
+    if os.name == "nt" and msvcrt is not None:
         msvcrt.locking(fd, msvcrt.LK_LOCK, 1)
     elif fcntl is not None:
         fcntl.flock(fd, fcntl.LOCK_EX)
@@ -192,7 +195,7 @@ def _acquire_lock():
 def _release_lock(fd: int) -> None:
     """释放文件锁并关闭描述符。"""
     try:
-        if os.name == "nt":
+        if os.name == "nt" and msvcrt is not None:
             os.lseek(fd, 0, os.SEEK_SET)
             msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
         elif fcntl is not None:
@@ -335,10 +338,10 @@ async def _connect_cdp(port: int, timeout: float = 30.0) -> "Browser":
     import nodriver  # pylint: disable=import-outside-toplevel
 
     try:
-        browser = await asyncio.wait_for(
-            nodriver.Browser.create(host="127.0.0.1", port=port),
-            timeout=timeout,
-        )
+        config = nodriver.Config(host="127.0.0.1", port=port)
+        instance = nodriver.Browser(config)
+        await asyncio.wait_for(instance.start(), timeout=timeout)
+        browser = instance
     except asyncio.TimeoutError:
         raise RuntimeError(
             f"CDP 连接超时（{timeout:.0f}s）。端口 {port} 的 Chrome 可能标签页过多，"
@@ -1184,6 +1187,35 @@ class SessionManager:
 
         return executable_path, user_data_dir, cdp_port, headless
 
+    @staticmethod
+    def _build_chrome_launch_args(
+        *,
+        executable_path: str,
+        cdp_port: int,
+        user_data_dir: str,
+        headless: bool,
+        url: str,
+    ) -> list[str]:
+        """构造 Chrome 启动命令行。
+
+        不默认追加 ``--disable-blink-features=AutomationControlled``：
+        新版 Chrome 会在页面顶部显示“不受支持的命令行标记”警告。该 UI
+        痕迹对真实用户可见，也可能引入额外环境差异；webdriver 相关修补
+        统一由 stealth init_script 与 iframe 同步补丁承担。
+        """
+        args = [
+            executable_path,
+            f"--remote-debugging-port={cdp_port}",
+            f"--user-data-dir={user_data_dir}",
+            "--no-first-run",
+            "--no-default-browser-check",
+        ]
+        if headless:
+            args.append("--headless=new")
+        if url:
+            args.append(url)
+        return args
+
     async def _try_connect_existing_chrome(
         self, user_data_dir: str, *, relaxed_probe: bool = True,
     ) -> int | None:
@@ -1324,17 +1356,13 @@ class SessionManager:
             self._active_store_id = session_id
             return self._stores[session_id]
 
-        args = [
-            executable_path,
-            f"--remote-debugging-port={cdp_port}",
-            f"--user-data-dir={user_data_dir}",
-            "--no-first-run",
-            "--no-default-browser-check",
-        ]
-        if headless:
-            args.append("--headless=new")
-        if url:
-            args.append(url)
+        args = self._build_chrome_launch_args(
+            executable_path=executable_path,
+            cdp_port=cdp_port,
+            user_data_dir=user_data_dir,
+            headless=headless,
+            url=url,
+        )
 
         popen_kwargs: dict[str, Any] = {
             "stdout": subprocess.DEVNULL,

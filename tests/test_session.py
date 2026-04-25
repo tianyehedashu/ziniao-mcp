@@ -12,6 +12,59 @@ from ziniao_mcp.session import (
 )
 
 
+class TestBuildChromeLaunchArgs:
+    """``_build_chrome_launch_args`` 纯函数契约。"""
+
+    def _base_kwargs(self, **overrides):
+        kwargs = dict(
+            executable_path="C:/chrome/chrome.exe",
+            cdp_port=9222,
+            user_data_dir="D:/chrome-debug",
+            headless=False,
+            url="",
+        )
+        kwargs.update(overrides)
+        return kwargs
+
+    def test_does_not_add_unsupported_automation_flag_by_default(self):
+        """该 flag 会触发 Chrome 顶部“不受支持的命令行标记”警告，
+        默认启动参数不应引入这类可见痕迹。"""
+        args = SessionManager._build_chrome_launch_args(**self._base_kwargs())
+        assert "--disable-blink-features=AutomationControlled" not in args
+
+    def test_required_base_flags_preserved(self):
+        """不能把原有的 debugging-port / user-data-dir / no-first-run
+        / no-default-browser-check 这些基础参数丢掉。"""
+        args = SessionManager._build_chrome_launch_args(**self._base_kwargs())
+        assert args[0] == "C:/chrome/chrome.exe"
+        assert "--remote-debugging-port=9222" in args
+        assert "--user-data-dir=D:/chrome-debug" in args
+        assert "--no-first-run" in args
+        assert "--no-default-browser-check" in args
+
+    def test_headless_appended_only_when_enabled(self):
+        without = SessionManager._build_chrome_launch_args(
+            **self._base_kwargs(headless=False)
+        )
+        with_hl = SessionManager._build_chrome_launch_args(
+            **self._base_kwargs(headless=True)
+        )
+        assert "--headless=new" not in without
+        assert "--headless=new" in with_hl
+
+    def test_url_is_last_positional_when_present(self):
+        """URL 作为位置参数直接传给 Chrome 时，应该在最末位，
+        避免与后续新增 flag 顺序冲突。"""
+        args = SessionManager._build_chrome_launch_args(
+            **self._base_kwargs(url="https://example.com")
+        )
+        assert args[-1] == "https://example.com"
+
+    def test_url_not_appended_when_empty(self):
+        args = SessionManager._build_chrome_launch_args(**self._base_kwargs(url=""))
+        assert all(not a.startswith("http") for a in args[1:])
+
+
 @pytest.fixture()
 def mock_client():
     c = MagicMock(spec=ZiniaoClient)

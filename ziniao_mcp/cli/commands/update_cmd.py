@@ -29,7 +29,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 import typer
@@ -497,7 +497,7 @@ def _kill_blocking_unix(uv_exe: Optional[str] = None) -> List[str]:
 
         try:
             os.kill(pid, signal.SIGTERM)
-            killed.append(f"PID {pid} ({Path(exe).name})")
+            killed.append(f"PID {pid} ({PurePath(exe).name})")
         except OSError:
             pass
 

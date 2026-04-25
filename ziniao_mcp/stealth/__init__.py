@@ -67,7 +67,7 @@ class StealthConfig:
     profile_seed: str | None = None
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "StealthConfig":
+    def from_dict(cls, data: dict[str, Any] | None) -> "StealthConfig":
         if not data:
             return cls()
         delay_range = data.get("delay_range", [200, 800])

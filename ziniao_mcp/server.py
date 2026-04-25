@@ -31,6 +31,47 @@ def _print_package_version_and_exit() -> None:
         sys.exit(0)
 
 
+def _load_yaml_file(path: Path | str | None) -> dict[str, Any]:
+    """Load a YAML config file into a dict, tolerating missing/empty/malformed input."""
+    if not path:
+        return {}
+    p = Path(path)
+    if not p.is_file():
+        return {}
+    import yaml  # pylint: disable=import-outside-toplevel
+
+    try:
+        with p.open("r", encoding="utf-8") as f:
+            return yaml.safe_load(f) or {}
+    except (OSError, yaml.YAMLError) as exc:
+        _logger.warning("读取配置文件 %s 失败：%s", p, exc)
+        return {}
+
+
+def _merge_yaml_fallthrough(project: dict[str, Any], base: dict[str, Any]) -> dict[str, Any]:
+    """Deep merge *project* over *base*.
+
+    项目侧的 "falsy" 标量（None / 空字符串 / 0 / False）**不** 覆盖 base。
+    这与 ``ziniao config show`` 里 ``_source_of`` 的 "project 有值才用" 语义一致，
+    避免项目模板里的占位空值把全局真实配置清零（例如 ``chrome.user_data_dir: ""``
+    把 ``~/.ziniao/config.yaml`` 的 ``D:/chrome-debug`` 覆盖成空，最终 fallback 到
+    默认目录）。dict 子节点仍然按同规则递归合并。
+    """
+    merged: dict[str, Any] = dict(base)
+    for key, pv in project.items():
+        bv = base.get(key)
+        if isinstance(pv, dict) and isinstance(bv, dict):
+            merged[key] = _merge_yaml_fallthrough(pv, bv)
+        elif isinstance(pv, dict):
+            merged[key] = pv
+        elif pv in (None, "", 0, False):
+            if key not in merged:
+                merged[key] = pv
+        else:
+            merged[key] = pv
+    return merged
+
+
 def _resolve_config() -> dict[str, Any]:
     """解析配置，优先级: 环境变量 > 命令行参数 > .env > config.yaml > ~/.ziniao/config.yaml"""
     from .dotenv_loader import load_dotenv  # pylint: disable=import-outside-toplevel
@@ -52,23 +93,25 @@ def _resolve_config() -> dict[str, Any]:
 
     yaml_config: dict[str, Any] = {}
     chrome_yaml: dict[str, Any] = {}
-    config_path = args.config
-    if not config_path:
-        candidates = [
+    # 显式 --config 视作"单一来源"：用户选了哪个就用哪个，不再与全局合并。
+    # 未显式指定时，按 [项目 CWD, 项目包内, 全局] 顺序找到第一个 *项目级* 候选，
+    # 再与全局做 fall-through 合并；这样模板里 `user_data_dir: ""` 不会把全局配置清零。
+    if args.config:
+        raw = _load_yaml_file(args.config)
+    else:
+        project_candidates = [
             Path("config/config.yaml"),
             Path(__file__).resolve().parent.parent / "config" / "config.yaml",
-            Path.home() / ".ziniao" / "config.yaml",
         ]
-        for p in candidates:
-            if p.exists():
-                config_path = str(p)
+        project_raw: dict[str, Any] = {}
+        for p in project_candidates:
+            if p.is_file():
+                project_raw = _load_yaml_file(p)
                 break
+        global_raw = _load_yaml_file(Path.home() / ".ziniao" / "config.yaml")
+        raw = _merge_yaml_fallthrough(project_raw, global_raw)
 
-    if config_path and Path(config_path).exists():
-        import yaml  # pylint: disable=import-outside-toplevel
-
-        with open(config_path, "r", encoding="utf-8") as f:
-            raw = yaml.safe_load(f) or {}
+    if raw:
         if "ziniao" in raw:
             browser_cfg = raw["ziniao"].get("browser", {})
             user_cfg = raw["ziniao"].get("user_info", {})

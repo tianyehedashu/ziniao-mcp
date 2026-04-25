@@ -42,7 +42,7 @@ class TestBuildStealthJs:
 
     def test_default_includes_chrome_patch(self):
         js = build_stealth_js()
-        assert "chrome.runtime" in js or "window.chrome" in js
+        assert "window.chrome" in js
 
     def test_default_excludes_webgl_vendor(self):
         js = build_stealth_js()
@@ -55,9 +55,9 @@ class TestBuildStealthJs:
 
     def test_all_disabled_returns_empty(self):
         js = build_stealth_js(
-            native_tostring=False, webdriver=False,
+            native_tostring=False, console_debug_trap=False, webdriver=False,
             plugins=False, permissions=False,
-            chrome_obj=False, iframe_webdriver=False,
+            chrome_obj=False, iframe_webdriver=False, user_activity=False,
             webgl_vendor=False, canvas_fingerprint=False,
             audio_fingerprint=False, webrtc_leak=False,
             automation_flags=False,
@@ -93,13 +93,50 @@ class TestBuildStealthJs:
         assert "chrome.app" in js
         assert "InstallState" in js
 
-    def test_default_includes_canvas_fingerprint(self):
+    def test_default_does_not_polyfill_chrome_runtime(self):
         js = build_stealth_js()
+        assert "chrome.runtime" not in js
+        assert "sendMessage" not in js
+
+    def test_default_does_not_polyfill_deprecated_chrome_timing_apis(self):
+        js = build_stealth_js()
+        assert "loadTimes" not in js
+        assert "chrome.csi" not in js
+
+    def test_default_includes_user_activity_patch(self):
+        js = build_stealth_js()
+        assert "navigator.userActivation" in js
+        assert "hasBeenActive" in js
+        assert "document.hasFocus" in js
+
+    def test_user_activity_disabled(self):
+        js = build_stealth_js(user_activity=False)
+        assert "navigator.userActivation" not in js
+        assert "document.hasFocus" not in js
+
+    def test_iframe_webdriver_uses_create_element_hook(self):
+        js = build_stealth_js()
+        assert "Document.prototype.createElement" in js
+        assert "contentWindow" in js
+        assert "__stealth_iframe_contentWindow__" in js
+
+    def test_default_excludes_canvas_fingerprint(self):
+        js = build_stealth_js()
+        assert "toDataURL" not in js
+        assert "toBlob" not in js
+
+    def test_canvas_fingerprint_opt_in(self):
+        js = build_stealth_js(canvas_fingerprint=True)
         assert "toDataURL" in js
         assert "toBlob" in js
 
-    def test_default_includes_audio_fingerprint(self):
+    def test_default_excludes_audio_fingerprint(self):
         js = build_stealth_js()
+        assert "AudioBuffer" not in js
+        assert "getChannelData" not in js
+
+    def test_audio_fingerprint_opt_in(self):
+        js = build_stealth_js(audio_fingerprint=True)
         assert "AudioBuffer" in js
         assert "getChannelData" in js
 
@@ -127,6 +164,15 @@ class TestBuildStealthJs:
     def test_native_marks_applied_to_overridden_fns(self):
         js = build_stealth_js()
         assert js.count("__stealth_native") > 2
+
+    def test_default_includes_console_debug_trap(self):
+        js = build_stealth_js()
+        assert "sanitizeArg" in js
+        assert "Object.getOwnPropertyDescriptor(arg, 'stack')" in js
+
+    def test_console_debug_trap_disabled(self):
+        js = build_stealth_js(console_debug_trap=False)
+        assert "sanitizeArg" not in js
 
     def test_canvas_disabled(self):
         js = build_stealth_js(canvas_fingerprint=False)
@@ -216,7 +262,9 @@ class TestBuildStealthJsWithSeed:
         assert "__STEALTH_WEBGL_VENDOR__" in js
         # 应包含 _WEBGL_POOL 中某一条 renderer 字符串（不再是 Intel 占位）。
         fp = derive_profile_fingerprint("ziniao:store-1")
-        assert fp["webgl_renderer"] in js
+        renderer = fp["webgl_renderer"]
+        assert isinstance(renderer, str)
+        assert renderer in js
 
     def test_cleanup_always_removes_seed_globals(self):
         js = build_stealth_js(profile_seed="ziniao:store-1")
