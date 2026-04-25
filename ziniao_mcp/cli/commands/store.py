@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import typer
 
+from ...site_policy import policy_hint_for_url
 from .. import get_json_mode, run_command
 from ..help_epilog import GROUP_CLI_EPILOG
 from ..output import print_result
@@ -25,6 +26,29 @@ def list_stores(
 def open_store(store_id: str = typer.Argument(..., help="Store ID to open.")) -> None:
     """Open a Ziniao store and connect via CDP."""
     result = run_command("open_store", {"store_id": store_id})
+    print_result(result, json_mode=get_json_mode())
+
+
+@app.command("passive-open")
+def passive_open_store(
+    store_id: str = typer.Argument(..., help="Store ID to open in passive mode."),
+) -> None:
+    """Open a Ziniao store **without** attaching nodriver/stealth.
+
+    The desktop client still launches the browser and reports a ``cdp_port``,
+    but the daemon stops there: no CDP Runtime attach, no JS injection, no
+    ``StoreSession`` registered. Continue the workflow with
+    ``ziniao chrome passive-open --port <cdp_port>`` (or ``--save-as`` for
+    a reusable alias) and ``ziniao chrome input ...`` for raw ``Input.*``
+    events. Recommended for Shopee-class anti-bot sites.
+    """
+    result = run_command("open_store_passive", {"store_id": store_id})
+    if isinstance(result, dict) and result.get("ok"):
+        # Hint primarily off launcher_page (the URL Ziniao opens by default).
+        url_for_hint = result.get("launcher_page") or ""
+        hint = policy_hint_for_url(url_for_hint) if url_for_hint else None
+        if hint:
+            result["policy_hint"] = hint
     print_result(result, json_mode=get_json_mode())
 
 
@@ -63,6 +87,11 @@ def register_top_level(parent: typer.Typer) -> None:
     def _open_store(store_id: str = typer.Argument(..., help="Store ID.")) -> None:
         """open-store <id> — Open store and connect CDP. Same as ``ziniao store open``."""
         open_store(store_id)
+
+    @parent.command("passive-open-store")
+    def _passive_open_store(store_id: str = typer.Argument(..., help="Store ID.")) -> None:
+        """passive-open-store <id> — Open store without CDP attach. Same as ``ziniao store passive-open``."""
+        passive_open_store(store_id)
 
     @parent.command("close-store")
     def _close_store(store_id: str = typer.Argument(..., help="Store ID.")) -> None:

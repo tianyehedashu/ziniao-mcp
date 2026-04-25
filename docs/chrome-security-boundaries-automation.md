@@ -83,3 +83,4 @@
 - HTML：`isTrusted`、**Transient activation**（用户激活）相关章节。
 - Chrome / Chromium：DevTools Protocol **`Runtime.evaluate`** 的 `userGesture` 参数说明；各版本 **Autoplay、Permissions、WebAuthn** 策略更新说明。
 - 本站仓库：`docs/stealth.md`（反检测实现）、`ziniao_mcp/core/_eval.py`（`user_gesture` 使用处）。
+- 强风控站点的 **低 attach** 路径（仅 `Input.*` CDP、不经 daemon）：`docs/passive-input-automation.md`。

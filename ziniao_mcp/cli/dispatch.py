@@ -216,6 +216,14 @@ async def _open_store(sm: Any, args: dict) -> dict:
     return result
 
 
+async def _open_store_passive(sm: Any, args: dict) -> dict:
+    """Open store in passive mode (no attach, no stealth)."""
+    store_id = args.get("store_id", "")
+    if not store_id:
+        return {"error": "store_id is required"}
+    return await sm.open_store_passive(store_id)
+
+
 async def _close_store(sm: Any, args: dict) -> dict:
     store_id = args.get("store_id", "")
     if not store_id:
@@ -1579,6 +1587,7 @@ _COMMANDS: dict[str, Any] = {
     # Store
     "list_stores": _list_stores,
     "open_store": _open_store,
+    "open_store_passive": _open_store_passive,
     "close_store": _close_store,
     "start_client": _start_client,
     "stop_client": _stop_client,

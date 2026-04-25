@@ -37,3 +37,19 @@ chrome:
   user_data_dir: ""
   # 是否以无头模式启动
   headless: false
+
+# 强风控站点策略（可选）：与内置表合并；可覆盖 ``policy_hint`` 文案或新增主机。
+# 文件发现顺序与 ``ziniao`` 其它配置一致：项目 ``config/config.yaml`` 与
+# ``~/.ziniao/config.yaml`` fall-through 合并；命令行 ``--config`` 为单一来源。
+site_policy:
+  policies:
+    # 示例：仅自定义提示（仍继承内置 shopee.* 的 default_mode / allow_* 字段）
+    # shopee.com.my:
+    #   policy_hint: "本环境请走 passive-open + chrome input，勿 connect。"
+    # 示例：为内网或自研风控站追加一条
+    # internal.example.com:
+    #   default_mode: passive
+    #   allow_runtime_attach: false
+    #   allow_stealth: false
+    #   allow_input_only: true
+    #   policy_hint: "internal.example.com: 仅允许 passive 路径。"

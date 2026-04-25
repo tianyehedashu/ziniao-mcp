@@ -4,7 +4,6 @@ import argparse
 import logging
 import os
 import sys
-from pathlib import Path
 from typing import Any
 
 try:
@@ -15,6 +14,7 @@ except (ImportError, PackageNotFoundError):
 
 from mcp.server.fastmcp import FastMCP
 
+from .config_yaml import _load_yaml_file, load_merged_project_and_global_yaml
 from .logging_setup import configure_logging
 from .session import SessionManager, _STATE_DIR  # noqa: F401  (保留再导出兼容)
 
@@ -29,47 +29,6 @@ def _print_package_version_and_exit() -> None:
     if "-V" in sys.argv or "--package-version" in sys.argv:
         print(f"ziniao {_PACKAGE_VERSION}")
         sys.exit(0)
-
-
-def _load_yaml_file(path: Path | str | None) -> dict[str, Any]:
-    """Load a YAML config file into a dict, tolerating missing/empty/malformed input."""
-    if not path:
-        return {}
-    p = Path(path)
-    if not p.is_file():
-        return {}
-    import yaml  # pylint: disable=import-outside-toplevel
-
-    try:
-        with p.open("r", encoding="utf-8") as f:
-            return yaml.safe_load(f) or {}
-    except (OSError, yaml.YAMLError) as exc:
-        _logger.warning("读取配置文件 %s 失败：%s", p, exc)
-        return {}
-
-
-def _merge_yaml_fallthrough(project: dict[str, Any], base: dict[str, Any]) -> dict[str, Any]:
-    """Deep merge *project* over *base*.
-
-    项目侧的 "falsy" 标量（None / 空字符串 / 0 / False）**不** 覆盖 base。
-    这与 ``ziniao config show`` 里 ``_source_of`` 的 "project 有值才用" 语义一致，
-    避免项目模板里的占位空值把全局真实配置清零（例如 ``chrome.user_data_dir: ""``
-    把 ``~/.ziniao/config.yaml`` 的 ``D:/chrome-debug`` 覆盖成空，最终 fallback 到
-    默认目录）。dict 子节点仍然按同规则递归合并。
-    """
-    merged: dict[str, Any] = dict(base)
-    for key, pv in project.items():
-        bv = base.get(key)
-        if isinstance(pv, dict) and isinstance(bv, dict):
-            merged[key] = _merge_yaml_fallthrough(pv, bv)
-        elif isinstance(pv, dict):
-            merged[key] = pv
-        elif pv in (None, "", 0, False):
-            if key not in merged:
-                merged[key] = pv
-        else:
-            merged[key] = pv
-    return merged
 
 
 def _resolve_config() -> dict[str, Any]:
@@ -99,17 +58,7 @@ def _resolve_config() -> dict[str, Any]:
     if args.config:
         raw = _load_yaml_file(args.config)
     else:
-        project_candidates = [
-            Path("config/config.yaml"),
-            Path(__file__).resolve().parent.parent / "config" / "config.yaml",
-        ]
-        project_raw: dict[str, Any] = {}
-        for p in project_candidates:
-            if p.is_file():
-                project_raw = _load_yaml_file(p)
-                break
-        global_raw = _load_yaml_file(Path.home() / ".ziniao" / "config.yaml")
-        raw = _merge_yaml_fallthrough(project_raw, global_raw)
+        raw = load_merged_project_and_global_yaml()
 
     if raw:
         if "ziniao" in raw:

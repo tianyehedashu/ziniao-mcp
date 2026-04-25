@@ -17,6 +17,9 @@ app = typer.Typer(no_args_is_help=True, epilog=GROUP_CLI_EPILOG)
 def go_cmd(url: str = typer.Argument(..., help="URL to navigate to.")) -> None:
     """Navigate the active tab to a URL.
 
+    Uses the active daemon session (nodriver). For Shopee-class high-risk hosts prefer
+    ``ziniao chrome launch-passive`` → ``passive-open`` → ``ziniao chrome input``; see docs/passive-input-automation.md.
+
     Examples:
         ziniao nav go https://example.com
         ziniao navigate https://example.com

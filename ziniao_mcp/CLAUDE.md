@@ -13,7 +13,16 @@
 | `server.py` | FastMCP 构建、配置解析、工具注册、日志到 `~/.ziniao/` 状态目录 |
 | `cli/daemon.py` | 常驻进程：收 CLI JSON 请求并 `dispatch` |
 | `cli/dispatch.py` | 命令名 → `SessionManager` / tools 的分发中枢（大文件） |
-| `session.py` | `SessionManager`：多店会话、打开流程、与 `ZiniaoClient` / CDP 协作 |
+| `session.py` | `SessionManager`：多店会话、打开流程、与 `ZiniaoClient` / CDP 协作；`open_store_passive` 走紫鸟客户端打开但**不** attach、不 stealth、不入 `_stores` |
+
+## 包根模块（与 `cli/` 平级）
+
+| 模块 | 说明 |
+|------|------|
+| `chrome_passive.py` | 无 nodriver 启动 Chrome、DevTools HTTP 开 tab、`passive_targets.json` 别名、`/json/list` 解析 ws URL |
+| `chrome_input.py` | 仅 `Input.*` 的 raw WebSocket CDP 短连接客户端（依赖 `websockets`） |
+| `site_policy.py` | 强风控站点策略：内置表 + 可选 YAML ``site_policy.policies`` 合并；`policy_hint` 可 YAML 覆盖 |
+| `config_yaml.py` | 共享 YAML 加载与 project↔global 合并；供 `server` 与 `site_policy` 复用 |
 
 ## 子目录速查
 
@@ -30,7 +39,7 @@
 ## 依赖
 
 - **内部**：强依赖 `ziniao_webdriver`。
-- **外部**：`mcp`、`nodriver`、`typer`、`rich`、`httpx`、`PyYAML` 等（见根 `pyproject.toml`）。
+- **外部**：`mcp`、`nodriver`、`typer`、`rich`、`httpx`、`PyYAML`、`websockets`（input-only CDP）等（见根 `pyproject.toml`）。
 
 ## 配置与状态
 

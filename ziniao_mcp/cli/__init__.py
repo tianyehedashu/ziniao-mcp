@@ -242,7 +242,11 @@ def _register_commands() -> None:
         update_cmd,
     )
     app.add_typer(store.app, name="store", help="Manage Ziniao stores (list/open/close/…).")
-    app.add_typer(chrome.app, name="chrome", help="Chrome instances (launch/connect/list/close).")
+    app.add_typer(
+        chrome.app,
+        name="chrome",
+        help="Chrome (launch/connect/list/close, launch-passive, passive-open, passive-target, input).",
+    )
     app.add_typer(config_cmd.app, name="config", help="Configuration (init/show/set/path/env).")
     app.add_typer(session.app, name="session", help="Sessions: Ziniao stores + Chrome.")
     app.add_typer(navigate.app, name="nav", help="Navigation (go/tab/wait/back/forward/reload/frame).")

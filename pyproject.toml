@@ -29,6 +29,8 @@ dependencies = [
     "rich>=13.0.0",
     # Windows 默认无系统 IANA 时区库；zoneinfo 需 tzdata 才能解析 Asia/Tokyo（乐天日界）。
     "tzdata>=2024.1",
+    # Raw CDP WebSocket for input-only automation (no transitive-only reliance).
+    "websockets>=12.0",
 ]
 
 [project.scripts]

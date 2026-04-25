@@ -16,6 +16,7 @@
 | `recording.md` | 录制 IR 与回放 |
 | `stealth.md` | 反自动化与 JS 注入策略 |
 | `chrome-security-boundaries-automation.md` | Chromium 安全边界（`isTrusted`、用户激活、权限/支付/WebAuthn 等）与 CDP 自动化预期；与隐身文档互补 |
+| `passive-input-automation.md` | 强风控站点的 passive / raw CDP `Input.*` 路径与 `site_policy` 边界（相对 `connect`+stealth）；含**紫鸟侧** `ziniao store passive-open <id>`（daemon 仅代理打开，不 attach、不 stealth） |
 | `site-fetch-and-presets.md` / `page-fetch-auth.md` | 站点抓取与鉴权 |
 | `site-ui-flows.md` | `mode: ui` 声明式 UI 流：steps[]、extract/fetch、secret 变量、与 fetch/js 的分工 |
 | `next-app-reverse-engineering.md` | Next.js/RSC/tRPC/第三方 REST 四层模型逆向方法论 + 反模式清单 |

@@ -830,6 +830,95 @@ class SessionManager:
         await self._ensure_client_running()
         return await asyncio.to_thread(client.get_browser_list)
 
+    async def open_store_passive(self, store_id: str) -> dict[str, Any]:
+        """Open a Ziniao store via the desktop client **without** attaching
+        nodriver, injecting stealth, or registering a ``StoreSession``.
+
+        This is the Ziniao-side counterpart to ``chrome launch-passive``: the
+        client still launches the browser process and returns a CDP port, but
+        we deliberately stop after ``debuggingPort`` is reachable on DevTools
+        HTTP. Subsequent automation should go through
+        ``ziniao chrome passive-open`` / ``ziniao chrome input`` against the
+        returned port — those paths never touch the daemon ``SessionManager``
+        nor the regular sessions state file, so this entry point cannot
+        accidentally hand a passive port to ``connect_store`` and trigger an
+        attach.
+
+        Returns a dict with ``cdp_port``, ``store_name``, ``launcher_page``,
+        ``browser_oauth``, and ``mode='passive'``.
+        """
+        # Local import keeps chrome_passive optional for non-passive callers.
+        from .chrome_passive import wait_devtools_http  # pylint: disable=import-outside-toplevel
+
+        client = self._require_ziniao_client()
+        await self._ensure_client_running()
+
+        try:
+            await self._preflight_check(store_id)
+        except _StoreAlreadyRunning as already:
+            # The store is already up; reuse its CDP port without attach.
+            cdp_port_existing = already.cdp_port
+            await asyncio.to_thread(wait_devtools_http, cdp_port_existing, 10.0)
+            state_info = (_read_state_file().get(store_id) or {})
+            return {
+                "ok": True,
+                "mode": "passive",
+                "attached": False,
+                "store_id": store_id,
+                "store_name": state_info.get("store_name", store_id),
+                "cdp_port": cdp_port_existing,
+                "launcher_page": state_info.get("launcher_page", ""),
+                "browser_oauth": state_info.get("browser_oauth", ""),
+                "reused_existing": True,
+                "message": (
+                    "Store already running; reusing CDP port without attaching. "
+                    "Use ``ziniao chrome passive-open --port {port}`` next."
+                ).format(port=cdp_port_existing),
+            }
+
+        # Pass empty js_info: passive must not co-inject the daemon's stealth
+        # bundle (the whole point is to leave Runtime untouched).
+        result = await asyncio.to_thread(client.open_store, store_id, js_info="")
+        if not result:
+            raise RuntimeError(f"打开店铺失败: {store_id}")
+
+        cdp_port = result.get("debuggingPort")
+        if not cdp_port:
+            raise RuntimeError("未获取到 CDP 调试端口")
+
+        if not await _wait_cdp_ready(cdp_port, timeout_sec=30.0, interval=2.0):
+            raise RuntimeError(
+                _format_cdp_connection_error(
+                    cdp_port,
+                    OSError(f"CDP 端口 {cdp_port} 在 30 秒内未就绪"),
+                )
+            )
+        # DevTools HTTP needs an extra moment after the WebSocket is up; the
+        # passive path uses HTTP /json/new exclusively, so we must wait for it.
+        await asyncio.to_thread(wait_devtools_http, cdp_port, 10.0)
+
+        store_name = result.get("browserName", store_id)
+        launcher_page = result.get("launcherPage", "")
+        browser_oauth = result.get("browserOauth", store_id)
+
+        return {
+            "ok": True,
+            "mode": "passive",
+            "attached": False,
+            "store_id": store_id,
+            "store_name": store_name,
+            "cdp_port": cdp_port,
+            "launcher_page": launcher_page,
+            "browser_oauth": browser_oauth,
+            "reused_existing": False,
+            "message": (
+                "Store opened in passive mode (no nodriver attach, no stealth "
+                "injected). Continue with ``ziniao chrome passive-open --port "
+                f"{cdp_port}`` or ``ziniao chrome input --port {cdp_port} "
+                "--target <id>``."
+            ),
+        }
+
     async def _preflight_check(self, store_id: str) -> None:
         """open_store 前置检查。"""
         client = self._require_ziniao_client()

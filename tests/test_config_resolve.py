@@ -15,11 +15,8 @@ import pytest
 import yaml
 
 from ziniao_mcp import server as server_mod
-from ziniao_mcp.server import (
-    _load_yaml_file,
-    _merge_yaml_fallthrough,
-    _resolve_config,
-)
+from ziniao_mcp.config_yaml import _load_yaml_file, _merge_yaml_fallthrough
+from ziniao_mcp.server import _resolve_config
 
 
 # ------------------------------------------------------------------ #
