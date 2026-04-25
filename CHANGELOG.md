@@ -4,6 +4,19 @@
 
 ## [Unreleased]
 
+## [0.2.70] - 2026-04-25
+
+### Added
+
+- **Passive / input-only**：`chrome launch-passive`、`passive-open`、`passive-target`、`chrome input`（`Input.*` 白名单）；紫鸟 `store passive-open` / `open_store_passive`（不 attach、不 stealth）。
+- **`site_policy`**：内置 Shopee TLD 族 + `config.yaml` 中 `site_policy.policies` YAML 合并，可覆写 `policy_hint`。
+- **`ziniao_mcp/config_yaml.py`**：YAML 加载与 project↔global 合并，供 `server` 与 `site_policy` 复用。
+- **依赖**：`websockets`；文档 `docs/passive-input-automation.md`；`config/config.yaml.example` 增加 `site_policy` 示例。
+
+### Changed
+
+- **`ziniao_mcp/server.py`**：YAML 发现层改用 `load_merged_project_and_global_yaml()`。
+
 ## [0.2.69] - 2026-04-21
 
 ### Fixed
