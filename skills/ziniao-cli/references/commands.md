@@ -25,6 +25,17 @@ Full command reference. For workflow and patterns see [SKILL.md](../SKILL.md).
 | `ziniao session list` | List all sessions (stores + Chrome) |
 | `ziniao session switch <id>` | Switch active session |
 | `ziniao session info <id>` | Session details |
+| `ziniao session health` | CDP liveness for daemon-held sessions |
+
+Agent rule: prefer one-shot `--store <id>` / `--session <id>` for every command. Treat `session switch` as a manual convenience only.
+
+## Cluster leases
+
+| Command | Description |
+|---------|-------------|
+| `ziniao cluster status` | Show `~/.ziniao/cluster.json` leases + daemon sessions |
+| `ziniao cluster acquire --session <id> --ttl 600` | Record a lease for coordination; enforces max concurrent leases and duplicate session lease rejection |
+| `ziniao cluster release <lease_id>` | Release a lease |
 
 ## Navigation
 
@@ -111,7 +122,7 @@ Full command reference. For workflow and patterns see [SKILL.md](../SKILL.md).
 | `ziniao network list [--filter url] [--clear]` | List/clear requests |
 | `ziniao network har-start` | Start HAR recording |
 | `ziniao network har-stop [path]` | Stop and save HAR |
-| `ziniao network fetch [URL] [-p preset] [-f file] [--script …] [-X METHOD] [-d JSON] [-H "K:V"]… [--inject …]… [--var K=V]… [--page N] [--all] [-o file] [--decode-encoding …] [--output-encoding …]` | Page-context HTTP; **`-o`** writes bytes from **`body_b64`**; **`--decode-encoding`** / preset **`output_decode_encoding`** for CP932 CSV etc. |
+| `ziniao network fetch [URL] [-p preset] [-f file] [--script …] [-X METHOD] [-d JSON] [-H "K:V"]… [--inject …]… [--var K=V]… [--page N] [--all] [-o file] [--decode-encoding …] [--output-encoding …] [--transport browser_fetch\|direct\|auto] [--auth-snapshot file]` | Page-context HTTP by default; **`-o`** writes bytes from **`body_b64`**; direct/auto use CookieVault snapshots |
 | `ziniao network fetch-save [--id N \| --filter SUBSTR] -o file [--full-headers] [--as-preset]` | Build JSON template from captured request |
 
 ## Site presets
@@ -134,6 +145,8 @@ JSON templates under `ziniao_mcp/sites/` and `~/.ziniao/sites/<site>/`. Shortcut
 | `ziniao info storage local get` | localStorage |
 | `ziniao info storage local set -k key -v val` | Set localStorage |
 | `ziniao info storage session get` | sessionStorage |
+| `ziniao cookie-vault export -o auth.json [--site s] [--redact]` | Export AuthSnapshot (cookies + storage + UA). Redacted output is share-only. |
+| `ziniao cookie-vault import auth.json [--clear-cookies] [--allow-origin-mismatch]` | Import executable snapshot; refuses redacted snapshots and checks storage origin by default |
 | `ziniao info clipboard read` | Read clipboard |
 | `ziniao info clipboard write --text "..."` | Write clipboard |
 | `ziniao mouse move <x> <y>` | Move mouse |

@@ -224,7 +224,9 @@ def _register_commands() -> None:
         batch,
         check,
         chrome,
+        cluster_cmd,
         config_cmd,
+        cookie_vault,
         find,
         get,
         info,
@@ -249,6 +251,8 @@ def _register_commands() -> None:
     )
     app.add_typer(config_cmd.app, name="config", help="Configuration (init/show/set/path/env).")
     app.add_typer(session.app, name="session", help="Sessions: Ziniao stores + Chrome.")
+    cookie_vault.register_top_level(app)
+    cluster_cmd.register_top_level(app)
     app.add_typer(navigate.app, name="nav", help="Navigation (go/tab/wait/back/forward/reload/frame).")
     app.add_typer(interact.app, name="act", help="Page actions (click/fill/type/press/…).")
     app.add_typer(info.app, name="info", help="Inspection (snapshot/screenshot/eval/console/…).")

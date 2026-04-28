@@ -34,6 +34,7 @@ Phase 4 交付文档（可复现：命令记录 + 步骤表 + 运行方式 + 排
 2. **调研再实现**：Phase 2 定稿与 Phase 3 实现只纳入已在页面上用命令验证过的选择器与操作顺序。
 3. **语义对齐**：Phase 3 的 `tab.get` / `tab.select` / `evaluate` 与 Phase 1 的 `navigate` / `wait` / `eval` 一一对应，仅替换为进程内 CDP 调用。
 4. **一致性**：Phase 2 表格、脚本常量与 Phase 1 终端记录对齐；未定稿前用 `[入口URL]`、`[会话标识]`、`[选择器]` 等占位，定稿后替换为实测值。
+5. **固定会话**：Phase 1 的所有命令必须使用 `--store <id>` 或 `--session <id>` 固定目标；`session switch` 只允许人工交互调试，不写入可复现步骤表。
 
 ## 默认环境（已配置）
 
@@ -59,12 +60,12 @@ ziniao list-stores
 ziniao open-store "<会话标识>"
 # 或：ziniao launch --url "<入口URL>"  /  ziniao connect <port>
 
-ziniao navigate "<入口URL>"
-ziniao wait "<就绪选择器>"
-ziniao snapshot --interactive
+ziniao --store "<会话标识>" navigate "<入口URL>"
+ziniao --store "<会话标识>" wait "<就绪选择器>"
+ziniao --store "<会话标识>" snapshot --interactive
 ```
 
-多会话：用 `ziniao --store "<id>" <子命令>` 或脚本内循环；**各会话差异只记录任务给定的事实**，不扩展业务解读。
+多会话：用 `ziniao --store "<id>" <子命令>` 或 `ziniao --session "<session_id>" <子命令>`；**不要**在循环中依赖 active session。并发/长任务前运行 `ziniao session health`，需要协调多个 Agent 时用 `ziniao cluster acquire --session "<session_id>" --ttl 600` 记录租约。
 
 ### 1.2 结构与唯一性
 
@@ -87,7 +88,7 @@ ziniao screenshot step.png
 ### 命令串联
 
 ```bash
-ziniao navigate "<url>" && ziniao wait "<sel>" && ziniao screenshot done.png
+ziniao --session "<session_id>" navigate "<url>" && ziniao --session "<session_id>" wait "<sel>" && ziniao --session "<session_id>" screenshot done.png
 ```
 
 ### 1.4 异常与网络
@@ -108,7 +109,7 @@ ziniao navigate "<url>" && ziniao wait "<sel>" && ziniao screenshot done.png
 
 ### 前置条件
 - CLI / 配置：`ziniao config show`（或当前环境等价说明）
-- 会话：[open-store | launch | connect] + [会话标识或说明]
+- 会话：[open-store | launch | connect] + [会话标识或说明]；所有 Phase 1 命令使用 `--store` / `--session` 固定目标
 - 入口：[入口URL]
 - 外部输入：[数据文件/参数，无则写「无」]
 
@@ -209,6 +210,7 @@ if __name__ == "__main__":
 ### 工具链（Phase 1）
 
 - [ ] 会话接入 → navigate → wait → snapshot 形成闭环  
+- [ ] 所有命令固定 `--store` / `--session`；未把 `session switch` 写入自动化步骤  
 - [ ] 选择器经 snapshot/get count/eval 之一验证；未使用 `@eN` 作为 CSS  
 - [ ] 关键转折有 screenshot 或 snapshot 佐证  
 - [ ] 需要抓包时已用 network / HAR  

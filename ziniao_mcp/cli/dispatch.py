@@ -842,6 +842,186 @@ async def _storage(sm: Any, args: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Cookie vault (auth snapshots) & cluster leases
+# ---------------------------------------------------------------------------
+
+
+async def _cookie_vault(sm: Any, args: dict) -> dict:
+    """Export/import auth snapshots (cookies + storage + UA) for CookieVault."""
+    from pathlib import Path
+
+    from nodriver import cdp  # pylint: disable=import-outside-toplevel
+
+    from ziniao_mcp import cookie_vault as cv
+
+    action = args.get("action", "export")
+    tab = sm.get_active_tab()
+    store = sm.get_active_session()
+
+    if action == "export":
+        path = (args.get("path") or "").strip()
+        if not path:
+            return {"error": "path is required"}
+        redact = bool(args.get("redact", False))
+        cookies_raw = await tab.send(cdp.network.get_cookies())
+        cookie_list: list[dict] = []
+        for c in cookies_raw or []:
+            cookie_list.append({
+                "name": getattr(c, "name", "") or "",
+                "value": getattr(c, "value", "") or "",
+                "domain": getattr(c, "domain", "") or "",
+                "path": getattr(c, "path", "/") or "/",
+                "secure": bool(getattr(c, "secure", False)),
+                "httpOnly": bool(getattr(c, "http_only", False)),
+                "sameSite": str(getattr(c, "same_site", "") or ""),
+            })
+        loc_raw = await tab.evaluate(
+            "JSON.stringify(Object.fromEntries(Object.entries(localStorage)))",
+            return_by_value=True,
+        )
+        ses_raw = await tab.evaluate(
+            "JSON.stringify(Object.fromEntries(Object.entries(sessionStorage)))",
+            return_by_value=True,
+        )
+        ua = await tab.evaluate("navigator.userAgent", return_by_value=True)
+        page_url = getattr(getattr(tab, "target", None), "url", "") or ""
+        snap = cv.build_empty_snapshot(
+            profile_id=str(args.get("profile_id") or store.store_id),
+            site=str(args.get("site") or ""),
+            page_url=str(page_url),
+            user_agent=str(ua or ""),
+            backend_type=str(store.backend_type),
+            risk_level=str(args.get("risk_level") or "unknown"),
+        )
+        snap["cookies"] = cookie_list
+        try:
+            snap["local_storage"] = json.loads(loc_raw) if loc_raw else {}
+        except (json.JSONDecodeError, TypeError):
+            snap["local_storage"] = {}
+        try:
+            snap["session_storage"] = json.loads(ses_raw) if ses_raw else {}
+        except (json.JSONDecodeError, TypeError):
+            snap["session_storage"] = {}
+        if redact:
+            snap = cv.redact_snapshot(snap)
+        dest = Path(path).expanduser()
+        cv.save_auth_snapshot(dest, snap)
+        return {
+            "ok": True,
+            "path": str(dest),
+            "cookie_count": len(cookie_list),
+            "redacted": redact,
+        }
+
+    if action == "import":
+        path = (args.get("path") or "").strip()
+        if not path:
+            return {"error": "path is required"}
+        snap = cv.load_auth_snapshot(Path(path).expanduser())
+        try:
+            cv.ensure_executable_snapshot(snap)
+        except ValueError as exc:
+            return {"error": str(exc)}
+        if not bool(args.get("allow_origin_mismatch", False)):
+            current_origin = _origin_of_url(getattr(getattr(tab, "target", None), "url", ""))
+            snapshot_origin = _origin_of_url(str(snap.get("page_url") or ""))
+            if snapshot_origin and current_origin and current_origin != snapshot_origin:
+                return {
+                    "error": (
+                        "snapshot origin does not match active tab; navigate to "
+                        f"{snapshot_origin} first or pass allow_origin_mismatch=true"
+                    ),
+                    "current_origin": current_origin,
+                    "snapshot_origin": snapshot_origin,
+                }
+        clear_first = bool(args.get("clear_cookies", False))
+        if clear_first:
+            await tab.send(cdp.network.clear_browser_cookies())
+        for c in snap.get("cookies") or []:
+            if not isinstance(c, dict) or not c.get("name"):
+                continue
+            dom = str(c.get("domain") or "").strip() or None
+            pth = str(c.get("path") or "/").strip() or None
+            await tab.send(
+                cdp.network.set_cookie(
+                    name=str(c["name"]),
+                    value=str(c.get("value", "")),
+                    domain=dom,
+                    path=pth,
+                    secure=bool(c["secure"]) if "secure" in c else None,
+                    http_only=bool(c.get("httpOnly")) if "httpOnly" in c else None,
+                ),
+            )
+        loc = snap.get("local_storage") if isinstance(snap.get("local_storage"), dict) else {}
+        ses = snap.get("session_storage") if isinstance(snap.get("session_storage"), dict) else {}
+        for k, v in loc.items():
+            await tab.evaluate(
+                f"localStorage.setItem({json.dumps(str(k))}, {json.dumps(str(v))})",
+                return_by_value=True,
+            )
+        for k, v in ses.items():
+            await tab.evaluate(
+                f"sessionStorage.setItem({json.dumps(str(k))}, {json.dumps(str(v))})",
+                return_by_value=True,
+            )
+        return {"ok": True, "imported_cookies": len(snap.get("cookies") or [])}
+
+    return {"error": f"Unknown cookie_vault action: {action}"}
+
+
+async def _cluster(sm: Any, args: dict) -> dict:
+    """Persisted lease bookkeeping (``~/.ziniao/cluster.json``)."""
+    from ziniao_mcp import cluster as cl
+
+    action = args.get("action", "status")
+    if action == "status":
+        state = cl.cluster_status()
+        sessions = sm.list_all_sessions()
+        return {
+            "ok": True,
+            "cluster": state,
+            "daemon_sessions": sessions,
+            "active": sm.active_session_id,
+        }
+    if action == "acquire":
+        sid = (args.get("session_id") or "").strip() or (sm.active_session_id or "")
+        if not sid:
+            return {"error": "session_id required (no active session)"}
+        if sid not in sm._stores:
+            return {"error": f"session not open in daemon: {sid}"}
+        ttl = float(args.get("ttl_sec") or 600.0)
+        return cl.acquire_lease(
+            session_id=sid,
+            ttl_sec=ttl,
+            owner=str(args.get("owner") or ""),
+            label=str(args.get("label") or ""),
+        )
+    if action == "release":
+        lid = (args.get("lease_id") or "").strip()
+        if not lid:
+            return {"error": "lease_id is required"}
+        return cl.release_lease(lid)
+    return {"error": f"Unknown cluster action: {action}"}
+
+
+async def _session_health(sm: Any, args: dict) -> dict:  # noqa: ARG001
+    """CDP HTTP liveness for each in-memory daemon session."""
+    from ziniao_mcp.session import _is_cdp_alive  # pylint: disable=import-outside-toplevel
+
+    rows: list[dict] = []
+    for sid, sess in sm._stores.items():
+        alive = await _is_cdp_alive(sess.cdp_port, timeout=1.0)
+        rows.append({
+            "session_id": sid,
+            "cdp_port": sess.cdp_port,
+            "cdp_alive": alive,
+            "type": sess.backend_type,
+            "is_active": sid == sm.active_session_id,
+        })
+    return {"ok": True, "sessions": rows, "count": len(rows)}
+
+
+# ---------------------------------------------------------------------------
 # Debug commands
 # ---------------------------------------------------------------------------
 
@@ -898,16 +1078,60 @@ def _resolve_body_file_refs(body: Any, resolve_fn: Any) -> Any:
     return resolve_fn(body)
 
 
+def _normalize_fetch_transport(value: Any) -> str:
+    raw = str(value or "browser_fetch").strip().lower().replace("-", "_")
+    aliases = {
+        "browser": "browser_fetch",
+        "page_fetch": "browser_fetch",
+        "direct": "direct_http",
+        "http": "direct_http",
+    }
+    return aliases.get(raw, raw)
+
+
+def _origin_of_url(url: str) -> str:
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url or "")
+    if not parsed.scheme or not parsed.netloc:
+        return ""
+    return f"{parsed.scheme.lower()}://{parsed.netloc.lower()}"
+
+
 async def _page_fetch(sm: Any, args: dict) -> dict:
+    from pathlib import Path
+
     from ziniao_mcp.sites import _normalize_header_inject  # pylint: disable=import-outside-toplevel
 
     _normalize_header_inject(args)
 
     mode = args.get("mode", "fetch")
+    transport = _normalize_fetch_transport(args.get("transport"))
+    if mode == "js":
+        transport = "browser_fetch"
+    if transport not in ("browser_fetch", "direct_http", "auto"):
+        transport = "browser_fetch"
+
+    auth_strategy = args.get("auth_strategy")
+    if isinstance(auth_strategy, dict) and transport == "browser_fetch":
+        pref = auth_strategy.get("preferred_transport")
+        if isinstance(pref, str) and pref.strip():
+            cand = _normalize_fetch_transport(pref)
+            if cand in ("browser_fetch", "direct_http", "auto"):
+                transport = cand
+
+    store = sm.get_active_session()
+    if store.iframe_context and transport in ("direct_http", "auto"):
+        return {
+            "error": (
+                "direct_http/auto transport is not supported with iframe_context; "
+                "leave the frame or use transport=browser_fetch."
+            ),
+        }
+
     navigate_url = args.get("navigate_url", "")
     tab = sm.get_active_tab()
-
-    if navigate_url:
+    if transport in ("browser_fetch", "auto") and navigate_url:
         force = bool(args.get("force_navigate"))
         current = tab.target.url or ""
         if force or not current.startswith(navigate_url.split("?")[0].split("#")[0]):
@@ -918,7 +1142,47 @@ async def _page_fetch(sm: Any, args: dict) -> dict:
 
     if mode == "js":
         return await _page_fetch_js(sm, args)
-    return await _page_fetch_fetch(sm, args)
+
+    if transport == "browser_fetch":
+        return await _page_fetch_fetch(sm, args)
+
+    from ziniao_mcp import api_transport, cookie_vault  # pylint: disable=import-outside-toplevel
+
+    from ..sites import resolve_file_refs  # pylint: disable=import-outside-toplevel
+
+    auth_path = (args.get("auth_snapshot_path") or "").strip()
+    if transport == "direct_http":
+        if not auth_path:
+            return {
+                "error": (
+                    "direct_http requires auth_snapshot_path "
+                    "(export with: ziniao cookie-vault export -o <file.json>)."
+                ),
+            }
+        snap = cookie_vault.load_auth_snapshot(Path(auth_path).expanduser())
+        body = _resolve_body_file_refs(args.get("body", ""), resolve_file_refs)
+        merged = {**args, "body": body}
+        return await api_transport.direct_http_fetch(merged, snap)
+
+    if not auth_path:
+        return await _page_fetch_fetch(sm, args)
+    if not api_transport.can_auto_probe_method(str(args.get("method", "GET"))):
+        fb = await _page_fetch_fetch(sm, args)
+        fb["transport_used"] = "browser_fetch"
+        fb["fallback_from"] = "auto_direct_http"
+        fb["fallback_reason"] = "unsafe_method_not_probed"
+        return fb
+    snap = cookie_vault.load_auth_snapshot(Path(auth_path).expanduser())
+    body = _resolve_body_file_refs(args.get("body", ""), resolve_file_refs)
+    merged = {**args, "body": body}
+    direct = await api_transport.direct_http_fetch(merged, snap)
+    if api_transport.direct_http_response_looks_successful(direct):
+        return direct
+    fb = await _page_fetch_fetch(sm, args)
+    fb["transport_used"] = "browser_fetch"
+    fb["fallback_from"] = "auto_direct_http"
+    fb["fallback_reason"] = direct.get("error") or str(direct.get("status", "")) or "probe_failed"
+    return fb
 
 
 async def _page_fetch_fetch(sm: Any, args: dict) -> dict:
@@ -1661,6 +1925,9 @@ _COMMANDS: dict[str, Any] = {
     # Cookies & Storage
     "cookies": _cookies,
     "storage": _storage,
+    "cookie_vault": _cookie_vault,
+    "cluster": _cluster,
+    "session_health": _session_health,
     # Debug
     "errors": _errors,
     "highlight": _highlight,

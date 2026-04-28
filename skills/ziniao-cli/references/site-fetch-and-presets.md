@@ -22,7 +22,7 @@
 ┌─────────────────────────────────────────────────────────────────┐
 │ daemon：_page_fetch()                                            │
 │  _normalize_header_inject(args) — CLI 与 MCP 唯一归一化点           │
-│  → navigate_url（若配置）→ fetch 或 js 模式                       │
+│  → transport 选择 → navigate_url（若配置）→ fetch 或 js 模式        │
 └────────────────────────┬────────────────────────────────────────┘
                          ▼
 ┌─────────────────────────────────────────────────────────────────┐
@@ -38,7 +38,7 @@
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-设计原则：**`header_inject` 校验只在 `_page_fetch` 做一次**；`prepare_request` 只做合并与插件钩子。**特例**用 `mode: "js"` 或 `SitePlugin.before_fetch` 表达，不在 `_page_fetch_fetch` 里堆分支。
+设计原则：**`header_inject` 校验只在 `_page_fetch` 做一次**；`prepare_request` 只做合并与插件钩子。**特例**用 `mode: "js"`、`transport` 或 `SitePlugin.before_fetch` 表达，不在 `_page_fetch_fetch` 里堆站点分支。
 
 ### 架构考量（分层、边界、取舍）
 
@@ -47,8 +47,8 @@
 | 层 | 代码锚点 | 做什么 | 不做什么 |
 |----|----------|--------|----------|
 | **装配** | `prepare_request` | 读预设/文件、渲染 `{{vars}}`、合并 CLI、跑 `before_fetch` | 不做 `header_inject` 校验 |
-| **执行入口** | `dispatch._page_fetch` | 导航、`_normalize_header_inject`、按 `mode` 分支 | 不含具体站点 if/else |
-| **传输实现** | `_page_fetch_fetch` | 把 dict 编成页面内 `fetch` + `credentials: 'include'` | 不再改注入语义 |
+| **执行入口** | `dispatch._page_fetch` | 导航、`_normalize_header_inject`、`transport` / `mode` 分支 | 不含具体站点 if/else |
+| **传输实现** | `_page_fetch_fetch` / `api_transport.direct_http_fetch` | 页面内 `fetch` 或 AuthSnapshot + httpx 直连 | 不再改注入语义 |
 
 **2. 为何 `header_inject` 校验放在 daemon 的 `_page_fetch`**
 
@@ -77,6 +77,7 @@ flowchart LR
   subgraph daemon [Daemon]
     PF["_page_fetch\n_normalize_header_inject"]
     PFF[_page_fetch_fetch]
+    DH[direct_http]
   end
   subgraph tab [BrowserTab]
     F[fetch]
@@ -85,8 +86,24 @@ flowchart LR
   PR --> PF
   MCP --> PF
   PF --> PFF
+  PF --> DH
   PFF --> F
 ```
+
+## Transport：browser_fetch / direct_http / auto
+
+默认 `transport` 是 `browser_fetch`：请求在目标 session 的活动 tab 里执行，继承浏览器 Cookie、storage、iframe context 与紫鸟/Chrome 网络环境。Agent 处理登录态 API 时优先使用该模式，并用 `--store` / `--session` 固定目标会话。
+
+`direct_http`（CLI 可写 `--transport direct`）从 `cookie-vault export` 生成的 AuthSnapshot 组装 Cookie、UA 与可静态解析的 `header_inject`，用 Python HTTP 客户端直连。它**不复用**紫鸟/Chrome 的代理、TLS 指纹、设备环境；只适合低风险、已验证允许 HTTP 重放的 API。含 `eval` 的 `header_inject` 不能在直连模式执行。
+
+`auto` 需要 `--auth-snapshot`，只对 `GET` / `HEAD` / `OPTIONS` 做 direct probe；`POST` / `PATCH` 等非幂等请求会直接回退 `browser_fetch`，避免重复副作用。
+
+```bash
+ziniao --session "$SID" cookie-vault export -o auth.json --site target
+ziniao --session "$SID" network fetch "https://api.example.com/me" --transport auto --auth-snapshot auth.json
+```
+
+Redacted snapshot 仅供分享/审查，`import` 和 `direct_http` 会拒绝。`cookie-vault import` 默认要求当前 tab origin 与 snapshot `page_url` origin 一致，防止 storage 写入错误站点。
 
 ## 会话鉴权（auth）
 
@@ -136,6 +153,7 @@ ziniao site enable rakuten/rpp-search
 ziniao network fetch -p rakuten/rpp-search -V start_date=... -V end_date=... [--page N] [--all] [-o file]
 ziniao network fetch -f ./my-request.json
 ziniao network fetch https://api.example.com/x -X POST -d '{"q":1}'
+ziniao network fetch https://api.example.com/x --transport auto --auth-snapshot auth.json
 ziniao network fetch --script 'axios.post("/api", __BODY__).then(r=>r.data)' -d '{"q":1}'
 ziniao network fetch-save --filter "reports/search" -o tpl.json
 ```
@@ -154,6 +172,9 @@ ziniao network fetch-save --filter "reports/search" -o tpl.json
 |------|------|
 | `navigate_url` | 执行前若不在该页则先导航 |
 | `mode` | `fetch`（默认）或 `js`（走页面内脚本，配合 `script`） |
+| `transport` | `browser_fetch`（默认）/ `direct_http` / `auto`；CLI alias: `browser` / `direct` |
+| `auth_snapshot_path` | `direct_http` / `auto` 使用的 CookieVault 快照路径（CLI 用 `--auth-snapshot`） |
+| `auth_strategy.preferred_transport` | 未显式设置 `transport` 时的站点建议，仍需谨慎处理强风控站点 |
 | `auth` | `type`: `cookie` / `xsrf` / `token` / `none`；`hint` 给人看的说明 |
 | `header_inject` | `list[dict]`：声明式 header 注入规则；详见 [page-fetch-auth.md](page-fetch-auth.md) |
 | `vars` | 模板变量定义；正文里用 `{{name}}` |

@@ -22,11 +22,13 @@ allowed-tools: Bash(ziniao:*), ziniao-*
 ### 导航流程
 
 ```
-1. connect_store("store_id")         → 连接目标店铺
-2. navigate_page("目标URL")           → 导航到目标页面
-3. wait_for("关键元素选择器")           → 等待页面加载
-4. take_snapshot()                    → 获取页面结构
+1. ziniao open-store "<store_id>"      → 打开/恢复目标店铺
+2. ziniao --store "<store_id>" navigate "目标URL"
+3. ziniao --store "<store_id>" wait "关键元素选择器"
+4. ziniao --store "<store_id>" snapshot --interactive
 ```
+
+Agent 规则：不要依赖 daemon 的 active session；亚马逊多店、多站点、广告/库存等长流程必须每条命令带 `--store <store_id>` 或 `--session <session_id>`。`session switch` 仅用于人工交互调试。并发任务前用 `ziniao session health` 检查会话，必要时用 `ziniao cluster acquire --session <id> --ttl 600` 记录租约。
 
 ## 常见操作流程
 
@@ -77,7 +79,7 @@ allowed-tools: Bash(ziniao:*), ziniao-*
 跨境电商通常运营多个站点（US、UK、JP、DE 等），每个站点对应不同的店铺：
 
 1. `list_stores` 查看所有店铺，通过 `siteName` 字段识别站点
-2. 按站点分组操作
+2. 按站点分组操作，每条命令固定 `--store` / `--session`
 3. 注意不同站点的语言和页面结构可能有差异
 
 ## 注意事项

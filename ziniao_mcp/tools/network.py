@@ -160,6 +160,8 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
         mode: str = "fetch",
         script: str = "",
         navigate_url: str = "",
+        transport: str = "",
+        auth_snapshot_path: str = "",
     ) -> str:
         """Execute an HTTP request in the browser page context, leveraging the page's login session.
 
@@ -183,6 +185,8 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
             mode: Execution mode: "fetch" or "js".
             script: JS expression (required for js mode).
             navigate_url: Navigate to this URL first if current page doesn't match.
+            transport: browser_fetch (default), direct_http, or auto (see CLI ``--transport``).
+            auth_snapshot_path: Path to JSON from ``cookie_vault export`` for direct_http/auto.
         """
         from ..cli.dispatch import _page_fetch  # pylint: disable=import-outside-toplevel
 
@@ -196,6 +200,10 @@ def register_tools(mcp: FastMCP, session: SessionManager) -> None:
             "script": script,
             "navigate_url": navigate_url,
         }
+        if transport.strip():
+            args["transport"] = transport.strip().lower().replace("-", "_")
+        if auth_snapshot_path.strip():
+            args["auth_snapshot_path"] = auth_snapshot_path.strip()
         if header_inject.strip():
             try:
                 parsed = json.loads(header_inject)

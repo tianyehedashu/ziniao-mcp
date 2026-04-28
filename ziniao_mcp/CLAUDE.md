@@ -23,6 +23,9 @@
 | `chrome_input.py` | 仅 `Input.*` 的 raw WebSocket CDP 短连接客户端（依赖 `websockets`） |
 | `site_policy.py` | 强风控站点策略：内置表 + 可选 YAML ``site_policy.policies`` 合并；`policy_hint` 可 YAML 覆盖 |
 | `config_yaml.py` | 共享 YAML 加载与 project↔global 合并；供 `server` 与 `site_policy` 复用 |
+| `cookie_vault.py` | Auth 快照（cookies + storage + UA）导入导出、脱敏、`header_inject` 静态解析（供 `direct_http`） |
+| `cluster.py` | 浏览器集群租约元数据（`~/.ziniao/cluster.json`），不替代 `SessionManager` |
+| `api_transport.py` | `page_fetch` 的 `direct_http` / `auto` 探测与 httpx 直连（快照 + 降级） |
 
 ## 子目录速查
 
@@ -45,10 +48,11 @@
 
 - `dotenv_loader.py`：与 README 一致的加载顺序。
 - `session` 使用 `_STATE_DIR` 等路径（参见 `server.py` 调试日志位置）。
+- 集群租约与 `page_fetch` 传输层契约摘要：[docs/browser-cluster-cookie-auth-contracts.md](../docs/browser-cluster-cookie-auth-contracts.md)。
 
 ## 测试
 
-- CLI / JSON 信封 / 站点 / 录制 / stealth 等：`tests/test_cli_*.py`、`tests/test_session.py`、`tests/test_sites_*.py`、`tests/test_recording_*.py`、`tests/test_stealth.py`；端到端风格见 `tests/integration_test.py`。
+- CLI / JSON 信封 / 站点 / 录制 / stealth 等：`tests/test_cli_*.py`、`tests/test_session.py`、`tests/test_sites_*.py`、`tests/test_recording_*.py`、`tests/test_stealth.py`；CookieVault / 集群 / `direct_http` 见 `tests/test_cookie_vault_unit.py`、`tests/test_cluster_unit.py`、`tests/test_api_transport_unit.py`、`tests/test_prepare_request_transport_defaults.py`；端到端风格见 `tests/integration_test.py`。
 
 ## 深挖建议
 

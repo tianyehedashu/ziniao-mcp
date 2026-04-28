@@ -81,6 +81,17 @@ def coerce_page_fetch_eval_result(result: Any) -> dict[str, Any]:
     return {"ok": True, "body": result}
 
 
+def _normalize_transport_name(value: str) -> str:
+    raw = value.strip().lower().replace("-", "_")
+    aliases = {
+        "browser": "browser_fetch",
+        "page_fetch": "browser_fetch",
+        "direct": "direct_http",
+        "http": "direct_http",
+    }
+    return aliases.get(raw, raw)
+
+
 def prepare_request(
     *,
     preset: str = "",
@@ -160,6 +171,16 @@ def prepare_request(
 
     if plugin:
         spec = plugin.before_fetch(spec)
+
+    if str(spec.get("mode", "fetch")) == "fetch":
+        auth_strategy = spec.get("auth_strategy")
+        if isinstance(auth_strategy, dict):
+            pref = auth_strategy.get("preferred_transport")
+            if isinstance(pref, str) and pref.strip():
+                spec.setdefault("transport", _normalize_transport_name(pref))
+        if isinstance(spec.get("transport"), str):
+            spec["transport"] = _normalize_transport_name(spec["transport"])
+        spec.setdefault("transport", "browser_fetch")
 
     if spec.get("mode") != "ui":
         spec.pop("_ziniao_merged_vars", None)

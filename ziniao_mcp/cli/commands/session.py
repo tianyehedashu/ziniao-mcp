@@ -34,3 +34,10 @@ def session_info(
     """Get detailed info about a session."""
     result = run_command("session_info", {"session_id": session_id})
     print_result(result, json_mode=get_json_mode())
+
+
+@app.command("health")
+def session_health() -> None:
+    """CDP HTTP liveness for each session held by the daemon."""
+    result = run_command("session_health", {})
+    print_result(result, json_mode=get_json_mode())

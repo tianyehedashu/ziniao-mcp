@@ -13,8 +13,11 @@
 | `ziniao list-stores` | 列出紫鸟侧会话 ID（任务需要时） |
 | `ziniao open-store <id>` | 打开并接入该会话 |
 | `ziniao launch [--url …]` / `ziniao connect <port>` | 非紫鸟或已有 Chrome |
-| `ziniao session list` / `session switch <id>` | 多会话 |
-| `ziniao --store <id> <子命令>` | 指定会话执行子命令 |
+| `ziniao session list` | 查看多会话 |
+| `ziniao session switch <id>` | 仅人工交互切换 active session；不要写入自动化步骤 |
+| `ziniao --store <id> <子命令>` / `ziniao --session <id> <子命令>` | 指定会话执行子命令（Agent/RPA 默认方式） |
+| `ziniao session health` | 检查 daemon 中各会话 CDP 存活 |
+| `ziniao cluster acquire --session <id> --ttl 600` | 多 Agent / 长任务租约记录 |
 | `ziniao close-store <id>` | 关闭紫鸟会话 |
 
 ### 导航与页签

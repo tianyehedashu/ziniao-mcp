@@ -125,4 +125,4 @@ async def run():
 | 流程自动化 | `navigate` → `wait` → `snapshot` → 交互命令链 | `get` / `select` / `click` 与之一致 |
 | 批量参数 | CLI 验证一条路径；数据用 CSV/JSON | 循环 + 单条 try/except |
 | 抓接口 | `network list` / HAR | 评估是否改 HTTP 客户端直连 |
-| 多会话 | `ziniao --store` 或 `session switch` | `for` + 每次 `open_store` 或等价 |
+| 多会话 | `ziniao --store` / `--session` 固定每条命令；不用 `session switch` 写步骤表 | `for` + 每次 `open_store` 或等价 |

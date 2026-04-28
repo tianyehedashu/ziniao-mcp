@@ -164,6 +164,16 @@ def fetch_cmd(
         None, "--decode-encoding",
         help="Decode raw body with this codec before saving (e.g. cp932 for Rakuten CSV). Default: raw bytes or charset from Content-Type.",
     ),
+    transport: str = typer.Option(
+        "",
+        "--transport",
+        help="fetch transport: browser_fetch (default), direct_http, auto (needs --auth-snapshot for direct/auto).",
+    ),
+    auth_snapshot: Optional[str] = typer.Option(
+        None,
+        "--auth-snapshot",
+        help="Path to auth snapshot JSON (cookie-vault export) for direct_http / auto.",
+    ),
 ) -> None:
     """Execute an HTTP request in the browser page context.
 
@@ -220,6 +230,11 @@ def fetch_cmd(
     except (FileNotFoundError, ValueError, json.JSONDecodeError) as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(1) from exc
+
+    if transport.strip():
+        spec["transport"] = transport.strip().lower().replace("-", "_")
+    if auth_snapshot:
+        spec["auth_snapshot_path"] = str(Path(auth_snapshot).expanduser().resolve())
 
     if not get_json_mode():
         auth = spec.get("auth") or {}

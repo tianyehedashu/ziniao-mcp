@@ -42,22 +42,40 @@ list_stores → 获取店铺列表
 
 ### 切换店铺
 
-当前架构下，最后一次 `connect_store` 或 `open_store` 的店铺成为活动店铺。切换活动店铺：
+当前架构下，最后一次 `connect_store` / `open_store` / `launch` / `connect` 可能改变 daemon 的活动会话。**Agent 不应把 active session 当作任务状态**：它是人工交互便利，不是并发安全的锁。
 
 ```
-connect_store("target_store_id")  → 目标店铺成为活动店铺
+ziniao session switch <id>  # 仅人工交互时使用
 ```
+
+Agent / 脚本默认规则：
+
+1. 先 `ziniao --json session list` 获取目标 `session_id`。
+2. 每条命令都带 `--store <store_id>` 或 `--session <session_id>`。
+3. 批量、多代理、长任务不使用 `session switch` 维持状态。
+4. Tab 也视为易变资源：操作前用 `tab list` / `url` / `snapshot` 验证目标页。
+5. 长任务前用 `ziniao session health` 检查 CDP 端口；并发编排用 `ziniao cluster acquire --session <id> --ttl <sec>` 记录租约。
 
 ### 批量操作模式
 
 对多个店铺执行相同操作时：
 
 1. `list_stores` 获取目标店铺列表
-2. 逐个 `connect_store` 并执行操作
+2. 逐个 `open-store` / 自动恢复，并用 `--store "$id"` 固定每条命令目标
 3. 每个店铺操作完成后记录结果
 4. 最后汇总报告所有店铺的执行情况
 
 注意：不要同时打开超过 5 个店铺，避免系统资源耗尽。
+
+推荐 CLI 模式：
+
+```bash
+for id in store_001 store_002; do
+    ziniao --store "$id" navigate "https://example.com"
+    ziniao --store "$id" wait "body"
+    ziniao --store "$id" screenshot "${id}.png"
+done
+```
 
 ## 会话恢复机制
 
@@ -95,12 +113,14 @@ connect_store("target_store_id")  → 目标店铺成为活动店铺
 | `stop_client` | `ziniao store stop-client` |
 | `browser_session(list)` | `ziniao session list` |
 | `browser_session(switch)` | `ziniao session switch <id>` |
+| 会话健康 | `ziniao session health` |
+| 集群租约 | `ziniao cluster status/acquire/release` |
 
 ### 多店铺批量示例（CLI）
 
 ```bash
 # 对所有已打开店铺截图
-ziniao list-stores --opened-only --json | jq -r '.stores[].store_id' | while read id; do
+ziniao --json list-stores --opened-only | jq -r '.data.stores[].store_id' | while read id; do
     ziniao --store "$id" screenshot "${id}.png"
 done
 ```

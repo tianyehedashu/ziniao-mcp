@@ -39,11 +39,13 @@ TikTok Shop 跨境卖家后台使用两个主要域名：
 ### 导航流程
 
 ```
-1. connect_store("store_id")         → 连接目标店铺
-2. navigate_page("目标URL")           → 导航到目标页面
-3. wait_for("关键元素选择器")           → 等待页面加载
-4. take_snapshot()                    → 获取页面结构
+1. ziniao open-store "<store_id>"      → 打开/恢复目标店铺
+2. ziniao --store "<store_id>" navigate "目标URL"
+3. ziniao --store "<store_id>" wait "关键元素选择器"
+4. ziniao --store "<store_id>" snapshot --interactive
 ```
+
+Agent 规则：不要依赖 daemon 的 active session；TikTok Shop 多店、多市场任务必须每条命令带 `--store <store_id>` 或 `--session <session_id>`。`session switch` 仅用于人工交互调试。并发任务前用 `ziniao session health` 检查会话，必要时用 `ziniao cluster acquire --session <id> --ttl 600` 记录租约。
 
 ## 常见操作流程
 
@@ -127,7 +129,7 @@ TikTok Shop 卖家后台页面通常使用以下模式：
 TikTok Shop 跨境卖家可运营多个市场站点（PH、TH、VN、MY、SG 等），同一账号下通过 `shop_region` 切换：
 
 1. `list_stores` 查看所有店铺
-2. 通过 `navigate_page` 切换 `shop_region` 参数切换市场
+2. 通过固定 `--store` / `--session` 的 `navigate` 命令切换 `shop_region` 参数
 3. 不同市场的商品、订单、数据独立管理
 4. 注意不同市场的语言、货币、物流和合规要求差异
 
