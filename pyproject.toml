@@ -1,6 +1,6 @@
 [project]
 name = "ziniao"
-version = "0.2.70"
+version = "0.2.71"
 description = "紫鸟与 Chrome 浏览器 AI 自动化 — 让 AI Agent 操控紫鸟店铺与本地 Chrome"
 readme = "README.md"
 requires-python = ">=3.10"
