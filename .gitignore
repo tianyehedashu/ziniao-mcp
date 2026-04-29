@@ -52,7 +52,7 @@ scripts/test_spawn.py
 # Test artifacts
 test_*.png
 
-# Local capture exports (HAR may contain tokens / PII)
+# Local capture exports (HAR, screenshots, cookie-vault snapshots — tokens / PII)
 out/
 exports/
 
