@@ -25,6 +25,29 @@ MCP 通信调试代理：在 Cursor 与 `ziniao serve`（或 `python -m ziniao_m
 
 ---
 
+### e2e_cookie_vault_isolated_restore.py
+
+**CookieVault 隔离 profile E2E**：在**已登录**的源 Chrome 会话里导出 AuthSnapshot → 用**全新** ``--user-data-dir`` 启动第二个 Chrome → 在新会话里 ``cookie-vault restore`` → 截图。用于验证「快照能否在干净浏览器里复现登录态」（对话里抖音创作者中心实测流程的脚本化版本）。
+
+**使用方式**（项目根）：
+
+```bash
+uv run python scripts/e2e_cookie_vault_isolated_restore.py --source-session chrome-51157
+```
+
+仅复用已有快照、跳过 export：
+
+```bash
+uv run python scripts/e2e_cookie_vault_isolated_restore.py --source-session chrome-51157 --skip-export --snapshot exports/my.json
+```
+
+**注意**
+
+- 默认快照与截图落在 ``exports/``（已在 ``.gitignore`` 忽略）；**含账号 Cookie / storage，勿提交 git**。
+- 依赖本机 ziniao daemon；源会话需已在 ``--export-url``（默认 ``https://creator.douyin.com/``）完成登录。
+
+---
+
 ### test_spawn.py
 
 模拟 Cursor 通过 subprocess 启动 MCP 服务器的流程：用管道启动 `ziniao serve`，发送一次 `initialize` JSON-RPC 请求，并打印 stdout 响应，用于验证进程与协议是否正常。
@@ -68,3 +91,26 @@ uv run python scripts/test_minimal_env.py
 
 - 需已安装 `uv`，或设置环境变量 `UV_PATH` 指向 uv 可执行文件。
 - 项目根目录由脚本根据自身路径自动推导。
+
+---
+
+### e2e_cookie_vault_isolated_restore.py
+
+**CookieVault 隔离 profile E2E**：在**已登录**的源 Chrome 会话里导出 AuthSnapshot → 用**全新** ``--user-data-dir`` 启动第二个 Chrome → 在新会话里 ``cookie-vault restore`` → 截图。用于验证「快照能否在干净浏览器里复现登录态」（抖音创作者中心等场景的手测脚本化版本）。
+
+**使用方式**（项目根）：
+
+```bash
+uv run python scripts/e2e_cookie_vault_isolated_restore.py --source-session chrome-51157
+```
+
+仅复用已有快照、跳过 export：
+
+```bash
+uv run python scripts/e2e_cookie_vault_isolated_restore.py --source-session chrome-51157 --skip-export --snapshot exports/my.json
+```
+
+**注意**
+
+- 默认快照与截图落在 ``exports/``（已在 ``.gitignore`` 忽略）；**含账号 Cookie / storage，勿提交 git**。
+- 依赖本机 ziniao daemon；源会话需已在 ``--export-url``（默认 ``https://creator.douyin.com/``）完成登录。

@@ -12,6 +12,7 @@
 | `test_spawn.py` | 子进程启动 MCP 并发送 `initialize` 请求 |
 | `rakuten_presets_smoke.py` | 乐天 preset 冒烟（见 `docs/rakuten-presets-smoke-test.md`） |
 | `cli_test_all.py` | CLI 批量探测类工具 |
+| `e2e_cookie_vault_isolated_restore.py` | CookieVault：已登录会话 export → 独立 `user-data-dir` launch → restore → 截图（抖音创作者等 E2E 手测） |
 | `repair_venv_pyvenv_cfg.ps1` | 补写 `.venv\pyvenv.cfg`；可选 `-StopZiniaoDaemon`、`-Sync`、`-ReinstallPywin32`（见脚本注释） |
 
 ## 运行约定
