@@ -7,6 +7,12 @@ from pathlib import Path
 import pytest
 
 from ziniao_mcp import cookie_vault as cv
+from ziniao_mcp.core.cdp_raw import normalize_cookie
+
+
+def test_origin_of_url_normalizes() -> None:
+    assert cv.origin_of_url("https://Example.COM/path") == "https://example.com"
+    assert cv.origin_of_url("about:blank") == ""
 
 
 def test_redact_snapshot_masks_values() -> None:
@@ -53,6 +59,26 @@ def test_cookie_header_path_match_does_not_match_prefix_sibling() -> None:
     ]
     assert "scoped=1" in cv.cookie_header_for_url("https://example.com/foo/bar", cookies)
     assert "scoped=" not in cv.cookie_header_for_url("https://example.com/foobar", cookies)
+
+
+def test_cookie_row_from_raw_cdp_cookie_tolerates_missing_same_party() -> None:
+    row = normalize_cookie({
+        "name": "sid",
+        "value": "abc",
+        "domain": ".sellersprite.com",
+        "path": "/",
+        "secure": True,
+        "httpOnly": True,
+    })
+    assert row == {
+        "name": "sid",
+        "value": "abc",
+        "domain": ".sellersprite.com",
+        "path": "/",
+        "secure": True,
+        "httpOnly": True,
+        "sameSite": "",
+    }
 
 
 def test_apply_header_inject_from_snapshot() -> None:

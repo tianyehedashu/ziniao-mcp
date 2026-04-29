@@ -125,6 +125,7 @@ def _resolve_config() -> dict[str, Any]:
         "user_data_dir": chrome_env["user_data_dir"] or chrome_yaml.get("user_data_dir", ""),
         "headless": chrome_yaml.get("headless", False),
     }
+    config["cookie_vault"] = raw.get("cookie_vault", {}) if isinstance(raw, dict) else {}
 
     return config
 
@@ -181,6 +182,7 @@ def create_server(config: dict[str, Any] | None = None) -> tuple[FastMCP, Sessio
     session = SessionManager(
         client, stealth_config=stealth_cfg,
         chrome_config=config.get("chrome") or {},
+        runtime_config=config,
     )
     mcp = FastMCP(
         "ziniao",

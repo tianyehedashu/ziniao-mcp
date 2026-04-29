@@ -61,6 +61,16 @@ def ensure_executable_snapshot(data: dict[str, Any]) -> None:
         raise ValueError("redacted snapshot cannot be imported or used for direct_http")
 
 
+def origin_of_url(url: str) -> str:
+    """Return ``scheme://host`` lowercased, or empty string if not a hierarchical URL."""
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url or "")
+    if not parsed.scheme or not parsed.netloc:
+        return ""
+    return f"{parsed.scheme.lower()}://{parsed.netloc.lower()}"
+
+
 def save_auth_snapshot(path: Path, data: dict[str, Any]) -> None:
     """Write snapshot atomically (write temp + replace)."""
     path.parent.mkdir(parents=True, exist_ok=True)

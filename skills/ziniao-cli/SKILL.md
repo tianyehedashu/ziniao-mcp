@@ -1,7 +1,8 @@
 ---
 
 ## name: ziniao-cli
-description: Browser automation for multi-store sellers and Chrome. Use when the user needs to open stores, navigate pages, fill forms, click buttons, take screenshots, extract data, intercept network requests, call logged-in APIs from the page (site presets / network fetch / page_fetch), manage site presets and repos, install AI agent skills, or automate any browser task. Triggers include "open a store", "open a website", "fill out a form", "click a button", "take a screenshot", "scrape data", "switch session", "multi-store batch", "browser automation", "fetch API with cookies", "site preset", "site repo", "skill install", or any Ziniao/Chrome automation request.
+
+description: Browser automation for multi-store sellers and Chrome. Use when the user needs to open stores, navigate pages, fill forms, click buttons, take screenshots, extract data, intercept network requests, call logged-in APIs from the page (site presets / network fetch / page_fetch), run declarative RPA flows (`ziniao flow` / `kind: rpa_flow`), manage site presets and repos, install AI agent skills, or automate any browser task. Triggers include "open a store", "open a website", "fill out a form", "click a button", "take a screenshot", "scrape data", "switch session", "multi-store batch", "browser automation", "fetch API with cookies", "site preset", "site repo", "RPA flow", "ziniao flow", "flow run", "skill install", or any Ziniao/Chrome automation request.
 allowed-tools: Bash(ziniao:*)
 
 # Ziniao CLI — Browser Automation from Terminal
@@ -56,7 +57,7 @@ ziniao --session "$SID" snapshot --interactive
 **Inspect → pick selectors:**
 
 - `**ziniao snapshot --interactive`** — table with a **Selector** column (auto-computed, unique CSS selector like `#id` or `[name="…"]`). Copy the selector directly into `click` / `fill` / `wait`.
-- `**ziniao snapshot`** or `**ziniao snapshot --compact**` — full HTML when you need classes/structure or elements the interactive table didn't cover.
+- `**ziniao snapshot`** or `**ziniao snapshot --compact`** — full HTML when you need classes/structure or elements the interactive table didn't cover.
 
 ```bash
 ziniao open-store my-store-001                          # or: ziniao launch --url <url>
@@ -91,7 +92,7 @@ ziniao fill "#email" "user@test.com" && ziniao fill "#pass" "secret" && ziniao c
 
 Setting `CHROME_USER_DATA` enables state reuse (cookies, localStorage, extensions persist).
 
-Control is **CDP** on **127.0.0.1** (remote browser → port-forward first). Commands hit the **active session** and **active tab** unless you use one-shot `**--store` / `--session`** (preferred for agents), `**session list|switch**`, or `**tab list|switch -i N**`. For Ziniao shops—even if the window was opened in the desktop app—use `**open-store <id>**`, not `**connect**`. **Stealth** (when enabled): `**launch`** / `**open-store**` patch every open tab’s current document; `**connect**` registers the script on all tabs but only runs the heavy **evaluate** on the **active** tab (others pick it up on next navigation).
+Control is **CDP** on **127.0.0.1** (remote browser → port-forward first). Commands hit the **active session** and **active tab** unless you use one-shot `**--store` / `--session`** (preferred for agents), `**session list|switch`**, or `**tab list|switch -i N`**. For Ziniao shops—even if the window was opened in the desktop app—use `**open-store <id>**`, not `**connect**`. Stealth (when enabled): `**launch**` / `**open-store`** patch every open tab’s current document; `**connect`** registers the script on all tabs but only runs the heavy **evaluate** on the **active** tab (others pick it up on next navigation).
 
 ## Key Commands
 
@@ -156,6 +157,8 @@ ziniao info storage local get | set -k <key> -v <val>
 ziniao info storage session get
 ziniao cookie-vault export -o auth.json   # AuthSnapshot: cookies + storage + UA
 ziniao cookie-vault import auth.json      # Rejects redacted snapshots; checks origin
+ziniao cookie-vault restore auth.json [--url U] [--verify-selector S]
+ziniao cookie-vault probe-api auth.json "https://api.example/health"  # probe_invocation_ok / probe_http_ok / direct_http_usable
 ziniao info clipboard read | write --text "hello"
 
 # Scroll
@@ -184,6 +187,13 @@ ziniao site fork <id> [<new_id>] [--force]        # copy preset to ~/.ziniao/sit
 # Example: ziniao rakuten rpp-search -V start_date=2026-03-01 -V end_date=2026-03-07 [--page N] [--all] [-o out]
 # CSV/binary: ziniao rakuten reviews-csv -o reviews.csv   # preset output_decode_encoding=cp932
 
+# RPA flows (declarative browser automation with control flow / retry / artifacts)
+ziniao flow validate ./flow.json
+ziniao flow dry-run ./flow.json --plan
+ziniao flow run ./flow.json --var k=v [--vars-from data.csv] [--run-dir ./.runs/demo]
+ziniao flow list | ziniao flow show <run_id> | ziniao flow diagnose <run_id> --emit nodriver
+ziniao flow step ./flow.json step_id --state <run_id>
+
 # Site & skill management
 ziniao site list | show <id> | enable | disable <id> | fork <src> [<dst>]
 ziniao site add <git-url> | update [<name>] | remove <name> | repos
@@ -192,7 +202,7 @@ ziniao skill list | install <name> [-a cursor] | remove <name> | installed | upd
 
 # Batch, recording, emulation
 echo '[{"command":"navigate","args":{"url":"..."}}]' | ziniao batch run [--bail]
-ziniao rec start | stop [--name <n>] [--force] | replay <n> [--reuse-tab] [--no-auto-session] | list | view <n> [--metadata-only] [--full] [-o file] | status | delete <n>   # replay: new tab; auto-reconnect from recording if daemon has no session
+ziniao rec start | stop [--name <n>] [--emit nodriver,preset] [--force] | replay <n> [--reuse-tab] [--no-auto-session] | list | view <n> [--metadata-only] [--full] [-o file] | status | delete <n>   # preset emits .rpa-flow.draft.json
 ziniao emulate --device "iPhone 14"       # Or --width W --height H
 
 # Cleanup
@@ -273,6 +283,27 @@ ziniao eval 'document.querySelectorAll("img").length'
 ziniao eval 'JSON.stringify(Array.from(document.querySelectorAll("tr")).map(r => r.textContent))'
 ziniao eval --await 'fetch("/api/me").then(r => r.text())'   # Promise → resolved value
 ```
+
+### Unified Declarative Flow
+
+Use `ziniao flow` when a repeated browser workflow should be saved as JSON with control flow, retries, artifacts, and resume support. This is not a second UI automation stack: new flows should use `kind: rpa_flow`, while legacy `mode: ui` site presets remain a compatibility entry point over the same UI steps. For authoring details, use the `rpa-flows` skill and `docs/rpa-flows.md`.
+
+```bash
+ziniao flow validate ./my-flow.rpa-flow.json
+ziniao flow dry-run ./my-flow.rpa-flow.json --plan
+ziniao flow run ./my-flow.rpa-flow.json --var date=2026-04-01
+ziniao flow diagnose <run_id> --emit nodriver
+ziniao flow run ./my-flow.rpa-flow.json --replay <run_id> --resume-from step_id
+```
+
+Recording can create a first draft:
+
+```bash
+ziniao rec start
+ziniao rec stop --name my-flow --emit nodriver,preset
+```
+
+The generated `.rpa-flow.draft.json` is a skeleton. Add variables, assertions, retry/error branches, `output_contract`, and policy before production use.
 
 ## Site Presets — 页面内请求模板
 
@@ -449,5 +480,3 @@ If `ziniao` is not recognized: run `uv tool dir` to find the bin directory, add 
 | [references/configuration.md](references/configuration.md)                   | YAML/env paths, precedence, MCP setup                                |
 | [references/site-fetch-and-presets.md](references/site-fetch-and-presets.md) | Page-context fetch, site presets, auth/pagination, MCP `page_fetch`  |
 | [references/page-fetch-auth.md](references/page-fetch-auth.md)               | Header injection (`header_inject`): usage, implementation, extension |
-
-

@@ -23,9 +23,9 @@
 | `chrome_input.py` | 仅 `Input.*` 的 raw WebSocket CDP 短连接客户端（依赖 `websockets`） |
 | `site_policy.py` | 强风控站点策略：内置表 + 可选 YAML ``site_policy.policies`` 合并；`policy_hint` 可 YAML 覆盖 |
 | `config_yaml.py` | 共享 YAML 加载与 project↔global 合并；供 `server` 与 `site_policy` 复用 |
-| `cookie_vault.py` | Auth 快照（cookies + storage + UA）导入导出、脱敏、`header_inject` 静态解析（供 `direct_http`） |
+| `cookie_vault.py` | Auth 快照（cookies + storage + UA）、`origin_of_url`、脱敏、`header_inject` 静态解析（供 `direct_http`） |
 | `cluster.py` | 浏览器集群租约元数据（`~/.ziniao/cluster.json`），不替代 `SessionManager` |
-| `api_transport.py` | `page_fetch` 的 `direct_http` / `auto` 探测与 httpx 直连（快照 + 降级） |
+| `api_transport.py` | `page_fetch` 的 `direct_http` / `auto` 探测与 httpx 直连（快照元数据 + 降级） |
 
 ## 子目录速查
 
@@ -33,7 +33,7 @@
 |------|------|
 | `cli/commands/` | 按功能分组的 Typer 命令（`navigate`、`store`、`chrome`、`session`、`network`…） |
 | `tools/` | MCP/内部可调用的工具实现（chrome、store、network、input、recorder…） |
-| `core/` | 与页面相关的底层能力（find、scroll、check、get_info、network 辅助等） |
+| `core/` | 与页面相关的底层能力（find、scroll、check、get_info、`cdp_raw`、`auth_restore`、network 辅助等） |
 | `sites/` | 站点预设、分页、`page_fetch` 结果规整（含 `rakuten/`） |
 | `stealth/` | `apply_stealth()` 等于在 `open_store` 后经 CDP 注入；JS 规范在 `ziniao_webdriver/js_patches.py` |
 | `recording/` | 录制缓冲、定位器、DOM 捕获、向 nodriver / Playwright 等 emit |
@@ -52,7 +52,7 @@
 
 ## 测试
 
-- CLI / JSON 信封 / 站点 / 录制 / stealth 等：`tests/test_cli_*.py`、`tests/test_session.py`、`tests/test_sites_*.py`、`tests/test_recording_*.py`、`tests/test_stealth.py`；CookieVault / 集群 / `direct_http` 见 `tests/test_cookie_vault_unit.py`、`tests/test_cluster_unit.py`、`tests/test_api_transport_unit.py`、`tests/test_prepare_request_transport_defaults.py`；端到端风格见 `tests/integration_test.py`。
+- CLI / JSON 信封 / 站点 / 录制 / stealth 等：`tests/test_cli_*.py`、`tests/test_session.py`、`tests/test_sites_*.py`、`tests/test_recording_*.py`、`tests/test_stealth.py`；CookieVault / 集群 / `direct_http` / `restore` 见 `tests/test_cookie_vault_unit.py`、`tests/test_auth_restore_unit.py`、`tests/test_cluster_unit.py`、`tests/test_api_transport_unit.py`、`tests/test_page_fetch_transport_dispatch.py`、`tests/test_prepare_request_transport_defaults.py`；端到端风格见 `tests/integration_test.py`。
 
 ## 深挖建议
 

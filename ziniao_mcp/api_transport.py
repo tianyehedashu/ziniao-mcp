@@ -17,6 +17,16 @@ _logger = logging.getLogger("ziniao-mcp")
 _SAFE_PROBE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
 
+def snapshot_transport_meta(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Metadata attached to direct_http responses when an auth snapshot is used."""
+    return {
+        "auth_snapshot_used": True,
+        "browser_context_reused": False,
+        "snapshot_site": str(snapshot.get("site") or ""),
+        "snapshot_profile_id": str(snapshot.get("profile_id") or ""),
+    }
+
+
 def can_auto_probe_method(method: str) -> bool:
     """Whether ``transport:auto`` may try the actual request before fallback."""
     return method.upper() in _SAFE_PROBE_METHODS
@@ -56,19 +66,27 @@ async def direct_http_fetch(
     * ``eval`` header_inject entries are ignored (browser-only).
     * ``Cookie`` header is merged from snapshot unless caller already set ``Cookie``.
     """
-    url = args.get("url", "")
-    if not url:
-        return {"ok": False, "error": "url is required for fetch mode"}
     try:
         from ziniao_mcp.cookie_vault import ensure_executable_snapshot
 
         ensure_executable_snapshot(snapshot)
     except ValueError as exc:
-        return {"ok": False, "error": str(exc)}
+        err_exec: dict[str, Any] = {"ok": False, "error": str(exc)}
+        if isinstance(snapshot, dict):
+            err_exec.update(snapshot_transport_meta(snapshot))
+        return err_exec
+
+    url = args.get("url", "")
+    if not url:
+        err_url = {"ok": False, "error": "url is required for fetch mode"}
+        err_url.update(snapshot_transport_meta(snapshot))
+        return err_url
     method = str(args.get("method", "GET")).upper()
     raw_headers = args.get("headers") or {}
     if not isinstance(raw_headers, dict):
-        return {"ok": False, "error": "headers must be a dict"}
+        err_hdr = {"ok": False, "error": "headers must be a dict"}
+        err_hdr.update(snapshot_transport_meta(snapshot))
+        return err_hdr
     headers: dict[str, str] = {str(k): str(v) for k, v in raw_headers.items()}
     injections = args.get("header_inject") or []
     if not isinstance(injections, list):
@@ -101,13 +119,15 @@ async def direct_http_fetch(
             resp = await client.request(method, url, headers=headers, content=content)
     except (httpx.HTTPError, OSError) as exc:
         _logger.debug("direct_http fetch failed: %s", exc)
-        return {"ok": False, "error": f"direct_http: {exc}"}
+        err: dict[str, Any] = {"ok": False, "error": f"direct_http: {exc}"}
+        err.update(snapshot_transport_meta(snapshot))
+        return err
 
     raw_bytes = resp.content
     ct = resp.headers.get("content-type", "") or ""
     body_str = decode_body_bytes(raw_bytes, ct)
     b64 = base64.b64encode(raw_bytes).decode("ascii")
-    return {
+    out_ok: dict[str, Any] = {
         "ok": True,
         "status": resp.status_code,
         "statusText": resp.reason_phrase,
@@ -120,3 +140,5 @@ async def direct_http_fetch(
             "unless the caller supplies an equivalent proxy/network layer."
         ),
     }
+    out_ok.update(snapshot_transport_meta(snapshot))
+    return out_ok

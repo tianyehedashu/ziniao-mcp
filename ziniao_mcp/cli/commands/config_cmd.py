@@ -322,7 +322,10 @@ def _show_plain(global_cfg: dict, project_cfg: dict, chrome_yaml: dict, ziniao_y
 
 @app.command("set")
 def set_value(
-    key: str = typer.Argument(..., help="Dotted config key, e.g. chrome.executable_path or ziniao.company."),
+    key: str = typer.Argument(
+        ...,
+        help="Dotted config key, e.g. chrome.executable_path or cookie_vault.restore.navigate_settle_sec.",
+    ),
     value: str = typer.Argument(..., help="Value to set."),
 ) -> None:
     """Set a configuration value in ~/.ziniao/config.yaml."""
@@ -337,21 +340,30 @@ def set_value(
         else:
             config.setdefault(section, {})[field] = _coerce(value)
     else:
-        typer.echo(f"Error: unsupported key depth '{key}'. Use section.field format.", err=True)
-        raise typer.Exit(1)
+        target = config
+        for part in parts[:-1]:
+            next_target = target.setdefault(part, {})
+            if not isinstance(next_target, dict):
+                typer.echo(f"Error: '{part}' is not a config section in '{key}'.", err=True)
+                raise typer.Exit(1)
+            target = next_target
+        target[parts[-1]] = _coerce(value)
 
     _write_global_config(config)
     typer.echo(f"Set {key} = {value} in {_GLOBAL_CONFIG}")
 
 
 def _coerce(value: str):
-    """Coerce string to int/bool if applicable."""
+    """Coerce string to bool/int/float if applicable."""
     if value.lower() in ("true", "false"):
         return value.lower() == "true"
     try:
         return int(value)
     except ValueError:
-        return value
+        try:
+            return float(value)
+        except ValueError:
+            return value
 
 
 def _set_ziniao_key(config: dict, field: str, value: str) -> None:

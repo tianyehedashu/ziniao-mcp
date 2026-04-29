@@ -103,7 +103,9 @@ ziniao --session "$SID" cookie-vault export -o auth.json --site target
 ziniao --session "$SID" network fetch "https://api.example.com/me" --transport auto --auth-snapshot auth.json
 ```
 
-Redacted snapshot 仅供分享/审查，`import` 和 `direct_http` 会拒绝。`cookie-vault import` 默认要求当前 tab origin 与 snapshot `page_url` origin 一致，防止 storage 写入错误站点。
+Redacted snapshot 仅供分享/审查，`import` 和 `direct_http` 会拒绝（拒绝响应同样附带 `auth_snapshot_used` 等 `snapshot_transport_meta` 字段）。`cookie-vault import` 默认要求当前 tab origin 与 snapshot `page_url` origin 一致，防止 storage 写入错误站点。
+
+`cookie-vault probe-api` 的 JSON：`probe_invocation_ok` 表示子命令与快照校验成功；`probe_http_ok` 对齐内层 `probe.ok`；`direct_http_usable` 为启发式「是否像可用 API」。
 
 ## 会话鉴权（auth）
 

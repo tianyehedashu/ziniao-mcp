@@ -79,3 +79,51 @@ async def test_transport_direct_alias_requires_snapshot() -> None:
 def test_origin_of_url_normalizes_origin() -> None:
     assert d._origin_of_url("https://Example.com/path?q=1") == "https://example.com"
     assert d._origin_of_url("about:blank") == ""
+
+
+@pytest.mark.asyncio
+async def test_auto_direct_probe_falls_back_to_browser_on_html_login(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    calls = {"browser": 0, "direct": 0}
+
+    async def fake_browser_fetch(_sm, _args):
+        calls["browser"] += 1
+        return {"ok": True, "status": 200, "from_browser": True}
+
+    async def fake_direct(_args, _snapshot):
+        calls["direct"] += 1
+        return {
+            "ok": True,
+            "status": 200,
+            "content_type": "text/html; charset=utf-8",
+            "body": "<html><title>login</title></html>",
+        }
+
+    monkeypatch.setattr(d, "_page_fetch_fetch", fake_browser_fetch)
+
+    from ziniao_mcp import api_transport
+
+    monkeypatch.setattr(api_transport, "direct_http_fetch", fake_direct)
+
+    snap = tmp_path / "snap.json"
+    snap.write_text(
+        '{"schema_version": 1, "cookies": [{"name": "a", "value": "b", "domain": "example.com", "path": "/"}]}',
+        encoding="utf-8",
+    )
+
+    result = await d._page_fetch(
+        _Session(),
+        {
+            "mode": "fetch",
+            "transport": "auto",
+            "method": "GET",
+            "url": "https://example.com/api",
+            "auth_snapshot_path": str(snap),
+        },
+    )
+
+    assert result.get("transport_used") == "browser_fetch"
+    assert result.get("fallback_from") == "auto_direct_http"
+    assert calls == {"browser": 1, "direct": 1}

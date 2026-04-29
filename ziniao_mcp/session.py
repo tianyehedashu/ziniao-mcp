@@ -511,12 +511,14 @@ class SessionManager:
         client: Optional["ZiniaoClient"] = None,
         stealth_config: Optional["StealthConfig"] = None,
         chrome_config: Optional[dict[str, Any]] = None,
+        runtime_config: Optional[dict[str, Any]] = None,
     ):
         from .stealth import StealthConfig  # pylint: disable=import-outside-toplevel
 
         self.client = client
         self.stealth_config = stealth_config or StealthConfig()
         self._chrome_config = chrome_config or {}
+        self.runtime_config = runtime_config or {}
         self._stores: dict[str, StoreSession] = {}
         self._active_store_id: Optional[str] = None
         self._client_started = False

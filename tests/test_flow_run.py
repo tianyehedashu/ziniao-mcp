@@ -273,10 +273,12 @@ async def test_flow_run_failure_captures_artefacts_and_masks_secrets(
         },
     )()
 
+    run_artifacts = tmp_path / "run-artifacts"
     spec = {
         "mode": "ui",
         "steps": [{"id": "miss", "action": "click", "selector": "#does-not-exist"}],
         "_ziniao_secret_values": ["supersecret"],
+        "_ziniao_run_dir": str(run_artifacts),
     }
     result = await d._flow_run(sm, spec)
 
@@ -286,9 +288,8 @@ async def test_flow_run_failure_captures_artefacts_and_masks_secrets(
     assert failure["step_id"] == "miss"
     assert "supersecret" not in failure["error"]
     assert "***" in failure["error"]
-    errors_dir = tmp_path / "exports" / "flow-errors"
-    assert errors_dir.exists()
-    artefacts = list(errors_dir.iterdir())
+    assert run_artifacts.is_dir()
+    artefacts = list(run_artifacts.iterdir())
     assert any(a.suffix == ".png" for a in artefacts)
     assert any(a.suffix == ".html" for a in artefacts)
 

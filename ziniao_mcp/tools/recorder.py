@@ -374,6 +374,17 @@ def _save_recording(
         with open(ts_path, "w", encoding="utf-8") as f:
             f.write(ts_code)
         paths["ts"] = str(ts_path)
+    if "preset" in emit:
+        from ..recording.emit_preset import write_preset_flow_draft  # pylint: disable=import-outside-toplevel
+
+        draft_path = d / f"{name}.rpa-flow.draft.json"
+        write_preset_flow_draft(
+            draft_path,
+            name=name,
+            start_url=start_url,
+            actions=list(disk_actions),
+        )
+        paths["preset_draft"] = str(draft_path)
     return paths
 
 
@@ -652,6 +663,8 @@ async def _do_stop(
         msg_parts.append(f"Python: {paths['py']}")
     if "ts" in paths:
         msg_parts.append(f"Playwright TS: {paths['ts']}")
+    if "preset_draft" in paths:
+        msg_parts.append(f"RPA draft: {paths['preset_draft']}")
     if eng == "dom2" and getattr(store, "recording_dropped_events", 0):
         msg_parts.append(f"(dropped_overflow={store.recording_dropped_events})")
 

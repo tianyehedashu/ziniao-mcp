@@ -846,13 +846,49 @@ async def _storage(sm: Any, args: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 
+def _float_config_value(value: Any, default: float) -> float:
+    """Coerce config/CLI values to non-negative seconds."""
+    if value in (None, ""):
+        return default
+    try:
+        return max(float(value), 0.0)
+    except (TypeError, ValueError):
+        return default
+
+
+def _cookie_vault_restore_settle_defaults(sm: Any) -> tuple[float, float]:
+    """Read CookieVault restore timing defaults, preferring current YAML config."""
+    root = getattr(sm, "runtime_config", {}) or {}
+    if not isinstance(root, dict):
+        root = {}
+    try:
+        from ziniao_mcp.config_yaml import load_merged_project_and_global_yaml
+
+        fresh_root = load_merged_project_and_global_yaml()
+        if isinstance(fresh_root, dict) and isinstance(fresh_root.get("cookie_vault"), dict):
+            root = {**root, "cookie_vault": fresh_root["cookie_vault"]}
+    except Exception:
+        _logger.debug("cookie-vault restore: failed to reload config", exc_info=True)
+    cookie_cfg = root.get("cookie_vault") or {}
+    if not isinstance(cookie_cfg, dict):
+        cookie_cfg = {}
+    restore_cfg = cookie_cfg.get("restore") or {}
+    if not isinstance(restore_cfg, dict):
+        restore_cfg = {}
+    nav_value = restore_cfg.get("navigate_settle_sec", cookie_cfg.get("restore_navigate_settle_sec"))
+    reload_value = restore_cfg.get("reload_settle_sec", cookie_cfg.get("restore_reload_settle_sec"))
+    return (
+        _float_config_value(nav_value, 2.0),
+        _float_config_value(reload_value, 1.0),
+    )
+
+
 async def _cookie_vault(sm: Any, args: dict) -> dict:
     """Export/import auth snapshots (cookies + storage + UA) for CookieVault."""
     from pathlib import Path
 
-    from nodriver import cdp  # pylint: disable=import-outside-toplevel
-
     from ziniao_mcp import cookie_vault as cv
+    from ziniao_mcp.core import auth_restore, cdp_raw
 
     action = args.get("action", "export")
     tab = sm.get_active_tab()
@@ -863,18 +899,8 @@ async def _cookie_vault(sm: Any, args: dict) -> dict:
         if not path:
             return {"error": "path is required"}
         redact = bool(args.get("redact", False))
-        cookies_raw = await tab.send(cdp.network.get_cookies())
-        cookie_list: list[dict] = []
-        for c in cookies_raw or []:
-            cookie_list.append({
-                "name": getattr(c, "name", "") or "",
-                "value": getattr(c, "value", "") or "",
-                "domain": getattr(c, "domain", "") or "",
-                "path": getattr(c, "path", "/") or "/",
-                "secure": bool(getattr(c, "secure", False)),
-                "httpOnly": bool(getattr(c, "http_only", False)),
-                "sameSite": str(getattr(c, "same_site", "") or ""),
-            })
+        page_url = getattr(getattr(tab, "target", None), "url", "") or ""
+        cookie_list = await cdp_raw.get_cookies_for_url(int(store.cdp_port), page_url, timeout=10.0)
         loc_raw = await tab.evaluate(
             "JSON.stringify(Object.fromEntries(Object.entries(localStorage)))",
             return_by_value=True,
@@ -884,7 +910,6 @@ async def _cookie_vault(sm: Any, args: dict) -> dict:
             return_by_value=True,
         )
         ua = await tab.evaluate("navigator.userAgent", return_by_value=True)
-        page_url = getattr(getattr(tab, "target", None), "url", "") or ""
         snap = cv.build_empty_snapshot(
             profile_id=str(args.get("profile_id") or store.store_id),
             site=str(args.get("site") or ""),
@@ -894,6 +919,7 @@ async def _cookie_vault(sm: Any, args: dict) -> dict:
             risk_level=str(args.get("risk_level") or "unknown"),
         )
         snap["cookies"] = cookie_list
+        snap["cookie_source"] = "raw_cdp_network"
         try:
             snap["local_storage"] = json.loads(loc_raw) if loc_raw else {}
         except (json.JSONDecodeError, TypeError):
@@ -910,6 +936,7 @@ async def _cookie_vault(sm: Any, args: dict) -> dict:
             "ok": True,
             "path": str(dest),
             "cookie_count": len(cookie_list),
+            "cookie_source": "raw_cdp_network",
             "redacted": redact,
         }
 
@@ -918,53 +945,79 @@ async def _cookie_vault(sm: Any, args: dict) -> dict:
         if not path:
             return {"error": "path is required"}
         snap = cv.load_auth_snapshot(Path(path).expanduser())
+        tab_url = getattr(getattr(tab, "target", None), "url", "") or ""
+        result = await auth_restore.apply_snapshot_to_tab(
+            tab,
+            snap,
+            tab_url=tab_url,
+            clear_cookies_first=bool(args.get("clear_cookies", False)),
+            allow_origin_mismatch=bool(args.get("allow_origin_mismatch", False)),
+        )
+        if result.get("error"):
+            return result
+        return {
+            "ok": True,
+            "imported_cookies": result["imported_cookies"],
+            "imported_local_storage_keys": result["imported_local_storage_keys"],
+            "imported_session_storage_keys": result["imported_session_storage_keys"],
+            "snapshot_origin": result.get("snapshot_origin"),
+            "current_origin": result.get("current_origin"),
+        }
+
+    if action == "restore":
+        path = (args.get("path") or "").strip()
+        if not path:
+            return {"error": "path is required"}
+        snap = cv.load_auth_snapshot(Path(path).expanduser())
+        navigate = str(args.get("navigate_url") or args.get("url") or "").strip()
+        default_navigate_settle, default_reload_settle = _cookie_vault_restore_settle_defaults(sm)
+        return await auth_restore.restore_tab_session(
+            tab,
+            snap,
+            navigate_url=navigate,
+            default_snap_url=str(snap.get("page_url") or ""),
+            clear_cookies_first=bool(args.get("clear_cookies", False)),
+            allow_origin_mismatch=bool(args.get("allow_origin_mismatch", False)),
+            reload_after=bool(args.get("reload", True)),
+            verify_selector=str(args.get("verify_selector") or "").strip(),
+            verify_timeout_sec=float(args.get("verify_timeout_sec") or 15.0),
+            navigate_settle_sec=_float_config_value(args.get("navigate_settle_sec"), default_navigate_settle),
+            reload_settle_sec=_float_config_value(args.get("reload_settle_sec"), default_reload_settle),
+        )
+
+    if action == "probe_api":
+        from ziniao_mcp import api_transport as at  # pylint: disable=import-outside-toplevel
+
+        path = (args.get("path") or "").strip()
+        if not path:
+            return {"error": "path is required"}
+        url = str(args.get("url") or "").strip()
+        if not url:
+            return {"error": "url is required for probe_api"}
+        method = str(args.get("method", "GET")).upper()
+        if not at.can_auto_probe_method(method):
+            return {"error": "probe_api only allows GET, HEAD, OPTIONS"}
+        snap = cv.load_auth_snapshot(Path(path).expanduser())
         try:
             cv.ensure_executable_snapshot(snap)
         except ValueError as exc:
             return {"error": str(exc)}
-        if not bool(args.get("allow_origin_mismatch", False)):
-            current_origin = _origin_of_url(getattr(getattr(tab, "target", None), "url", ""))
-            snapshot_origin = _origin_of_url(str(snap.get("page_url") or ""))
-            if snapshot_origin and current_origin and current_origin != snapshot_origin:
-                return {
-                    "error": (
-                        "snapshot origin does not match active tab; navigate to "
-                        f"{snapshot_origin} first or pass allow_origin_mismatch=true"
-                    ),
-                    "current_origin": current_origin,
-                    "snapshot_origin": snapshot_origin,
-                }
-        clear_first = bool(args.get("clear_cookies", False))
-        if clear_first:
-            await tab.send(cdp.network.clear_browser_cookies())
-        for c in snap.get("cookies") or []:
-            if not isinstance(c, dict) or not c.get("name"):
-                continue
-            dom = str(c.get("domain") or "").strip() or None
-            pth = str(c.get("path") or "/").strip() or None
-            await tab.send(
-                cdp.network.set_cookie(
-                    name=str(c["name"]),
-                    value=str(c.get("value", "")),
-                    domain=dom,
-                    path=pth,
-                    secure=bool(c["secure"]) if "secure" in c else None,
-                    http_only=bool(c.get("httpOnly")) if "httpOnly" in c else None,
-                ),
-            )
-        loc = snap.get("local_storage") if isinstance(snap.get("local_storage"), dict) else {}
-        ses = snap.get("session_storage") if isinstance(snap.get("session_storage"), dict) else {}
-        for k, v in loc.items():
-            await tab.evaluate(
-                f"localStorage.setItem({json.dumps(str(k))}, {json.dumps(str(v))})",
-                return_by_value=True,
-            )
-        for k, v in ses.items():
-            await tab.evaluate(
-                f"sessionStorage.setItem({json.dumps(str(k))}, {json.dumps(str(v))})",
-                return_by_value=True,
-            )
-        return {"ok": True, "imported_cookies": len(snap.get("cookies") or [])}
+        merged = {"url": url, "method": method, "headers": args.get("headers") or {}}
+        result = await at.direct_http_fetch(merged, snap)
+        warn = result.get("network_context_warning")
+        warnings = [warn] if warn else []
+        usable = bool(result.get("ok")) and at.direct_http_response_looks_successful(result)
+        http_ok = bool(result.get("ok"))
+        return {
+            "ok": True,
+            "probe_invocation_ok": True,
+            "probe_http_ok": http_ok,
+            "direct_http_usable": usable,
+            "probe_status": result.get("status"),
+            "probe_content_type": result.get("content_type"),
+            "warnings": warnings,
+            "probe": result,
+        }
 
     return {"error": f"Unknown cookie_vault action: {action}"}
 
@@ -1090,12 +1143,9 @@ def _normalize_fetch_transport(value: Any) -> str:
 
 
 def _origin_of_url(url: str) -> str:
-    from urllib.parse import urlparse
+    from ziniao_mcp import cookie_vault as cv  # pylint: disable=import-outside-toplevel
 
-    parsed = urlparse(url or "")
-    if not parsed.scheme or not parsed.netloc:
-        return ""
-    return f"{parsed.scheme.lower()}://{parsed.netloc.lower()}"
+    return cv.origin_of_url(url)
 
 
 async def _page_fetch(sm: Any, args: dict) -> dict:
@@ -1394,8 +1444,15 @@ async def _capture_failure_artifacts(
     seq: int = 0,
     *,
     secrets: list[str] | None = None,
+    artifacts_dir: Any | None = None,
 ) -> dict:
     """Write screenshot + snapshot HTML into ``exports/flow-errors/``.
+
+    **维护边界**：本函数与 ``ziniao_mcp/flows/runner.py`` 的 RPA 失败落盘共用；
+    修改签名或落盘语义时需同时回归 flow 测试，**不要**与仅 CookieVault 的改动混为同一主题 PR。
+
+    When *artifacts_dir* is set (e.g. ``~/.ziniao/runs/<run_id>/`` from the
+    RPA flow runner), files are written there instead of ``exports/flow-errors``.
 
     File names carry both millisecond-precision timestamps **and** a
     monotonic ``seq`` counter so multiple failures in the same second
@@ -1419,7 +1476,10 @@ async def _capture_failure_artifacts(
     artefacts: dict = {}
     if not (on_error.get("screenshot", True) or on_error.get("snapshot", True)):
         return artefacts
-    out_dir = _Path("exports") / "flow-errors"
+    if artifacts_dir is not None:
+        out_dir = _Path(artifacts_dir)
+    else:
+        out_dir = _Path("exports") / "flow-errors"
     out_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")[:-3]  # millisecond precision
     safe_id = "".join(c if c.isalnum() or c in "-_" else "_" for c in step_id)[:40]
@@ -1751,96 +1811,24 @@ async def _inject_flow_vars(tab: Any, flow_vars: dict) -> list[str]:
 
 
 async def _flow_run(sm: Any, args: dict) -> dict:
-    """Execute a ``mode: ui`` preset: step-by-step UI actions with extract/fetch.
+    """Execute a ``mode: ui`` / RPA flow preset (delegates to ``flows.runner.run_flow``).
+
+    **维护边界**：实现主体在 ``ziniao_mcp/flows/runner.py``；此处仅为 dispatch 注册入口。
+    CookieVault / ``_cookie_vault`` 的变更不应牵动本函数，除非 RPA 与快照恢复有明确联合需求。
 
     Contract:
 
     - Input ``args`` is the already-rendered spec (via ``render_vars``) plus
       optional ``_ziniao_secret_values`` carrying resolved secrets for masking.
     - On first hard failure the runner stops (unless ``step.continue_on_error``),
-      writes screenshot / snapshot to ``exports/flow-errors/``, and returns
-      ``{ok: False, failures: [...]}``.
-    - On success returns ``{ok: True, steps, extracted, output, failures: []}``.
+      writes screenshot / snapshot under ``_ziniao_run_dir`` or
+      ``exports/flow-errors/``, and returns ``{ok: False, failures: [...]}``.
+    - On success returns ``{ok: True, steps, extracted, output, failures: []}``
+      plus ``run_id`` / ``artifacts_dir`` when the runner created a run folder.
     """
-    from nodriver import cdp  # pylint: disable=import-outside-toplevel
+    from ziniao_mcp.flows.runner import run_flow  # pylint: disable=import-outside-toplevel
 
-    steps = args.get("steps") or []
-    navigate_url = args.get("navigate_url", "")
-    secrets = list(args.get("_ziniao_secret_values") or [])
-    on_error = dict(args.get("on_error") or {})
-    output_contract = dict(args.get("output_contract") or {})
-    flow_vars = dict(args.get("_ziniao_merged_vars") or {})
-
-    if not isinstance(steps, list) or not steps:
-        return {"error": "flow_run requires non-empty 'steps'."}
-
-    tab = sm.get_active_tab()
-    if navigate_url:
-        force = bool(args.get("force_navigate"))
-        current = tab.target.url or ""
-        base = navigate_url.split("?")[0].split("#")[0]
-        if force or not current.startswith(base):
-            await tab.send(cdp.page.navigate(url=navigate_url))
-            await tab.sleep(2.0)
-
-    ctx: dict = {"steps": {}, "extracted": {}, "vars": flow_vars}
-    failures: list[dict] = []
-
-    # Inject flow vars AFTER navigate so eval steps can access window.__flow_vars.
-    await _inject_flow_vars(tab, flow_vars)
-
-    for idx, raw_step in enumerate(steps):
-        sid = raw_step.get("id") or f"step_{idx}"
-        action = raw_step.get("action")
-        if action not in _FLOW_STEP_ACTIONS:
-            return {
-                "error": f"steps[{idx}] unsupported action {action!r}.",
-                "steps": ctx["steps"],
-                "extracted": ctx["extracted"],
-                "failures": failures,
-            }
-
-        rendered = _render_step_value(raw_step, ctx)
-
-        try:
-            result = await _dispatch_flow_step(sm, rendered, ctx)
-            if isinstance(result, dict) and result.get("error"):
-                raise RuntimeError(result["error"])
-            ctx["steps"][sid] = result
-        except Exception as exc:  # noqa: BLE001
-            err = _mask_secrets(str(exc), secrets)
-            _logger.warning("flow_run step %s failed: %s", sid, err)
-            artefacts = await _capture_failure_artifacts(
-                sm,
-                sid,
-                err,
-                on_error,
-                seq=idx,
-                secrets=secrets,
-            )
-            failures.append(
-                {"step_id": sid, "error": err, "action": action, **artefacts}
-            )
-            if raw_step.get("continue_on_error"):
-                ctx["steps"][sid] = {"error": err, **artefacts}
-                continue
-            return {
-                "ok": False,
-                "steps": ctx["steps"],
-                "extracted": ctx["extracted"],
-                "failures": failures,
-            }
-
-    envelope = {
-        "ok": True,
-        "steps": ctx["steps"],
-        "extracted": ctx["extracted"],
-        "failures": failures,
-    }
-    if output_contract:
-        envelope_with_vars = {**envelope, "vars": ctx["vars"]}
-        envelope["output"] = _apply_output_contract(output_contract, envelope_with_vars)
-    return envelope
+    return await run_flow(sm, args)
 
 
 # ---------------------------------------------------------------------------

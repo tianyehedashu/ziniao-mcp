@@ -135,6 +135,27 @@ JSON templates under `ziniao_mcp/sites/` and `~/.ziniao/sites/<site>/`. Shortcut
 | `ziniao site show <site/action-id>` | Variables, auth hint, pagination, usage |
 | `ziniao site enable <id>` / `disable <id>` | Toggle shortcut registration (`~/.ziniao/sites.json`) |
 
+## RPA flows
+
+Declarative `kind: rpa_flow` JSON with UI steps, control flow, retry, local IO, HTTP/MCP calls, run artifacts, and resume/debug commands.
+
+| Command | Description |
+|---------|-------------|
+| `ziniao flow validate <file>` | Validate rpa_flow schema |
+| `ziniao flow dry-run <file> --static` | Schema-only dry run |
+| `ziniao flow dry-run <file> --plan` | Explain step outline, external calls, code previews, masked vars |
+| `ziniao flow run <file> --var k=v` | Run via daemon `flow_run` |
+| `ziniao flow run <file> --vars-from data.json\|data.yaml\|data.csv` | Merge file variables; CSV becomes `rows` |
+| `ziniao flow run <file> --vars-stdin` | Merge JSON object from stdin |
+| `ziniao flow run <file> --run-dir <dir>` | Write `state.json`, `report.json`, and failure artifacts to a specific dir |
+| `ziniao flow run <file> --break-at <step_id>` | Pause before a step and persist state |
+| `ziniao flow run <file> --replay <run_id> --resume-from <step_id>` | Load previous state and resume at a step |
+| `ziniao flow run <file> --policy policy.yaml` | Use a temporary policy file |
+| `ziniao flow list` | List recent `~/.ziniao/runs/*` |
+| `ziniao flow show <run_id>` | Print `report.json` |
+| `ziniao flow diagnose <run_id> --emit nodriver` | Summarize run and generate `repro.py` |
+| `ziniao flow step <file> <step_id> --state <run_id>` | Run one step with previous state context |
+
 ## Cookies, Storage, Clipboard, Mouse
 
 | Command | Description |
@@ -147,6 +168,8 @@ JSON templates under `ziniao_mcp/sites/` and `~/.ziniao/sites/<site>/`. Shortcut
 | `ziniao info storage session get` | sessionStorage |
 | `ziniao cookie-vault export -o auth.json [--site s] [--redact]` | Export AuthSnapshot (cookies + storage + UA). Redacted output is share-only. |
 | `ziniao cookie-vault import auth.json [--clear-cookies] [--allow-origin-mismatch]` | Import executable snapshot; refuses redacted snapshots and checks storage origin by default |
+| `ziniao cookie-vault restore auth.json [--url U] [--no-reload] [--verify-selector S]` | Navigate (optional) → import → reload (default) → optional selector verify; settle waits come from config; JSON may include `phase` (`navigate` / `reload`) on CDP failure |
+| `ziniao cookie-vault probe-api auth.json <api_url> [--method GET\|HEAD\|OPTIONS]` | Safe-method direct_http probe; JSON: `probe_invocation_ok`, `probe_http_ok`, `direct_http_usable`, nested `probe` |
 | `ziniao info clipboard read` | Read clipboard |
 | `ziniao info clipboard write --text "..."` | Write clipboard |
 | `ziniao mouse move <x> <y>` | Move mouse |
@@ -161,7 +184,7 @@ JSON templates under `ziniao_mcp/sites/` and `~/.ziniao/sites/<site>/`. Shortcut
 | `echo '[{"command":...,"args":...}]' \| ziniao batch run` | Run batch JSON |
 | `ziniao batch run --bail` | Stop on first error |
 | `ziniao rec start [--engine dom2\|legacy] …` (default **dom2**) | Start recording |
-| `ziniao rec stop [--name <name>] [--emit nodriver,playwright] [--redact-secrets]` | Stop and save |
+| `ziniao rec stop [--name <name>] [--emit nodriver,playwright,preset] [--redact-secrets]` | Stop and save; `preset` emits `.rpa-flow.draft.json` |
 | `ziniao rec status` | Show engine, scope, buffer size while recording |
 | `ziniao rec replay <name>` | Replay |
 | `ziniao rec list` | List recordings |
@@ -170,7 +193,7 @@ JSON templates under `ziniao_mcp/sites/` and `~/.ziniao/sites/<site>/`. Shortcut
 | `ziniao serve [--config ...] [--company ...] [--username ...]` | Start MCP server |
 | `ziniao quit` | Stop daemon |
 
-More detail: [docs/site-fetch-and-presets.md](../../docs/site-fetch-and-presets.md) (page-context fetch, `auth` / `pagination` in JSON, MCP `page_fetch`).
+More detail: [docs/site-fetch-and-presets.md](../../docs/site-fetch-and-presets.md) (page-context fetch, `auth` / `pagination` in JSON, MCP `page_fetch`) and [docs/rpa-flows.md](../../docs/rpa-flows.md) (`kind: rpa_flow`).
 
 ## Global flags
 

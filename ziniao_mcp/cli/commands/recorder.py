@@ -86,7 +86,7 @@ def stop(
     emit: str = typer.Option(
         "nodriver",
         "--emit",
-        help="Comma-separated: nodriver, playwright (both to write .py and .spec.ts).",
+        help="Comma-separated: nodriver, playwright, preset (draft kind:rpa_flow JSON).",
     ),
     redact_secrets: bool = typer.Option(
         False,

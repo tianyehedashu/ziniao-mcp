@@ -1,0 +1,13 @@
+{
+  "kind": "rpa_flow",
+  "schema_version": "rpa/1",
+  "name": "minimal-example",
+  "description": "Dogfooding stub: replace selectors with a real page; run via `ziniao flow run`.",
+  "navigate_url": "",
+  "steps": [
+    {"id": "wait_body", "action": "wait", "selector": "body", "state": "visible", "timeout": 10},
+    {"id": "snap", "action": "snapshot"}
+  ],
+  "output_contract": {},
+  "meta": {"draft": true, "example": true}
+}

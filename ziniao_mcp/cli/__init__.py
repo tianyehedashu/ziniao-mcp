@@ -228,6 +228,7 @@ def _register_commands() -> None:
         config_cmd,
         cookie_vault,
         find,
+        flow_cmd,
         get,
         info,
         interact,
@@ -279,6 +280,7 @@ def _register_commands() -> None:
     )
 
     site_cmd.register_site_commands(app)
+    flow_cmd.register_top_level(app)
 
     app.add_typer(
         skill_cmd.app,

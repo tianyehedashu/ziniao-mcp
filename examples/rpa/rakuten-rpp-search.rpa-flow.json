@@ -1,0 +1,34 @@
+{
+  "kind": "rpa_flow",
+  "schema_version": "rpa/1",
+  "name": "rakuten-rpp-search-dogfooding",
+  "description": "P0 dogfooding flow: replace the URL/selector or swap the external_call with a rakuten site preset in a real store session.",
+  "vars": {
+    "api_url": {
+      "type": "str",
+      "default": "https://example.com/"
+    }
+  },
+  "steps": [
+    {
+      "id": "fetch_report",
+      "action": "external_call",
+      "kind": "http",
+      "url": "{{vars.api_url}}",
+      "method": "GET"
+    },
+    {
+      "id": "assert_report",
+      "action": "assert",
+      "when": "{{ steps.fetch_report.status == 200 }}",
+      "message": "RPP report fetch failed"
+    }
+  ],
+  "output_contract": {
+    "status": "$.steps.fetch_report.status"
+  },
+  "meta": {
+    "draft": true,
+    "dogfooding": true
+  }
+}

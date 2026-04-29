@@ -1,0 +1,40 @@
+{
+  "kind": "rpa_flow",
+  "schema_version": "rpa/1",
+  "name": "flow-demo-login-and-extract",
+  "description": "P0 dogfooding flow for login-like UI + extraction with mock CDP tests.",
+  "navigate_url": "https://example.com/login",
+  "steps": [
+    {
+      "id": "fill_user",
+      "action": "fill",
+      "selector": "#username",
+      "value": "{{vars.username}}"
+    },
+    {
+      "id": "submit",
+      "action": "click",
+      "selector": "button[type=submit]"
+    },
+    {
+      "id": "extract_title",
+      "action": "extract",
+      "as": "title",
+      "selector": "title",
+      "kind": "text"
+    }
+  ],
+  "vars": {
+    "username": {
+      "type": "str",
+      "default": "demo"
+    }
+  },
+  "output_contract": {
+    "title": "$.extracted.title"
+  },
+  "meta": {
+    "draft": true,
+    "dogfooding": true
+  }
+}

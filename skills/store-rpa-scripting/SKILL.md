@@ -9,6 +9,8 @@ allowed-tools: Bash(ziniao:*) Bash(python:*)
 
 本 skill 只做一件事：**把「在浏览器里能稳定重复的操作」从临时命令，收敛成可交接的步骤表和可单独运行的脚本**。不替代 ziniao 产品文档；反检测、命令全集等见本 skill 内 `references/` 与 `assets/`。安装 `pip install ziniao` 即同时获得 `ziniao_webdriver`（紫鸟 HTTP 客户端）与 `nodriver`（CDP）——一个发行包、两个 Python 包名，详见仓库 `docs/architecture-packages.md`。
 
+如果用户要的是 **声明式 JSON 流程**、`ziniao flow run`、断点恢复、失败工件或录制转 `.rpa-flow.draft.json`，优先使用 `rpa-flows` skill；本 skill 只在用户明确需要**脱离 ziniao daemon 的独立 Python 脚本**、定时任务或部署脚本时使用。两者可串联：先用 RPA Flow 验证流程，再把稳定流程固化为独立 Python。
+
 约定四阶段：CLI 调研与验证 → 结构化确认 → 独立 Python 实现 → 交付文档。URL、选择器、会话标识以 Phase 1 输出与任务输入为准，与定稿步骤表一致。
 
 ## 核心工作流
@@ -17,6 +19,7 @@ allowed-tools: Bash(ziniao:*) Bash(python:*)
 Phase 1 调研（终端 ziniao，工具调用闭环）
   接入会话 → navigate → wait → snapshot（--interactive）→ get/eval
   → 交互命令逐步验证 → screenshot 佐证 → 异常路径 → network / HAR（如需）
+  → 可选：先产出 kind:rpa_flow JSON 验证控制流与恢复
                     ↓
 Phase 2 确认（结构化步骤表，用户或任务方审核）
                     ↓
@@ -48,7 +51,7 @@ Phase 4 交付文档（可复现：命令记录 + 步骤表 + 运行方式 + 排
 
 ### Snapshot 与选择器
 
-- `snapshot --interactive` 的 **`ref`（`@e0`…）不是选择器**；只用 **Selector** 列或手写稳定选择器。
+- `snapshot --interactive` 的 `**ref`（`@e0`…）不是选择器**；只用 **Selector** 列或手写稳定选择器。
 - 导航或 DOM 大变后：**wait → 再 snapshot**。
 
 ### 1.1 接入并打开入口
@@ -93,16 +96,28 @@ ziniao --session "<session_id>" navigate "<url>" && ziniao --session "<session_i
 
 ### 1.4 异常与网络
 
-| 场景 | 工具向思路 |
-|------|------------|
-| 慢加载 | `--timeout` / `wait` 加大 |
-| JS 弹窗 | `ziniao act dialog accept` / `dismiss` |
-| 懒加载 | `scroll` / `scrollinto` 后再 snapshot |
-| 接口调研 | `network list`、`har-start` / `har-stop` |
+
+| 场景    | 工具向思路                                   |
+| ----- | --------------------------------------- |
+| 慢加载   | `--timeout` / `wait` 加大                 |
+| JS 弹窗 | `ziniao act dialog accept` / `dismiss`  |
+| 懒加载   | `scroll` / `scrollinto` 后再 snapshot     |
+| 接口调研  | `network list`、`har-start` / `har-stop` |
+
 
 ## Phase 2：确认（输出给用户/任务方）
 
 用步骤表冻结流程；URL、选择器、参数与 Phase 1 记录一致。
+
+如任务方想先用声明式方式交付，输出 `kind: rpa_flow` 文件并运行：
+
+```bash
+ziniao flow validate ./task.rpa-flow.json
+ziniao flow dry-run ./task.rpa-flow.json --plan
+ziniao flow run ./task.rpa-flow.json --var k=v
+```
+
+只有在需要定时部署、复杂封装、脱离 daemon 或多进程批处理时，再进入 Phase 3 写独立 Python。
 
 ```markdown
 ## 自动化流程: [任务名]
@@ -195,13 +210,13 @@ if __name__ == "__main__":
 
 `rpa_[task].py` 配套 `rpa_[task]_doc.md`：
 
-1. 概述（目标一句话 + 日期）  
-2. 环境（CLI + 脚本依赖）  
-3. **探索记录**：Phase 1 的 `ziniao` 命令与输出摘要  
-4. Phase 2 步骤表（复制）  
-5. 运行方式与配置项  
-6. 异常与排障  
-7. 维护（选择器/客户端变更注意点）  
+1. 概述（目标一句话 + 日期）
+2. 环境（CLI + 脚本依赖）
+3. **探索记录**：Phase 1 的 `ziniao` 命令与输出摘要
+4. Phase 2 步骤表（复制）
+5. 运行方式与配置项
+6. 异常与排障
+7. 维护（选择器/客户端变更注意点）
 
 模板：[assets/doc-template.md](assets/doc-template.md)。
 
@@ -209,30 +224,32 @@ if __name__ == "__main__":
 
 ### 工具链（Phase 1）
 
-- [ ] 会话接入 → navigate → wait → snapshot 形成闭环  
-- [ ] 所有命令固定 `--store` / `--session`；未把 `session switch` 写入自动化步骤  
-- [ ] 选择器经 snapshot/get count/eval 之一验证；未使用 `@eN` 作为 CSS  
-- [ ] 关键转折有 screenshot 或 snapshot 佐证  
-- [ ] 需要抓包时已用 network / HAR  
+- 会话接入 → navigate → wait → snapshot 形成闭环  
+- 所有命令固定 `--store` / `--session`；未把 `session switch` 写入自动化步骤  
+- 选择器经 snapshot/get count/eval 之一验证；未使用 `@eN` 作为 CSS  
+- 关键转折有 screenshot 或 snapshot 佐证  
+- 需要抓包时已用 network / HAR
 
 ### 实现（Phase 3）
 
-- [ ] 客户端 heartbeat / 启动与 CDP 连接完整  
-- [ ] 可脱离 CLI 守护进程单独 `python` 运行  
-- [ ] `select` 带 timeout；`finally` 中断开 browser  
+- 客户端 heartbeat / 启动与 CDP 连接完整  
+- 可脱离 CLI 守护进程单独 `python` 运行  
+- `select` 带 timeout；`finally` 中断开 browser
 
 ### 文档（Phase 4）
 
-- [ ] 探索记录与 Phase 1 终端命令及输出一致  
+- 探索记录与 Phase 1 终端命令及输出一致
 
 ## 目录说明（符合 Agent Skills 惯例）
 
-| 路径 | 用途 |
-|------|------|
-| `SKILL.md` | 主流程与本页 |
+
+| 路径            | 用途                              |
+| ------------- | ------------------------------- |
+| `SKILL.md`    | 主流程与本页                          |
 | `references/` | 按需阅读的参考：生命周期、CLI 对照、示例模式、反自动化索引 |
-| `scripts/` | 可执行示例脚本 |
-| `assets/` | Phase 4 文档模板 |
+| `scripts/`    | 可执行示例脚本                         |
+| `assets/`     | Phase 4 文档模板                    |
+
 
 ## 补充资源
 
@@ -243,3 +260,4 @@ if __name__ == "__main__":
 - [scripts/minimal_store_cdp.py](scripts/minimal_store_cdp.py) — 无守护进程的最小连接示例  
 - [assets/doc-template.md](assets/doc-template.md) — 过程文档模板  
 - 命令全集：`ziniao --help` 或同仓 `skills/ziniao-cli/references/commands.md`
+

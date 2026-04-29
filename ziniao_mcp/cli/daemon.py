@@ -93,6 +93,7 @@ class DaemonServer:
         self._session_manager = SessionManager(
             client, stealth_config=stealth_cfg,
             chrome_config=config.get("chrome") or {},
+            runtime_config=config,
         )
         _logger.info("SessionManager initialized")
 

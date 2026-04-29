@@ -44,6 +44,7 @@ After changing MCP env, restart the MCP server / Cursor MCP.
 - `ziniao.browser`: `version` (`v5` | `v6`), `client_path`, `socket_port`
 - `ziniao.user_info`: `company`, `username`, `password`
 - `ziniao.stealth`: `enabled`, `js_patches`, `human_behavior`, `delay_range`, `typing_speed`, `mouse_movement`
+- `cookie_vault.restore`: `navigate_settle_sec` (default `2.0`), `reload_settle_sec` (default `1.0`)
 
 Chrome-only workflows can omit or leave `ziniao` credentials empty.
 
@@ -57,6 +58,6 @@ Chrome-only workflows can omit or leave `ziniao` credentials empty.
 | Command | Purpose |
 |---------|---------|
 | `ziniao config init` | Wizard → `~/.ziniao/config.yaml` + `.env` |
-| `ziniao config set <dotted.key> <value>` | Update global config |
+| `ziniao config set <dotted.key> <value>` | Update global config; nested keys such as `cookie_vault.restore.navigate_settle_sec` are supported |
 | `ziniao config path` | Show which files are used |
 | `ziniao config env --shell mcp` | Export env block for MCP JSON |

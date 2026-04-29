@@ -77,7 +77,11 @@ def coerce_page_fetch_eval_result(result: Any) -> dict[str, Any]:
             "content_type": ct,
         }
     if isinstance(parsed, dict):
-        return {"ok": True, **parsed}
+        out: dict[str, Any] = {"ok": True, **parsed}
+        # CLI JSON envelope treats top-level ``error`` as failure; ensure ``ok: false`` is visible there too.
+        if out.get("ok") is False and "error" not in out:
+            out["error"] = str(out.get("message") or "page_fetch_failed")
+        return out
     return {"ok": True, "body": result}
 
 

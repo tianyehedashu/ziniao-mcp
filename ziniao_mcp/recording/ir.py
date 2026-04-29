@@ -15,7 +15,7 @@ def parse_emit(s: str) -> list[str]:
     parts = [x.strip().lower() for x in (s or "").split(",") if x.strip()]
     if not parts:
         return ["nodriver"]
-    valid = {"nodriver", "playwright"}
+    valid = {"nodriver", "playwright", "preset"}
     return [p for p in parts if p in valid] or ["nodriver"]
 
 

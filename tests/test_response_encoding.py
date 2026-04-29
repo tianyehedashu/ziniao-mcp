@@ -104,6 +104,18 @@ def test_coerce_json_object_without_b64_merges_keys() -> None:
     assert out["error"] == "x"
 
 
+def test_coerce_ok_false_supplies_error_for_cli_envelope() -> None:
+    out = coerce_page_fetch_eval_result(json.dumps({"ok": False}))
+    assert out["ok"] is False
+    assert out["error"] == "page_fetch_failed"
+
+
+def test_coerce_ok_false_preserves_existing_error() -> None:
+    out = coerce_page_fetch_eval_result(json.dumps({"ok": False, "error": "offer_page_not_found"}))
+    assert out["ok"] is False
+    assert out["error"] == "offer_page_not_found"
+
+
 # ---------------------------------------------------------------------------
 # save_response_body — raw bytes path (body_b64)
 # ---------------------------------------------------------------------------

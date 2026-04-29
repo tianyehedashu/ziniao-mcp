@@ -1,9 +1,10 @@
 """Site plugin discovery.
 
 ``get_plugin(site_name)`` finds a :class:`SitePlugin` subclass in this order:
-user-local file → repo dirs → builtin package ``ziniao_mcp.sites.<site>`` →
-entry_points.  Builtin plugins use normal package import so relative imports
-work; file-only loading is used for user-local and repo plugins.
+user-local file → repo dirs → builtin ``ziniao_mcp/sites/<site>/__init__.py`` →
+entry_points.  Builtin plugins normally use ``importlib.import_module``; site
+directory names that are not valid Python identifiers (e.g. ``1688``) load via
+``spec_from_file_location`` instead.
 """
 
 from __future__ import annotations
@@ -38,13 +39,22 @@ def get_plugin(site_name: str) -> SitePlugin | None:
                 if loaded is not None:
                     return loaded
 
-    if (BUILTIN_DIR / site_name / "__init__.py").is_file():
+    builtin_init = BUILTIN_DIR / site_name / "__init__.py"
+    if builtin_init.is_file():
+        # Directory names like ``1688`` are not valid ``importlib`` module
+        # segments — load the builtin ``__init__.py`` by path instead.
+        if not str(site_name).isidentifier():
+            loaded = _load_plugin_from_file(builtin_init, site_name)
+            if loaded is not None:
+                return loaded
         import importlib  # pylint: disable=import-outside-toplevel
 
         try:
             mod = importlib.import_module(f"ziniao_mcp.sites.{site_name}")
         except ModuleNotFoundError:
-            pass
+            loaded = _load_plugin_from_file(builtin_init, site_name)
+            if loaded is not None:
+                return loaded
         else:
             explicit = getattr(mod, "SITE_PLUGIN", None)
             if explicit is not None:
